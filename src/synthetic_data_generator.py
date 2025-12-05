@@ -1,4 +1,4 @@
-from __future__ import annotations
+import argparse
 import random
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -326,9 +326,16 @@ class BallastScenarioGenerator:
 
         # E. TX/RX
         if cfg.add_source:
-            geometry_lines.append("## TX/RX en aire (sobre la superficie)")
-            geometry_lines.append(f"#hertzian_dipole: z {cfg.tx_x} {cfg.tx_rx_y} {cfg.tx_rx_z} src")
-            geometry_lines.append(f"#rx: {cfg.rx_x} {cfg.tx_rx_y} {cfg.tx_rx_z}")
+            # Enforce 53 cm air gap
+            antenna_y = rock_top + 0.53
+            
+            # Warn if antenna is out of bounds
+            if antenna_y > cfg.domain_y:
+                print(f"WARNING: Antenna height {antenna_y:.4f} exceeds domain Y {cfg.domain_y:.4f}")
+
+            geometry_lines.append("## TX/RX en aire (sobre la superficie + 53cm)")
+            geometry_lines.append(f"#hertzian_dipole: z {cfg.tx_x} {antenna_y:.4f} {cfg.tx_rx_z} src")
+            geometry_lines.append(f"#rx: {cfg.rx_x} {antenna_y:.4f} {cfg.tx_rx_z}")
 
         # F. Geometry View
         if cfg.add_geometry_view:
@@ -505,19 +512,53 @@ class BallastScenarioGenerator:
 # Example usage
 # ------------------------------------------------------------
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate synthetic GPR ballast scenarios with configurable parameters."
+    )
+    
+    # Simulation parameters
+    parser.add_argument("--freq", type=float, default=1.5e9, help="Center frequency in Hz (default: 1.5e9)")
+    parser.add_argument("--n_samples", type=int, default=50, help="Number of samples to generate")
+    parser.add_argument("--out_dir", type=str, default="synthetic_inputs", help="Output directory")
+    
+    # Antenna positions
+    parser.add_argument("--tx_x", type=float, default=0.300, help="Transmitter X position")
+    parser.add_argument("--rx_x", type=float, default=0.350, help="Receiver X position")
+    parser.add_argument("--tx_rx_y", type=float, default=0.904, help="Transmitter/Receiver Y position")
+    
+    # Domain size (optional override)
+    parser.add_argument("--domain_x", type=float, default=None, help="Domain X size (optional)")
+    parser.add_argument("--domain_y", type=float, default=None, help="Domain Y size (optional)")
+
+    args = parser.parse_args()
+
+    # Create config with parsed arguments
     cfg = GeneratorConfig(
-        base_seed=42,  # for reproducibility; remove or change if you want randomness each run
+        base_seed=42,
         add_waveform=True,
         add_source=True,
-        add_geometry_view=False
+        add_geometry_view=False,
+        center_freq=args.freq,
+        tx_x=args.tx_x,
+        rx_x=args.rx_x,
+        tx_rx_y=args.tx_rx_y
     )
+
+    # Optional overrides
+    if args.domain_x is not None:
+        cfg.domain_x = args.domain_x
+    if args.domain_y is not None:
+        cfg.domain_y = args.domain_y
+
     gen = BallastScenarioGenerator(cfg)
 
-    # This will create e.g. 100 samples in ./synthetic_inputs/
-    # and a metadata.csv with FI and scenario info.
+    print(f"Generating {args.n_samples} samples...")
+    print(f"  Frequency: {args.freq/1e6:.1f} MHz")
+    print(f"  Output Dir: {args.out_dir}")
+    
     out_df = gen.generate_dataset(
-        out_dir="synthetic_inputs",
-        n_samples=5000,
+        out_dir=args.out_dir,
+        n_samples=args.n_samples,
         csv_name="metadata.csv",
     )
-    print(out_df.head())
+    print(f"Done. Metadata saved to {Path(args.out_dir) / 'metadata.csv'}")
