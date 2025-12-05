@@ -3,6 +3,7 @@
 Script to create a graphical blueprint representation of gprMax input files.
 
 Reads .in files and visualizes the geometry showing materials, layers, and heights.
+If a corresponding .out file matches the input filename, it will also visualize the simulated Hx signal.
 
 Usage:
     python visualize_gprmax_blueprint.py <input_file.in>
@@ -456,6 +457,12 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
 
 
 def main():
+    """
+    Main entry point for the blueprint visualization script.
+    
+    Parses command line arguments, reads the input file, checks for an optional .out file,
+    and calls the visualization function.
+    """
     parser = argparse.ArgumentParser(
         description='Create a blueprint visualization of gprMax input files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
