@@ -129,24 +129,27 @@ def process_files(input_dir, output_csv='features_dataset.csv', metadata_file=No
         print("No features extracted.")
 
 if __name__ == "__main__":
-    # Configuration
-    # Define directories
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    import argparse
     
-    # Input directory for .out files
-    # Default to synthetic_inputs if exists, else samples
-    synthetic_dir = r'd:\gprMax\user_models\synth'
-    samples_dir = os.path.join(base_dir, 'samples')
+    parser = argparse.ArgumentParser(description="Extract GPR features from .out files.")
+    parser.add_argument("--input_dir", type=str, default=r'd:\Codigo\Synth-Data\400MHz', help="Directory containing .out files")
+    parser.add_argument("--output_csv", type=str, default='features_dataset.csv', help="Output CSV filename")
+    parser.add_argument("--metadata", type=str, help="Path to metadata.csv. Defaults to input_dir/metadata.csv")
     
-    input_dir = samples_dir 
-    if os.path.exists(synthetic_dir) and glob.glob(os.path.join(synthetic_dir, '*.out')):
-        input_dir = synthetic_dir
-            
-    # Metadata file
-    metadata_file = os.path.join(synthetic_dir, 'metadata.csv')
-    output_csv = 'features_dataset.csv'
+    args = parser.parse_args()
+    
+    input_dir = args.input_dir
+    output_csv = args.output_csv
+    
+    if args.metadata:
+        metadata_file = args.metadata
+    else:
+        metadata_file = os.path.join(input_dir, 'metadata.csv')
     
     print(f"Input Directory: {input_dir}")
     print(f"Metadata File: {metadata_file}")
     
-    process_files(input_dir, output_csv=output_csv, metadata_file=metadata_file)
+    if not os.path.exists(input_dir):
+        print(f"Error: Input directory {input_dir} does not exist.")
+    else:
+        process_files(input_dir, output_csv=output_csv, metadata_file=metadata_file)

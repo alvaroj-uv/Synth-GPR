@@ -20,6 +20,8 @@ import matplotlib.patches as mpatches
 from pathlib import Path
 import numpy as np
 import h5py
+from scipy.signal import hilbert
+import matplotlib.gridspec as gridspec
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,6 +48,12 @@ MATERIAL_COLORS = {
 for i in range(1, 10):
     MATERIAL_COLORS[f'bal_foul_g{i}'] = plt.cm.YlOrBr(0.3 + i * 0.07)
 
+# Add Granular mode materials
+MATERIAL_COLORS['bal_foul_granular'] = '#5D4037' # Darker brown
+MATERIAL_COLORS['bal_rock_L1'] = '#A1887F' # Lighter brown (Small)
+MATERIAL_COLORS['bal_rock_L2'] = '#8D6E63' # Medium brown
+MATERIAL_COLORS['bal_rock_L3'] = '#6D4C41' # Darker brown (Large)
+
 
 def parse_gprmax_input(filepath):
     """
@@ -59,6 +67,7 @@ def parse_gprmax_input(filepath):
         'domain': None,
         'materials': {},
         'boxes': [],
+        'cylinders': [],
         'source': None,
         'receiver': None,
         'metadata': {}
@@ -102,6 +111,20 @@ def parse_gprmax_input(filepath):
                     'y1': float(parts[4]),
                     'z1': float(parts[5]),
                     'material': parts[6]
+                })
+
+            # Parse cylinders
+            elif line.startswith('#cylinder:'):
+                parts = line.split(':')[1].strip().split()
+                # Format: x1 y1 z1 x2 y2 z2 radius material
+                # We typically only care about x1,y1 (center) and radius for 2D visualization
+                data['cylinders'].append({
+                    'x': float(parts[0]),
+                    'y': float(parts[1]),
+                    'z': float(parts[2]),
+                    'radius': float(parts[6]), # Radius is 7th param (index 6)
+                    'length': abs(float(parts[5]) - float(parts[2])), # z2 - z1
+                    'material': parts[7]       # Material is 8th param (index 7)
                 })
             
             # Parse source
@@ -157,10 +180,13 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
             print(f"Warning: Could not load signal from {out_file_path}: {e}")
     
     # Create figure with subplots if showing signal
+    # Create figure with subplots if showing signal
     if show_signal:
         fig = plt.figure(figsize=(16, 8))
-        ax = fig.add_subplot(1, 2, 1)  # Left: blueprint
-        ax_signal = fig.add_subplot(1, 2, 2)  # Right: signal
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1])
+        ax = fig.add_subplot(gs[:, 0])      # Left: Blueprint (full height)
+        ax_signal = fig.add_subplot(gs[0, 1])  # Top Right: Signal
+        ax_envelope = fig.add_subplot(gs[1, 1])  # Bottom Right: Envelope
     else:
         fig, ax = plt.subplots(figsize=(12, 8))
     
@@ -170,7 +196,10 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     # Create color mapping based on dielectric values
     # Get all dielectric constants for color scale
     boxes = data['boxes']
+    cylinders = data.get('cylinders', [])
     eps_values = []
+    
+    # Collect materials from defined materials list
     for mat, props in data['materials'].items():
         if 'eps' in props:
             eps_values.append(props['eps'])
@@ -184,6 +213,22 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
         min_eps, max_eps = 1, 10
         cmap = plt.cm.YlOrBr
     
+    # Helper to get color
+    def get_mat_color_alpha(material):
+        if material == 'free_space':
+            return '#E8F4F8', 0.3
+        
+        mat_props = data['materials'].get(material, {})
+        eps = mat_props.get('eps', 5.0)
+        
+        if max_eps > min_eps:
+            norm_eps = (eps - min_eps) / (max_eps - min_eps)
+        else:
+            norm_eps = 0.5
+        
+        # Get color from colormap
+        return cmap(0.3 + norm_eps * 0.6), 0.8
+
     # Draw boxes
     for box in boxes:
         x0, y0 = box['x0'], box['y0']
@@ -193,23 +238,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
         width = x1 - x0
         height = y1 - y0
         
-        # Get color based on dielectric constant
-        if material == 'free_space':
-            color = '#E8F4F8'  # Light blue for air
-            alpha = 0.3
-        else:
-            mat_props = data['materials'].get(material, {})
-            eps = mat_props.get('eps', 5.0)
-            
-            # Normalize epsilon to 0-1 range for colormap
-            if max_eps > min_eps:
-                norm_eps = (eps - min_eps) / (max_eps - min_eps)
-            else:
-                norm_eps = 0.5
-            
-            # Get color from colormap (0.3 to 0.9 range for better contrast)
-            color = cmap(0.3 + norm_eps * 0.6)
-            alpha = 0.8
+        color, alpha = get_mat_color_alpha(material)
         
         # Draw rectangle
         rect = mpatches.Rectangle(
@@ -222,7 +251,26 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
         )
         ax.add_patch(rect)
         
-        # Labels removed - information shown in legend instead
+    # Draw cylinders
+    for cyl in cylinders:
+        x, y = cyl['x'], cyl['y']
+        r = cyl['radius']
+        material = cyl['material']
+        
+        color, alpha = get_mat_color_alpha(material)
+        
+        # Draw circle
+        circle = mpatches.Circle(
+            (x, y), r,
+            linewidth=0.5,
+            edgecolor='black',
+            facecolor=color,
+            alpha=alpha,
+            zorder=3  # Cylinders usually inside/on top of boxes
+        )
+        ax.add_patch(circle)
+        
+    # Labels removed - information shown in legend instead
     
     
     # Add vertical ruler on the left side showing layer heights
@@ -333,114 +381,95 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     # Legend for materials with dielectric values
     material_patches = []
     seen_materials = set()
-    boxes = data['boxes']
     
-    for box in reversed(boxes):  # Reverse to show in order
-        material = box['material']
+    # Collect materials from both boxes and cylinders
+    all_objects = data['boxes'] + data.get('cylinders', [])
+    
+    # Sort objects to try to keep some order (e.g. by y0 or y) although distinct types make it hard
+    # We'll just process them in order of appearance in the file/list
+    
+    for obj in reversed(all_objects):
+        material = obj['material']
         if material not in seen_materials and material != 'free_space':
             seen_materials.add(material)
             
             # Get color based on dielectric (same logic as drawing)
+            color, alpha = get_mat_color_alpha(material)
+             
+            # Create legend label with dielectric value
             mat_props = data['materials'].get(material, {})
             eps = mat_props.get('eps', 5.0)
             
-            if max_eps > min_eps:
-                norm_eps = (eps - min_eps) / (max_eps - min_eps)
-            else:
-                norm_eps = 0.5
-            
-            color = cmap(0.3 + norm_eps * 0.6)
-            
-            # Create legend label with dielectric value
             label = f"{material} (ε={eps:.1f})"
             patch = mpatches.Patch(color=color, label=label, alpha=0.8)
             material_patches.append(patch)
     
     if material_patches:
         ax.legend(handles=material_patches, loc='upper left', 
-                 fontsize=9, framealpha=0.9)
-    
-    # Plot Hz signal if available (rotated 90° to the right - vertical, aligned with layers)
+                  fontsize=9, framealpha=0.9)
+
+    # --------------------------------------------------------
+    # Annotation: Highest Cylinder (Rock Top)
+    # --------------------------------------------------------
+    cylinders = data.get('cylinders', [])
+    if cylinders:
+        # Find the cylinder with the maximum top point (y + r)
+        max_y_cyl = -1.0
+        top_cyl = None
+        
+        for cyl in cylinders:
+            y_top = cyl['y'] + cyl['radius']
+            if y_top > max_y_cyl:
+                max_y_cyl = y_top
+                top_cyl = cyl
+        
+        if top_cyl:
+            # Add a dashed line across
+            ax.axhline(y=max_y_cyl, color='#8B7355', linestyle=':', linewidth=1.5, alpha=0.8, zorder=20)
+            
+            # Add text annotation
+            ax.text(domain['x'] + 0.08, max_y_cyl, 
+                   f'Max Rock Height\n{max_y_cyl:.3f} m',
+                   color='#4A3310',
+                   ha='left', va='center', fontsize=8,
+                   fontweight='bold', style='italic',
+                   bbox=dict(boxstyle='round,pad=0.2', 
+                            facecolor='#FFF8DC', alpha=0.8, 
+                            edgecolor='#8B7355', linewidth=0.5))
+                            
+            # Highlight this specific point
+            ax.plot(top_cyl['x'], max_y_cyl, 'kx', markersize=5, zorder=21)
+
+    # Plot Hz signal if available
     if show_signal and signal_data is not None:
         time = signal_data['Time'].values if 'Time' in signal_data.columns else np.arange(len(signal_data))
+        time_ns = time * 1e9 # Convert to ns
         hx_signal = signal_data['rx1_Hx'].values
         
-        # Convert time to approximate depth using average wave velocity
-        # For GPR: depth ≈ (c * t) / (2 * sqrt(ε_avg)) where c = 3e8 m/s
-        # Two-way travel time: divide by 2
-        
-        # Calculate average dielectric constant from materials
-        eps_values = []
-        for mat, props in data['materials'].items():
-            if 'eps' in props and mat != 'free_space':
-                eps_values.append(props['eps'])
-        
-        if eps_values:
-            eps_avg = np.mean(eps_values)
-        else:
-            eps_avg = 5.0  # Default assumption
-        
-        # Wave velocity in medium: v = c / sqrt(ε)
-        c = 3e8  # Speed of light in m/s
-        v = c / np.sqrt(eps_avg)
-        
-        # Convert time to depth (one-way travel for receiver)
-        depth_from_surface = (v * time) / 2  # Two-way travel time
-        
-        # Get TX position (antenna height)
-        tx_y = data['source']['y'] if data['source'] else domain['y']
-        
-        # Scale signal to span from TX to bottom of scenario (y=0)
-        domain_bottom = 0
-        available_depth = tx_y - domain_bottom  # Depth available from TX to bottom
-        
-        # Normalize depth_from_surface to [0, 1] then scale to available depth
-        depth_normalized = depth_from_surface / depth_from_surface.max()
-        depth = tx_y - (depth_normalized * available_depth)
-        
-        # Plot with depth
-        ax_signal.plot(hx_signal, depth, 'r-', linewidth=1, alpha=0.6, label='Hx signal')
-        
-        # Calculate and plot envelope (scattering amplitude)
-        from scipy.signal import hilbert
+        # Calculate Hilbert Envelope
         analytic_signal = hilbert(hx_signal)
         envelope = np.abs(analytic_signal)
         
-        # Plot envelope
-        ax_signal.plot(envelope, depth, 'r-', linewidth=2, label='Envelope')
-        ax_signal.fill_betweenx(depth, 0, envelope, color='red', alpha=0.2)
-        ax_signal.plot(-envelope, depth, 'r-', linewidth=2)
-        ax_signal.fill_betweenx(depth, 0, -envelope, color='red', alpha=0.2)
-        ax_signal.set_ylabel('Depth (m)', fontsize=12, fontweight='bold')
-        ax_signal.set_xlabel('Hx (A/m)', fontsize=12, fontweight='bold')
-        ax_signal.set_title(f'Hx Signal (ε_avg={eps_avg:.1f})', fontsize=13, fontweight='bold')
+        # --- Top Right: Signal Graph (Time starting from 0 on left) ---
+        ax_signal.plot(time_ns, hx_signal, 'b-', linewidth=1, label='Hx Signal')
+        ax_signal.set_ylabel('Amplitude (A/m)', fontsize=10, fontweight='bold')
+        ax_signal.set_title('A-Scan Signal', fontsize=12, fontweight='bold')
         ax_signal.grid(True, alpha=0.3, linestyle='--')
-        ax_signal.axvline(x=0, color='k', linestyle='-', linewidth=0.5, alpha=0.5)
+        ax_signal.set_xlim(0, max(time_ns))
+        # Add x-label to top plot as requested
+        ax_signal.set_xlabel('Time (ns)', fontsize=10, fontweight='bold')
         
-        # Add secondary y-axis for time on the left
-        ax_time = ax_signal.twinx()
-        ax_time.set_ylim(ax_signal.get_ylim())
-        
-        # Convert depth back to time for the secondary axis
-        depth_range = np.array(ax_signal.get_ylim())
-        time_range = 2 * (tx_y - depth_range) / v * 1e9  # Convert to nanoseconds
-        ax_time.set_ylim(time_range)
-        ax_time.set_ylabel('Time (ns)', fontsize=12, fontweight='bold')
-        ax_time.yaxis.set_label_position('left')
-        ax_time.yaxis.tick_left()
-        
-        # Set main axis limits to match the geometry
-        ax_signal.set_ylim(ax.get_ylim())
-        ax_signal.invert_yaxis()  # Invert so depth increases downward (0 at top)
-        
-        # Mark TX position
-        ax_signal.axhline(y=tx_y, color='red', linestyle='--', linewidth=1, alpha=0.5, label='TX position')
-        
-        # Style
-        ax_signal.spines['top'].set_visible(False)
-        ax_signal.spines['right'].set_visible(False)
-        ax_time.spines['top'].set_visible(False)
-        ax_time.spines['right'].set_visible(False)
+        # --- Bottom Right: Hilbert Envelope ---
+        ax_envelope.plot(time_ns, envelope, 'r-', linewidth=1.5, label='Envelope')
+        ax_envelope.fill_between(time_ns, 0, envelope, color='red', alpha=0.2)
+        ax_envelope.set_xlabel('Time (ns)', fontsize=10, fontweight='bold')
+        ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
+        ax_envelope.set_title('Hilbert Envelope', fontsize=12, fontweight='bold')
+        ax_envelope.grid(True, alpha=0.3, linestyle='--')
+        ax_envelope.set_xlim(0, max(time_ns))
+
+        # Align y-axes ranges if helpful? No, scales might differ.
+        # But ensure they look clean.
     
     plt.tight_layout()
     

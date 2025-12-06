@@ -1,0 +1,13 @@
+Test Set Accuracy: 0.7700
+
+              precision    recall  f1-score   support
+
+          CL       1.00      0.50      0.67         4
+           F       0.71      0.77      0.74        22
+          HF       0.90      0.92      0.91        39
+          MC       0.62      0.57      0.59        14
+          MF       0.67      0.67      0.67        21
+
+    accuracy                           0.77       100
+   macro avg       0.78      0.69      0.72       100
+weighted avg       0.77      0.77      0.77       100
