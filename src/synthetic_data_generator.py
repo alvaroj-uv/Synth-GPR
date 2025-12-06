@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import h5py
 
-from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, AntennaLayer, fmt
+from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, MasterPatternLayer, AntennaLayer, fmt
 from .config import GeneratorConfig, get_fi_class, get_fi_class_legacy, get_pvc_class, compute_fi, classify_fi, topp_mixing_model
 
 class BallastScenarioGenerator:
@@ -185,7 +185,14 @@ class BallastScenarioGenerator:
         
         # 4. Ballast
         if cfg.granular_mode:
-            painter.add_layer(GranularBallastLayer(None, pvc, moisture))
+            # Check for Master Pattern
+            master_pattern_path = Path("src/patterns/ballast_master.json")
+            if master_pattern_path.exists():
+                painter.add_layer(MasterPatternLayer(str(master_pattern_path), pvc, moisture))
+            else:
+                # Fallback to legacy random placement
+                # print("Warning: Master Pattern not found. using random placement.")
+                painter.add_layer(GranularBallastLayer(None, pvc, moisture))
         else:
             # Fallback for legacy modes not fully implemented in OOP yet
             # For now, we only support Granular in this refactor pass as per plan
@@ -740,14 +747,15 @@ if __name__ == "__main__":
         # Better: let's look at the config object. We need to parse it ourselves here since GeneratorConfig doesn't store out_dir.
         
         # Re-read basics for out_dir
-        cp = configparser.ConfigParser()
-        cp.read(args.config)
-        if cp.has_option('Simulation', 'output_folder'):
-             ini_out = cp.get('Simulation', 'output_folder')
-             # If CLI argument is strictly default, overwrite with INI
-             # (This is slightly heuristic, but effective)
-             if args.out_dir == "d:/Codigo/Synth-Data":
-                  args.out_dir = ini_out
+        if args.config:
+            cp = configparser.ConfigParser()
+            cp.read(args.config)
+            if cp.has_option('Simulation', 'output_folder'):
+                 ini_out = cp.get('Simulation', 'output_folder')
+                 # If CLI argument is strictly default, overwrite with INI
+                 # (This is slightly heuristic, but effective)
+                 if args.out_dir == "d:/Codigo/Synth-Data":
+                      args.out_dir = ini_out
 
     gen = BallastScenarioGenerator(cfg)
 

@@ -1,4 +1,5 @@
 import random
+import json
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
@@ -116,7 +117,89 @@ class AntennaLayer(Layer):
         cmd.append(f"#hertzian_dipole: z {fmt(config.tx_x)} {fmt(antenna_y)} {fmt(config.tx_rx_z)} src")
         cmd.append(f"#rx: {fmt(config.rx_x)} {fmt(antenna_y)} {fmt(config.tx_rx_z)}")
         
+
         return cmd, antenna_y, {} # Does not really advance ground Y
+
+class MasterPatternLayer(Layer):
+    """
+    Reads a pre-generated JSON master pattern of circles and applies them.
+    Efficiently checks bounds and replicates rocks as cylinders.
+    """
+    def __init__(self, pattern_file: str, pvc: float, moisture: float):
+        self.pattern_file = pattern_file
+        self.pvc = pvc
+        self.moisture = moisture
+        
+    def apply(self, config: GeneratorConfig, start_y: float):
+        cmd = []
+        meta = {}
+        
+        # Load pattern
+        try:
+            with open(self.pattern_file, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"Error loading master pattern: {e}")
+            return [], start_y, {"error": str(e)}
+
+        rocks = data.get("rocks", [])
+        
+        # Calculate derived electrical properties
+        foul_eps = topp_mixing_model(self.moisture)
+        foul_sigma = 0.001 + 0.2 * self.moisture
+        
+        cmd.append(f"## Master Pattern Ballast Layer")
+        cmd.append(f"#material: {fmt(config.bal_rock_eps)} {fmt(config.bal_rock_sigma)} 1 0 bal_rock")
+        cmd.append(f"#material: {fmt(foul_eps)} {fmt(foul_sigma)} 1 0 bal_foul_granular")
+
+        ballast_h = config.max_ballast_thickness
+        top_y = start_y + ballast_h
+        
+        # Fouling Matrix Box
+        foul_h = ballast_h * (self.pvc / 100.0)
+        foul_top = start_y + foul_h
+        
+        if foul_h > 0.01:
+             cmd.append(f"## Fouling Matrix (PVC={self.pvc:.1f}%)")
+             cmd.append(f"#box: 0.0 {fmt(start_y)} 0.0 {fmt(config.domain_x)} {fmt(foul_top)} {fmt(config.domain_z)} bal_foul_granular")
+        
+        # Render Rocks (Cylinders)
+        cmd.append("## Ballast Aggregates (Master Pattern)")
+        
+        count = 0
+        
+        # Filter rocks within the domain window
+        # We assume the master pattern is large enough.
+        # Use simple spatial check.
+        
+        for rock in rocks:
+            x = rock['x']
+            y = rock['y']
+            r = rock['r']
+            
+            # Shift Y to sit on start_y
+            final_y = y + start_y
+            
+            # Check bounds (allowing some radius overlap)
+            if final_y - r > top_y:
+                continue # Above layer
+            if final_y + r < start_y:
+                continue # Below layer (shouldn't happen if pattern is 0-based)
+                
+            if x - r > config.domain_x:
+                continue # Right of domain
+            if x + r < 0:
+                continue # Left of domain
+                
+            # Output Cylinder
+            # cylinder: x1 y1 z1 x2 y2 z2 radius material
+            cmd.append(f"#cylinder: {fmt(x)} {fmt(final_y)} 0.0 {fmt(x)} {fmt(final_y)} {fmt(config.domain_z)} {fmt(r)} bal_rock")
+            count += 1
+            
+        meta['rock_count'] = count
+        meta['type'] = 'master_pattern'
+        
+        return cmd, top_y, meta
 
 class GranularBallastLayer(Layer):
     """
