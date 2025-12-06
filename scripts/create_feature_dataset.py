@@ -122,6 +122,20 @@ def process_single_file(filepath, label_mapping=None, fields=['Ez']):
                 label = label_mapping[lookup_name]
                 break
     
+    # Try parsing corresponding .in file
+    if label == "Unknown":
+        in_filepath = os.path.splitext(filepath)[0] + '.in'
+        if os.path.exists(in_filepath):
+            try:
+                with open(in_filepath, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if "## FI class:" in line:
+                            # Extract value after colon and strip whitespace
+                            label = line.split(":", 1)[1].strip()
+                            break
+            except Exception:
+                pass
+
     # Fallback to filename parsing
     if label == "Unknown" and len(filename) > 6:
         label = get_label_from_filename(filename)

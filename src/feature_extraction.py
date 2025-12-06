@@ -143,6 +143,9 @@ def extract_features(df, dt=1e-10):
 
         # --- 4. Slice Statistics (14 slices) ---
         # Divide the signal into 14 equal segments and calculate mean/std for each
+        # Physical Meaning:
+        # - Slices 0-3 (Surface/Shallow): Standard Deviation here measures "Surface Roughness/Texture".
+        #   High Std = Large voids/rocks (Clean). Low Std = Smooth/Filled voids (Fouled).
         num_slices = 14
         slice_size = len(signal) // num_slices
         slice_features = {}
@@ -159,37 +162,27 @@ def extract_features(df, dt=1e-10):
         from scipy.signal import resample
         
         grid_size = 160
-        resampled_signal = resample(signal, grid_size)
-        resampled_hilbert = resample(amplitude_envelope, grid_size)
         
-        grid_features = {}
-        for i in range(16):
-            for j in range(10):
-                idx = i * 10 + j
-                grid_features[f'grid_signal_time_{i}_{j}'] = resampled_signal[idx]
-                grid_features[f'grid_hilbert_envelope_{i}_{j}'] = resampled_hilbert[idx]
-                # Absolute Hilbert (same as envelope, redundant but kept for compatibility if needed)
-                grid_features[f'grid_absolute_hilbert_{i}_{j}'] = np.abs(resampled_hilbert[idx])
-                # Imaginary part of Hilbert transform (H features)
-                # Note: resampled_hilbert is currently the envelope (abs). 
-                # We need the complex analytic signal resampled to get the imaginary part.
-                # Let's fix this.
-                
-        # Re-calculating resampled arrays to ensure we have the complex data
-        resampled_signal = resample(signal, grid_size)
         # We need the analytic signal of the resampled signal, or resample the analytic signal.
         # Resampling the complex analytic signal is better to keep phase info.
+        resampled_signal = resample(signal, grid_size)
         resampled_analytic = resample(analytic_signal, grid_size)
         resampled_envelope = np.abs(resampled_analytic)
         resampled_imag = np.imag(resampled_analytic)
 
         grid_features = {}
+        
+        # Analysis note:
+        # Indices 48-51 (grid portion 4_8 to 5_1) ~30% of time window.
+        # This "Golden Zone" captures the energy reflection from the typical ballast bed depth.
+        # High energy (Envelope) = Clean/Dry; Low energy = Fouled/Wet.
+        
         for i in range(16):
             for j in range(10):
                 idx = i * 10 + j
                 grid_features[f'grid_signal_time_{i}_{j}'] = resampled_signal[idx]
                 grid_features[f'grid_hilbert_envelope_{i}_{j}'] = resampled_envelope[idx]
-                grid_features[f'grid_absolute_hilbert_{i}_{j}'] = resampled_envelope[idx] # Redundant alias
+                # 'grid_absolute_hilbert' removed (redundant alias)
                 grid_features[f'grid_hilbert_imag_{i}_{j}'] = resampled_imag[idx] # The 'H' feature
 
         # Combine all features into a dictionary
