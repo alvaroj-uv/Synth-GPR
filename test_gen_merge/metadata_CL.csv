@@ -1,0 +1,3 @@
+sample_id,filename,scenario_type,rock_height_m,foul_height_m,FI_percent,FI_class,FI_class_legacy,bal_rock_eps,bal_rock_sigma,bal_foul_eps_base,bal_foul_sigma_base,rock_count,type
+500,s_0500.in,granular,0.36565971295316385,0.0,3.9866879381837017,CL,MC,5.0,0.001,7.511922444367045,0.005007745755483982,41,master_pattern
+501,s_0501.in,granular,0.3641697909504309,0.0,4.006815221459005,CL,MC,5.0,0.001,6.036207515039155,0.004642865492812023,41,master_pattern

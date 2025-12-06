@@ -12,10 +12,21 @@ import numpy as np
 import pandas as pd
 import h5py
 
-from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, MasterPatternLayer, AntennaLayer, fmt
+from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, MasterPatternLayer, AntennaLayer, SleeperLayer, fmt
 from .config import GeneratorConfig, get_fi_class, get_fi_class_legacy, get_pvc_class, compute_fi, classify_fi, topp_mixing_model
 
 class BallastScenarioGenerator:
+    """
+    Main orchestrator for generating synthetic GPR ballast scenarios.
+    
+    Responsible for:
+    1. Sampling random parameters (Geometry, Moisture, PVC) based on configuration.
+    2. Composing the gprMax input file using ScenePainter.
+    3. Generating metadata for Machine Learning.
+    
+    Attributes:
+        cfg (GeneratorConfig): Configuration object containing ranges and settings.
+    """
     def __init__(self, config: GeneratorConfig):
         self.cfg = config
         if self.cfg.base_seed is not None:
@@ -128,7 +139,10 @@ class BallastScenarioGenerator:
 
     def _sample_heights(self) -> tuple[float, float]:
         """
-        Sample rock and foul heights in a physically realistic way.
+        Sample rock and foul heights in a physically realistic way based on configuration ranges.
+        
+        Returns:
+            tuple[float, float]: (rock_thickness, foul_thickness)
         """
         cfg = self.cfg
         total_ballast = random.uniform(
@@ -201,6 +215,10 @@ class BallastScenarioGenerator:
             # We implemented GranularBallastLayer in the composer.
             pass
             
+        # 4.5 Sleepers (New Research Feature)
+        if cfg.add_sleepers:
+            painter.add_layer(SleeperLayer())
+
         # 5. Antenna
         if cfg.add_source:
             painter.add_layer(AntennaLayer())
@@ -684,6 +702,7 @@ if __name__ == "__main__":
 
     # High-Fidelity / Granular options
     parser.add_argument("--granular", action="store_true", help="Enable High-Fidelity Granular Mode")
+    parser.add_argument("--add_sleepers", action="store_true", help="Add concrete sleepers (ties) to the geometry")
     parser.add_argument("--pvc_min", type=float, default=0.0, help="Min PVC (0-100) for granular mode")
     parser.add_argument("--pvc_max", type=float, default=100.0, help="Max PVC (0-100) for granular mode")
     parser.add_argument("--moisture_min", type=float, default=0.0, help="Min moisture (0.0-1.0)")
@@ -727,6 +746,7 @@ if __name__ == "__main__":
             tx_rx_y=args.tx_rx_y,
             # Granular config
             granular_mode=args.granular,
+            add_sleepers=args.add_sleepers,
             pvc_min=args.pvc_min,
             pvc_max=args.pvc_max,
             moisture_min=args.moisture_min,

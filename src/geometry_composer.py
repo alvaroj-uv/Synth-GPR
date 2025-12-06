@@ -6,20 +6,37 @@ from typing import List, Dict, Any, Tuple
 from .config import GeneratorConfig, topp_mixing_model, fmt
 
 class Layer(ABC):
-    """Abstract Base Class for a geometry layer."""
+    """
+    Abstract Base Class for a geometry layer.
+    
+    All specific geometry layers (Subgrade, Ballast, etc.) must inherit from this
+    and implement the apply() method.
+    """
     @abstractmethod
     def apply(self, config: GeneratorConfig, start_y: float) -> Tuple[List[str], float, Dict[str, Any]]:
         """
-        Apply layer geometry.
+        Apply layer geometry to the scene.
+
+        Args:
+            config (GeneratorConfig): The global configuration object.
+            start_y (float): The starting Y coordinate (bottom) for this layer.
+
         Returns:
-            - List of gprMax commands (materials + geometry)
-            - top_y coordinate of this layer (next start_y)
-            - Metadata dictionary
+            Tuple[List[str], float, Dict[str, Any]]: 
+                - List of gprMax commands (strings).
+                - The new top Y coordinate after this layer.
+                - A dictionary of metadata about the layer (e.g., calculated parameters).
         """
         pass
 
 class ScenePainter:
-    """Orchestrates the painting of layers back-to-front."""
+    """
+    Orchestrates the painting of layers back-to-front (Painter's Algorithm).
+    
+    Attributes:
+        config (GeneratorConfig): Configuration object.
+        layers (List[Layer]): Ordered list of layers to apply.
+    """
     def __init__(self, config: GeneratorConfig):
         self.config = config
         self.layers: List[Layer] = []
@@ -72,6 +89,10 @@ class ScenePainter:
 # --- Concrete Layers ---
 
 class BackgroundLayer(Layer):
+    """
+    Paints the initial background box (free_space) covering the entire domain.
+    This acts as the canvas.
+    """
     def apply(self, config: GeneratorConfig, start_y: float):
         cmd = []
         cmd.append("## Fondo completo (free_space)")
@@ -80,6 +101,10 @@ class BackgroundLayer(Layer):
         return cmd, start_y, {}
 
 class SubgradeLayer(Layer):
+    """
+    Adds a Subgrade layer.
+    Thickness is defined in config.subgrade_thickness.
+    """
     def apply(self, config: GeneratorConfig, start_y: float):
         h = config.subgrade_thickness
         top_y = start_y + h
@@ -90,6 +115,10 @@ class SubgradeLayer(Layer):
         return cmd, top_y, {}
 
 class FormationLayer(Layer):
+    """
+    Adds a Formation layer (Capping layer).
+    Thickness is defined in config.formation_thickness.
+    """
     def apply(self, config: GeneratorConfig, start_y: float):
         h = config.formation_thickness
         top_y = start_y + h
@@ -99,7 +128,47 @@ class FormationLayer(Layer):
         cmd.append(f"#box: 0.0 {fmt(start_y)} 0.0 {fmt(config.domain_x)} {fmt(top_y)} {fmt(config.domain_z)} formation")
         return cmd, top_y, {}
 
+class SleeperLayer(Layer):
+    """
+    Adds periodic railway sleepers (ties) on top of the ballast.
+    Simulates concrete sleepers causing periodic noise/reflections.
+    """
+    def apply(self, config: GeneratorConfig, start_y: float):
+        cmd = []
+        
+        sleeper_w = 0.25  # Width in direction of travel (X)
+        sleeper_h = 0.15  # Height (Y)
+        spacing = 0.60    # Center-to-center spacing
+        
+        # Material: Concrete
+        # Eps=9.0, Sigma=0.01 (typical cured concrete)
+        cmd.append(f"#material: 9.0 0.01 1 0 concrete_sleeper")
+        cmd.append("## Sleepers (Concrete)")
+        
+        # Start placing from X=0 with some offset
+        current_x = 0.1 
+        
+        count = 0
+        while current_x + sleeper_w < config.domain_x:
+            x_start = current_x
+            x_end = current_x + sleeper_w
+            y_start = start_y
+            y_end = start_y + sleeper_h
+            
+            cmd.append(f"#box: {fmt(x_start)} {fmt(y_start)} 0.0 {fmt(x_end)} {fmt(y_end)} {fmt(config.domain_z)} concrete_sleeper")
+            
+            current_x += spacing
+            count += 1
+            
+        # Return effective top (top of sleeper) so antenna is placed above them
+        new_top = start_y + sleeper_h
+        return cmd, new_top, {"sleeper_count": count}
+
 class AntennaLayer(Layer):
+    """
+    Adds Hertzian Dipole source and Rx point.
+    Position is calculated relative to the top surface (start_y) + air gap.
+    """
     def apply(self, config: GeneratorConfig, start_y: float):
         # start_y here is the top of the ballast/surface
         air_gap = 0.53
@@ -185,11 +254,19 @@ class MasterPatternLayer(Layer):
                 continue # Above layer
             if final_y + r < start_y:
                 continue # Below layer (shouldn't happen if pattern is 0-based)
-                
-            if x - r > config.domain_x:
-                continue # Right of domain
-            if x + r < 0:
-                continue # Left of domain
+            
+            # Global Simulation Domain Check (Critical)
+            if final_y + r >= config.domain_y:
+                 continue # Exceeds simulation ceiling
+            if final_y - r <= 0:
+                 continue # Exceeds simulation floor (rare)
+                 
+            # Strict X Containment (User Request)
+            # Remove rock if any part of it overlaps the vertical edges
+            if x - r < 0:
+                continue # Overlaps Left
+            if x + r > config.domain_x:
+                continue # Overlaps Right
                 
             # Output Cylinder
             # cylinder: x1 y1 z1 x2 y2 z2 radius material
@@ -218,9 +295,7 @@ class GranularBallastLayer(Layer):
         meta = {}
         
         # Calculate heights
-        # In granular mode, rock_h is typically calculated from somewhere? 
-        # Actually in the original, 'step 2' generated height was random?
-        # IMPORTANT: 'rock_h' in GeneratorConfig defaults to min/max range?
+        # Determine ballast top based on configuration
         # The generator passes 'rock_h' to the compose function.
         # We need to respect that logic.
         # Ideally, we calculate it here based on config min/max

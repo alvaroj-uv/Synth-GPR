@@ -1,12 +1,27 @@
 import numpy as np
 import pandas as pd
-from scipy.signal import hilbert
+from scipy.signal import hilbert, stft
 from scipy.stats import skew, kurtosis
 
 def extract_features(df, dt=1e-10):
     """
-    Extracts advanced features from the DataFrame.
-    Returns a new DataFrame with features for each signal column.
+    Extracts advanced time-domain, frequency-domain, and time-frequency features from GPR traces.
+    
+    This function computes over 200 features per signal, including:
+    - Statistical moments (mean, rms, skewness, kurtosis).
+    - Hilbert Transform attributes (instantaneous amplitude/envelope).
+    - Frequency domain metrics (FFT spectrum, bandwidth, spectral entropy).
+    - Grid-based features (resampled low-res image of the trace).
+    - Slice-based statistics (local variance).
+
+    Args:
+        df (pd.DataFrame): Input DataFrame containing GPR traces.
+                           Columns: 'Time', 'Signal1', 'Signal2', ... and metadata.
+        dt (float): Time step in seconds. Default 1e-10.
+
+    Returns:
+        pd.DataFrame: A DataFrame where each row corresponds to a signal column from the input.
+                      Columns are the extracted features.
     """
     if df.empty:
         print("DataFrame is empty. Cannot extract features.")
@@ -141,6 +156,48 @@ def extract_features(df, dt=1e-10):
         
         area_hilbert = np.sum(amplitude_envelope)
 
+        # --- 6. STFT Features (Time-Frequency) ---
+        # Short-Time Fourier Transform to analyze frequency content evolution over time (depth)
+        # Using 64-point window with overlap
+        f_stft, t_stft, Zxx = stft(signal, fs=1/dt, nperseg=64, noverlap=32)
+        stft_mag = np.abs(Zxx)
+        
+        # Calculate energy in specific bands over time
+        # E.g., Low (0-500 MHz), Mid (500-1500 MHz), High (>1500 MHz)
+        # fs is huge (1/1e-10 = 10 GHz). f_stft goes up to 5 GHz.
+        mask_low = (f_stft < 5e8)
+        mask_mid = (f_stft >= 5e8) & (f_stft < 1.5e9)
+        mask_high = (f_stft >= 1.5e9)
+        
+        energy_low = np.sum(stft_mag[mask_low, :], axis=0)
+        energy_mid = np.sum(stft_mag[mask_mid, :], axis=0)
+        energy_high = np.sum(stft_mag[mask_high, :], axis=0)
+        
+        # Features: Mean and Max energy in these bands
+        stft_features = {
+            'stft_energy_low_mean': np.mean(energy_low),
+            'stft_energy_low_max': np.max(energy_low),
+            'stft_energy_mid_mean': np.mean(energy_mid),
+            'stft_energy_mid_max': np.max(energy_mid),
+            'stft_energy_high_mean': np.mean(energy_high),
+            'stft_energy_high_max': np.max(energy_high),
+        }
+        
+        # Spectral Centroid Variance over time (Dispersion measure)
+        # Centroid at each time step
+        centroids_t = []
+        for t_idx in range(stft_mag.shape[1]):
+            spectrum_t = stft_mag[:, t_idx]
+            sum_spec = np.sum(spectrum_t)
+            if sum_spec > 0:
+                 cent = np.sum(f_stft * spectrum_t) / sum_spec
+                 centroids_t.append(cent)
+            else:
+                 centroids_t.append(0)
+                 
+        stft_features['stft_centroid_std'] = np.std(centroids_t)
+
+
         # --- 4. Slice Statistics (14 slices) ---
         # Divide the signal into 14 equal segments and calculate mean/std for each
         # Physical Meaning:
@@ -230,7 +287,8 @@ def extract_features(df, dt=1e-10):
             **d_features,
             **d_features_hilbert,
             **slice_features,
-            **grid_features
+            **grid_features,
+            **stft_features
         }
         
         # Add metadata

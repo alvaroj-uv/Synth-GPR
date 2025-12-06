@@ -1,88 +1,51 @@
-# Feature Dataset Generator
+# Synth-GPR Scripts
 
-Script to automatically create feature dataset CSV files from folders containing gprMax output files.
+This directory contains the executable scripts for the Synthetic GPR pipeline.
 
-## Location
-`scripts/create_feature_dataset.py`
+## Directory Structure
+
+### `main/` - Core Pipeline Scripts
+Primary scripts for generating data, running simulations, and extracting features.
+- **`generate_dataset.py`**: Unified generator for synthetic GPR data. Supports single class, stratified, and custom fouling ranges.
+- **`run_simulations.py`**: Batch runner for executing `gprMax` on multiple `.in` files.
+- **`create_feature_dataset.py`**: The main extraction tool; converts `.out` files to a features CSV.
+- **`consolidate_dataset.py`**: Merges and renames datasets from multiple sources into a canonical format.
+- **`batch_extract_features.py`**: (Legacy) Lower-level batch extractor using OS-based iteration.
+
+### `tools/` - Utilities & Helpers
+Helper tools for visualization, validation, and asset generation.
+- **`visualize_gprmax_blueprint.py`**: Generates high-quality blueprints (PNG) of `.in` file geometry.
+- **`generate_master_pattern.py`**: Generates the RSA (Random Sequential Adsorption) master circle patterns used for ballast.
+- **`validate_dataset.py`**: Checks a dataset folder for consistency (missing inputs/outputs).
+- **`merge_datasets.py`**: Merges multiple feature CSV files into one.
+- **`update_hdf5_titles.py`**: Updates internal HDF5 Title attributes based on a metadata CSV.
+- **`read_gprmax_output.py`**: Helper functions for reading gprMax HDF5 outputs.
+- **`analyze_selected_pdfs.py`**: Text extraction tool for literature review.
+- **`test_data_generator.py`**: Quick test for the generator pipeline.
 
 ## Usage
 
-### Basic Usage
-Process all `.out` files in a folder:
-```bash
-python scripts/create_feature_dataset.py <input_folder>
-```
+**Always run scripts from the project root directory** (`d:\Codigo\Synth-GPR`) to ensure Python can resolve the `src` module imports.
 
 ### Examples
 
-**1. Process files from the samples folder:**
+**Generating Data:**
 ```bash
-python scripts/create_feature_dataset.py samples/
+# Generate 50 samples of Clean(CL), Moderately Clean(MC), etc.
+python scripts/main/generate_dataset.py d:/Codigo/Synth-Data/Batch1 --labels CL MC MF F HF -n 50
 ```
 
-**2. Specify custom output filename:**
+**Running Simulations:**
 ```bash
-python scripts/create_feature_dataset.py output/ -o my_features.csv
+python scripts/main/run_simulations.py d:/Codigo/Synth-Data/Batch1 --gpu 0
 ```
 
-**3. Use metadata file for labeling:**
+**Extracting Features:**
 ```bash
-python scripts/create_feature_dataset.py samples/ -m metadata.csv -o features.csv
+python scripts/main/create_feature_dataset.py d:/Codigo/Synth-Data/Batch1 -o features_batch1.csv
 ```
 
-**4. Extract specific fields:**
+**Visualizing Geometry:**
 ```bash
-python scripts/create_feature_dataset.py samples/ --fields Ez Ey Hx
+python scripts/tools/visualize_gprmax_blueprint.py d:/Codigo/Synth-Data/Batch1/s_00000.in
 ```
-
-**5. Quiet mode (suppress progress messages):**
-```bash
-python scripts/create_feature_dataset.py samples/ -q
-```
-
-## Command-Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `input_folder` | Folder containing `.out` files (required) | - |
-| `-o, --output` | Output CSV filename | `features_dataset.csv` |
-| `-m, --metadata` | Metadata CSV for labeling | None |
-| `--fields` | Fields to extract (e.g., Ez, Ey, Hx) | `['Ez']` |
-| `-q, --quiet` | Suppress progress messages | False |
-
-## Metadata File Format
-
-If you provide a metadata file with `-m`, it should be a CSV with these columns:
-- `filename`: Name of the input/output file
-- `FI_class` (or `Label`): Classification label
-
-Example metadata.csv:
-```csv
-filename,FI_class
-sample_0000_uniform.in,Clean
-sample_0001_uniform.in,Clean
-sample_0002_gradient.in,Moderate
-```
-
-## Output Format
-
-The script generates a CSV file with:
-- **Filename**: Source `.out` file
-- **Label**: Classification label (from metadata or filename)
-- **Signal**: Signal name (e.g., Ez_rx1)
-- **Features**: All extracted features (722 columns)
-
-## Features
-
-✓ Processes all `.out` files in a directory
-✓ Flexible labeling (via metadata file or filename parsing)
-✓ Supports multiple field extraction
-✓ Progress tracking with detailed output
-✓ Error handling for individual files
-✓ Clean, organized output CSV
-
-## Related Scripts
-
-- `batch_extract_features.py` - Lower-level batch extraction (used internally)
-- `visualize_single_signal.py` - Visualize individual signals
-- `batch_visualize.py` - Visualize multiple files

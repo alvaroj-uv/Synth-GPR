@@ -24,7 +24,10 @@ from scipy.signal import hilbert
 import matplotlib.gridspec as gridspec
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Now in scripts/tools/, so we need to go up 3 levels to reach project root (if root is above scripts/)
+# Actually root is d:/Codigo/Synth-GPR
+# scripts/tools/visualize.py -> parent = tools -> parent = scripts -> parent = Synth-GPR
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
     from src.data_loader import read_gprmax_hdf5
@@ -34,45 +37,66 @@ except ImportError:
 
 
 # Material color mapping for visualization
+# This dictionary maps specific material identifiers found in gprMax input files
+# to hex color codes for Matplotlib visualization.
 MATERIAL_COLORS = {
-    'free_space': '#E8F4F8',      # Light blue
-    'bal_rock': '#8B7355',         # Brown (clean ballast)
-    'bal_foul': '#654321',         # Dark brown (fouled ballast)
-    'bal_foul_wet': '#4A3310',     # Very dark brown (wet fouled)
-    'foul_pocket': '#3D2817',      # Almost black (pockets)
-    'subgrade': '#D2B48C',         # Tan
-    'formation': '#C19A6B',        # Camel brown
+    'free_space': '#E8F4F8',       # Light blue: Represents air/background
+    'bal_rock': '#8B7355',         # Brown: Clean ballast aggregates (rocks)
+    'bal_foul': '#654321',         # Dark brown: Generic fouled ballast
+    'bal_foul_wet': '#4A3310',     # Very dark brown: Wet fouled ballast
+    'foul_pocket': '#3D2817',      # Almost black: Localized fouling pockets
+    'subgrade': '#D2B48C',         # Tan: The layer beneath the formation (soil)
+    'formation': '#C19A6B',        # Camel brown: The capping layer/formation
+    'concrete_sleeper': '#2F4F4F', # Dark Slate Gray: Concrete railway ties/sleepers
 }
 
 # Add gradient materials dynamically
+# Generates colors for 'bal_foul_g1' to 'bal_foul_g9' to visualize varying degrees of fouling
+# using the YlOrBr (Yellow-Orange-Brown) colormap.
 for i in range(1, 10):
     MATERIAL_COLORS[f'bal_foul_g{i}'] = plt.cm.YlOrBr(0.3 + i * 0.07)
 
-# Add Granular mode materials
-MATERIAL_COLORS['bal_foul_granular'] = '#5D4037' # Darker brown
-MATERIAL_COLORS['bal_rock_L1'] = '#A1887F' # Lighter brown (Small)
-MATERIAL_COLORS['bal_rock_L2'] = '#8D6E63' # Medium brown
-MATERIAL_COLORS['bal_rock_L3'] = '#6D4C41' # Darker brown (Large)
+# Add Granular mode materials (High-Fidelity)
+# Specific colors for granular simulation components
+MATERIAL_COLORS['bal_foul_granular'] = '#5D4037' # Darker brown for the fine matrix between rocks
+MATERIAL_COLORS['bal_rock_L1'] = '#A1887F'       # Lighter brown for Small rocks
+MATERIAL_COLORS['bal_rock_L2'] = '#8D6E63'       # Medium brown for Medium rocks
+MATERIAL_COLORS['bal_rock_L3'] = '#6D4C41'       # Darker brown for Large rocks
 
 
 def parse_gprmax_input(filepath):
     """
     Parse a gprMax input file and extract geometry information.
     
+    Reads lines sequentially and extracts commands like #domain, #material, #box, #cylinder.
+    Stores objects in a list to preserve the "painter's algorithm" drawing order.
+    
+    Args:
+        filepath (str): Path to the .in file to parse.
+        
     Returns:
-        dict with domain, materials, boxes, and metadata
+        dict: A dictionary containing:
+            - title (str): Simulation title from #title
+            - domain (dict): {'x': float, 'y': float, 'z': float}
+            - materials (dict): Map of material_name -> {'eps': float, 'sigma': float}
+            - objects (list): List of dicts, each representing a drawn shape (box/cylinder)
+                              with keys: type, material, order, coordinates...
+            - source (dict): Position of the source antenna
+            - receiver (dict): Position of the receiver antenna
+            - metadata (dict): Custom metadata extracted from comments (e.g. FI, Scenario)
     """
     data = {
         'title': None,
         'domain': None,
         'materials': {},
-        'boxes': [],
-        'cylinders': [],
+        'objects': [], # Combined list with order
         'source': None,
         'receiver': None,
         'metadata': {}
     }
     
+    order_counter = 0
+
     with open(filepath, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -103,29 +127,34 @@ def parse_gprmax_input(filepath):
             elif line.startswith('#box:'):
                 parts = line.split(':')[1].strip().split()
                 # Format: x0 y0 z0 x1 y1 z1 material
-                data['boxes'].append({
+                data['objects'].append({
+                    'type': 'box',
                     'x0': float(parts[0]),
                     'y0': float(parts[1]),
                     'z0': float(parts[2]),
                     'x1': float(parts[3]),
                     'y1': float(parts[4]),
                     'z1': float(parts[5]),
-                    'material': parts[6]
+                    'material': parts[6],
+                    'order': order_counter
                 })
+                order_counter += 1
 
             # Parse cylinders
             elif line.startswith('#cylinder:'):
                 parts = line.split(':')[1].strip().split()
                 # Format: x1 y1 z1 x2 y2 z2 radius material
-                # We typically only care about x1,y1 (center) and radius for 2D visualization
-                data['cylinders'].append({
+                data['objects'].append({
+                    'type': 'cylinder',
                     'x': float(parts[0]),
                     'y': float(parts[1]),
                     'z': float(parts[2]),
-                    'radius': float(parts[6]), # Radius is 7th param (index 6)
-                    'length': abs(float(parts[5]) - float(parts[2])), # z2 - z1
-                    'material': parts[7]       # Material is 8th param (index 7)
+                    'radius': float(parts[6]),
+                    'length': abs(float(parts[5]) - float(parts[2])),
+                    'material': parts[7],
+                    'order': order_counter
                 })
+                order_counter += 1
             
             # Parse source
             elif line.startswith('#hertzian_dipole:'):
@@ -145,7 +174,7 @@ def parse_gprmax_input(filepath):
                     'z': float(parts[2])
                 }
             
-            # Parse metadata from comments
+            # Parse metadata
             elif line.startswith('## FI (%):'):
                 data['metadata']['FI'] = line.split(':')[1].strip()
             elif line.startswith('## FI class:'):
@@ -158,13 +187,25 @@ def parse_gprmax_input(filepath):
 
 def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None):
     """
-    Create a blueprint visualization of the gprMax geometry.
+    Create a blueprint visualization of the gprMax geometry using Matplotlib.
+    
+    Generates a 2D cross-section view (X-Y plane) of the simulation domain.
+    Draws objects in the order they appear in the file to correctly visualize layers.
+    Also calculates and displays a vertical ruler for layer heights and a rock height annotation.
     
     Args:
-        data: Parsed data from parse_gprmax_input
-        output_file: Optional file path to save the figure
-        show_plot: Whether to display the plot
-        out_file_path: Optional path to .out file for signal visualization
+        data (dict): Parsed geometry data returned by parse_gprmax_input.
+        output_file (str, optional): Path to save the resulting image file (e.g. .png).
+        show_plot (bool): If True, calls plt.show() to display the window.
+        out_file_path (str, optional): Path to a corresponding .out HDF5 file. 
+                                       If provided and valid, adds signal plots.
+                                       
+    Variables:
+        fig (Figure): Matplotlib figure object.
+        ax (Axes): Main axes for the geometry blueprint.
+        objects (list): List of geometry objects (boxes, cylinders) to draw.
+        z_order (int): Drawing order index. Higher values are drawn on top.
+        material_patches (list): List of patches for the legend.
     """
     # Check if .out file exists and can be loaded
     show_signal = False
@@ -180,7 +221,6 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
             print(f"Warning: Could not load signal from {out_file_path}: {e}")
     
     # Create figure with subplots if showing signal
-    # Create figure with subplots if showing signal
     if show_signal:
         fig = plt.figure(figsize=(16, 8))
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1])
@@ -195,8 +235,6 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     
     # Create color mapping based on dielectric values
     # Get all dielectric constants for color scale
-    boxes = data['boxes']
-    cylinders = data.get('cylinders', [])
     eps_values = []
     
     # Collect materials from defined materials list
@@ -229,46 +267,49 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
         # Get color from colormap
         return cmap(0.3 + norm_eps * 0.6), 0.8
 
-    # Draw boxes
-    for box in boxes:
-        x0, y0 = box['x0'], box['y0']
-        x1, y1 = box['x1'], box['y1']
-        material = box['material']
-        
-        width = x1 - x0
-        height = y1 - y0
-        
+    # Draw all objects in order
+    objects = data.get('objects', [])
+    # Sort by order just in case, though they should be appended in order
+    objects.sort(key=lambda x: x['order'])
+
+    for i, obj in enumerate(objects):
+        obj_type = obj['type']
+        material = obj['material']
         color, alpha = get_mat_color_alpha(material)
         
-        # Draw rectangle
-        rect = mpatches.Rectangle(
-            (x0, y0), width, height,
-            linewidth=0.5,
-            edgecolor='black',
-            facecolor=color,
-            alpha=alpha,
-            zorder=1 if material == 'free_space' else 2
-        )
-        ax.add_patch(rect)
+        # Determine zorder based on file order (plus offset for base elements)
+        # Background is 0. Objects start at 1.
+        z_order = 1 + i
         
-    # Draw cylinders
-    for cyl in cylinders:
-        x, y = cyl['x'], cyl['y']
-        r = cyl['radius']
-        material = cyl['material']
-        
-        color, alpha = get_mat_color_alpha(material)
-        
-        # Draw circle
-        circle = mpatches.Circle(
-            (x, y), r,
-            linewidth=0.5,
-            edgecolor='black',
-            facecolor=color,
-            alpha=alpha,
-            zorder=3  # Cylinders usually inside/on top of boxes
-        )
-        ax.add_patch(circle)
+        if obj_type == 'box':
+            x0, y0 = obj['x0'], obj['y0']
+            x1, y1 = obj['x1'], obj['y1']
+            width = x1 - x0
+            height = y1 - y0
+            
+            rect = mpatches.Rectangle(
+                (x0, y0), width, height,
+                linewidth=0.5,
+                edgecolor='black',
+                facecolor=color,
+                alpha=alpha,
+                zorder=z_order
+            )
+            ax.add_patch(rect)
+            
+        elif obj_type == 'cylinder':
+            x, y = obj['x'], obj['y']
+            r = obj['radius']
+            
+            circle = mpatches.Circle(
+                (x, y), r,
+                linewidth=0.5,
+                edgecolor='black',
+                facecolor=color,
+                alpha=alpha,
+                zorder=z_order 
+            )
+            ax.add_patch(circle)
         
     # Labels removed - information shown in legend instead
     
@@ -276,10 +317,10 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     # Add vertical ruler on the left side showing layer heights
     # Identify distinct horizontal layers (excluding free_space)
     layer_boundaries = set()
-    for box in boxes:
-        if box['material'] != 'free_space':
-            layer_boundaries.add(box['y0'])
-            layer_boundaries.add(box['y1'])
+    for obj in data.get('objects', []):
+        if obj['type'] == 'box' and obj['material'] != 'free_space':
+            layer_boundaries.add(obj['y0'])
+            layer_boundaries.add(obj['y1'])
     
     layer_boundaries = sorted([h for h in layer_boundaries if h >= 0])
     
@@ -330,9 +371,9 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     
     # Add height annotations on the right side
     unique_heights = set()
-    for box in boxes:
-        if box['material'] != 'free_space':
-            unique_heights.add(box['y1'])
+    for obj in data.get('objects', []):
+        if obj['type'] == 'box' and obj['material'] != 'free_space':
+            unique_heights.add(obj['y1'])
     
     for height in sorted(unique_heights):
         if height > 0.01:  # Skip very small heights
@@ -383,7 +424,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     seen_materials = set()
     
     # Collect materials from both boxes and cylinders
-    all_objects = data['boxes'] + data.get('cylinders', [])
+    all_objects = data.get('objects', [])
     
     # Sort objects to try to keep some order (e.g. by y0 or y) although distinct types make it hard
     # We'll just process them in order of appearance in the file/list
@@ -411,7 +452,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None)
     # --------------------------------------------------------
     # Annotation: Highest Cylinder (Rock Top)
     # --------------------------------------------------------
-    cylinders = data.get('cylinders', [])
+    cylinders = [o for o in data.get('objects', []) if o['type'] == 'cylinder']
     if cylinders:
         # Find the cylinder with the maximum top point (y + r)
         max_y_cyl = -1.0

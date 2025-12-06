@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""
+Unified script to generate synthetic GPR data for specific fouling classes.
+Replaces generate_clean_dataset.py and generate_stratified_dataset.py.
+"""
+
+import sys
+import argparse
+from pathlib import Path
+import time
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.synthetic_data_generator import GeneratorConfig, BallastScenarioGenerator
+
+# Define PVC ranges for each class
+PVC_RANGES = {
+    'CL': (0.0, 5.0),    # Clean
+    'MC': (5.0, 20.0),   # Moderately Clean
+    'MF': (20.0, 40.0),  # Moderately Fouled
+    'F':  (40.0, 60.0),  # Fouled
+    'HF': (60.0, 100.0)  # Highly Fouled
+}
+
+def generate_dataset(output_dir, labels, n_per_label=50, start_id=10000, moisture_max=0.15):
+    """
+    Generates n samples for each requested label.
+    """
+    print(f"{'='*60}")
+    print(f"Synthetic Dataset Generator")
+    print(f"{'='*60}")
+    print(f"Output Directory: {output_dir}")
+    print(f"Labels:           {labels}")
+    print(f"Samples/Label:    {n_per_label}")
+    print(f"Start ID:         {start_id}")
+    print(f"Moisture Max:     {moisture_max}")
+    print(f"{'='*60}\n")
+    
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    current_id = start_id
+    total_generated = 0
+    start_time = time.time()
+    
+    for label in labels:
+        label_upper = label.upper()
+        if label_upper not in PVC_RANGES:
+            print(f"[WARN] Unknown label '{label}', skipping. Available: {list(PVC_RANGES.keys())}")
+            continue
+            
+        pmin, pmax = PVC_RANGES[label_upper]
+        print(f"-> Generating {label_upper} (PVC {pmin}-{pmax}%) ...")
+        
+        cfg = GeneratorConfig(
+            base_seed=current_id,
+            add_waveform=True,
+            add_source=True,
+            granular_mode=True,
+            pvc_min=pmin,
+            pvc_max=pmax,
+            moisture_min=0.0, 
+            moisture_max=moisture_max,
+            # Standard geometry constraints
+            min_ballast_thickness=0.25,
+            max_ballast_thickness=0.45,
+        )
+        
+        gen = BallastScenarioGenerator(cfg)
+        
+        # Generate batch
+        # We append the label to the metadata filename to avoid overwrites if running multiple batches
+        metadata_name = f"metadata_{label_upper}.csv"
+        
+        df = gen.generate_dataset(
+            out_dir=output_dir,
+            n_samples=n_per_label,
+            csv_name=metadata_name,
+            start_id=current_id
+        )
+        
+        count = len(df)
+        print(f"   Generated {count} samples. IDs: {current_id} - {current_id + count - 1}")
+        
+        current_id += count
+        total_generated += count
+        
+    elapsed = time.time() - start_time
+    print(f"\n{'='*60}")
+    print(f"Completed in {elapsed:.2f}s")
+    print(f"Total Samples Generated: {total_generated}")
+    print(f"{'='*60}")
+    
+    return total_generated
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate synthetic GPR dataset for specific fouling classes.")
+    
+    parser.add_argument("output_dir", help="Directory to save output files")
+    
+    parser.add_argument("--labels", nargs="+", default=['CL', 'MC', 'MF', 'F'], 
+                        help=f"Labels to generate. Choices: {list(PVC_RANGES.keys())} (default: CL MC MF F)")
+    
+    parser.add_argument("-n", "--num", type=int, default=10, help="Number of samples per label (default: 10)")
+    
+    parser.add_argument("--start_id", type=int, default=1000, help="Starting ID for filenames (default: 1000)")
+    
+    parser.add_argument("--moisture_max", type=float, default=0.15, help="Maximum volumetric moisture content (default: 0.15)")
+
+    args = parser.parse_args()
+    
+    generate_dataset(args.output_dir, args.labels, args.num, args.start_id, args.moisture_max)

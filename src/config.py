@@ -93,6 +93,17 @@ def fmt(val: float) -> str:
 
 @dataclass
 class GeneratorConfig:
+    """
+    Configuration Data Transfer Object (DTO) for the synthetic generator.
+    
+    This class holds all parameters governing the simulation, including:
+    - Domain geometry (size, grid step).
+    - Antenna settings (freq, positions).
+    - Material properties (dielectric constant, conductivity).
+    - Scenario parameters (moisture, fouling levels).
+    
+    Can be initialized directly or loaded from an INI file via `from_ini`.
+    """
     # Geometry and grid
     domain_x: float = 0.5
     domain_y: float = 1.5   # Increased from 1.3 to accommodate thicker subgrade
@@ -114,6 +125,7 @@ class GeneratorConfig:
     add_waveform: bool = True
     add_source: bool = True
     add_geometry_view: bool = False
+    add_sleepers: bool = False # Disabled by default as per user request
 
     # Granular & High-Fidelity Settings
     granular_mode: bool = False
@@ -214,7 +226,9 @@ class GeneratorConfig:
             args['tx_rx_z'] = get_float('Simulation', 'tx_rx_z')
             args['add_waveform'] = get_bool('Simulation', 'add_waveform')
             args['add_source'] = get_bool('Simulation', 'add_source')
+            args['add_source'] = get_bool('Simulation', 'add_source')
             args['add_geometry_view'] = get_bool('Simulation', 'add_geometry_view')
+            args['add_sleepers'] = get_bool('Simulation', 'add_sleepers')
             
             # Base seed
             seed_str = config.get('Simulation', 'base_seed', fallback=None)
