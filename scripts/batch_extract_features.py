@@ -2,6 +2,10 @@ import os
 import glob
 import pandas as pd
 import numpy as np
+import sys
+# Add project root to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.data_loader import read_gprmax_hdf5
 from src.feature_extraction import extract_features
 
@@ -131,7 +135,7 @@ if __name__ == "__main__":
     
     # Input directory for .out files
     # Default to synthetic_inputs if exists, else samples
-    synthetic_dir = os.path.join(base_dir, 'synthetic_inputs')
+    synthetic_dir = r'd:\gprMax\user_models\synth'
     samples_dir = os.path.join(base_dir, 'samples')
     
     input_dir = samples_dir 

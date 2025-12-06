@@ -1,5 +1,6 @@
 import argparse
 import random
+from datetime import date
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Dict, Any
@@ -19,6 +20,7 @@ def compute_fi(rock_h: float, foul_h: float) -> float:
     return (foul_h / total) * 100.0
 
 
+
 def classify_fi(FI: float) -> str:
     # Selig & Waters style bands - short codes
     if FI < 20:
@@ -31,6 +33,11 @@ def classify_fi(FI: float) -> str:
         return "HF"
 
 
+def fmt(val: float) -> str:
+    """Format float to 5 significant figures."""
+    return f"{val:.5g}"
+
+
 # ------------------------------------------------------------
 # Config dataclass
 # ------------------------------------------------------------
@@ -39,12 +46,12 @@ def classify_fi(FI: float) -> str:
 class GeneratorConfig:
     # Geometry and grid
     domain_x: float = 0.5
-    domain_y: float = 1.0
-    domain_z: float = 0.001
+    domain_y: float = 1.2
+    domain_z: float = 0.005
 
     dx: float = 0.005
-    dy: float = 0.0005
-    dz: float = 0.001
+    dy: float = 0.005
+    dz: float = 0.005
 
     # Time window
     time_window: float = 1.5e-8
@@ -54,7 +61,7 @@ class GeneratorConfig:
     tx_x: float = 0.300
     rx_x: float = 0.35
     tx_rx_y: float = 0.904
-    tx_rx_z: float = 0.0
+    tx_rx_z: float = 0.0025 # Centered in Z for 2D
     add_waveform: bool = True
     add_source: bool = True
     add_geometry_view: bool = False
@@ -119,6 +126,7 @@ class BallastScenarioGenerator:
         out_dir: str | Path,
         n_samples: int = 50,
         csv_name: str = "metadata.csv",
+        start_id: int = 0,
     ) -> pd.DataFrame:
         """
         Generate n_samples .in files under out_dir and a CSV with metadata.
@@ -128,7 +136,8 @@ class BallastScenarioGenerator:
 
         metadata_rows: List[Dict[str, Any]] = []
 
-        for idx in range(n_samples):
+        for i in range(n_samples):
+            idx = start_id + i
             # Decide scenario
             scenario_type = random.choice(
                 ["uniform", "vertical_gradient", "pockets", "wet"]
@@ -142,7 +151,7 @@ class BallastScenarioGenerator:
             FI_class = classify_fi(FI)
 
             # File naming
-            base_name = f"sample_{idx:04d}_{scenario_type}"
+            base_name = f"s_{idx:04d}"
             in_filename = f"{base_name}.in"
 
             # Build content
@@ -155,12 +164,8 @@ class BallastScenarioGenerator:
                 FI_class=FI_class,
             )
 
-            # Normalize line endings to CRLF for Windows/gprMax compatibility
-            lines = in_text.split("\n")
-            text_crlf = "\r\n".join(lines) + "\r\n"
-
             # Write file
-            (out_dir / in_filename).write_text(text_crlf, encoding="utf-8")
+            (out_dir / in_filename).write_text(in_text + "\n", encoding="utf-8")
 
             # Collect metadata
             row = {
@@ -176,7 +181,12 @@ class BallastScenarioGenerator:
             metadata_rows.append(row)
 
         df = pd.DataFrame(metadata_rows)
-        df.to_csv(out_dir / csv_name, index=False)
+        # Append to existing CSV if it exists and we are adding more
+        csv_path = out_dir / csv_name
+        if start_id > 0 and csv_path.exists():
+             df.to_csv(csv_path, mode='a', header=False, index=False)
+        else:
+             df.to_csv(csv_path, index=False)
         return df
 
     # --------------- geometry sampling -----------------
@@ -224,52 +234,42 @@ class BallastScenarioGenerator:
         }
 
         # --- SECTIONS ---
-        header_lines: List[str] = []
+        # Note: Header is built LAST to include scenario details
         setup_lines: List[str] = []
         material_lines: List[str] = []
         geometry_lines: List[str] = []
         
-        # 1. Header
-        header_lines.append("## ------------------------------------------------------------")
-        header_lines.append("## Generated gprMax Input File")
-        header_lines.append(f"## Scenario: {scenario_type}")
-        header_lines.append(f"## Rock Height: {rock_h:.4f}")
-        header_lines.append(f"## Foul Height: {foul_h:.4f}")
-        header_lines.append(f"## FI (%): {FI:.2f}")
-        header_lines.append(f"## FI class: {FI_class}")
-        header_lines.append("## ------------------------------------------------------------")
+        # 1. Setup (Domain, Time, etc.)
+        setup_lines.append(f"#title: {FI_class}_{scenario_type}")
+        setup_lines.append(f"#domain: {fmt(cfg.domain_x)} {fmt(cfg.domain_y)} {fmt(cfg.domain_z)}")
+        setup_lines.append(f"#dx_dy_dz: {fmt(cfg.dx)} {fmt(cfg.dy)} {fmt(cfg.dz)}")
+        setup_lines.append(f"#time_window: {fmt(cfg.time_window)}")
 
-        # 2. Setup (Domain, Time, etc.)
-        setup_lines.append(f"#title: {FI_class}")
-        setup_lines.append(f"#domain: {cfg.domain_x} {cfg.domain_y} {cfg.domain_z}")
-        setup_lines.append(f"#dx_dy_dz: {cfg.dx} {cfg.dy} {cfg.dz}")
-        setup_lines.append(f"#time_window: {cfg.time_window}")
-
-        # 3. Materials (Base definitions)
-        material_lines.append(f"#material: {cfg.bal_rock_eps} {cfg.bal_rock_sigma} 1 0 bal_rock")
-        material_lines.append(f"#material: {base_foul_eps} {base_foul_sigma} 1 0 bal_foul")
+        # 2. Materials (Base definitions)
+        material_lines.append(f"#material: {fmt(cfg.bal_rock_eps)} {fmt(cfg.bal_rock_sigma)} 1 0 bal_rock")
+        material_lines.append(f"#material: {fmt(base_foul_eps)} {fmt(base_foul_sigma)} 1 0 bal_foul")
         material_lines.append("#material: 7.0 0.01 1 0 subgrade")
         material_lines.append("#material: 10.0 0.03 1 0 formation")
 
-        # 4. Waveform
+        # 3. Waveform
         if cfg.add_waveform:
-            setup_lines.append(f"#waveform: ricker 1 {cfg.center_freq:.3e} src")
+            setup_lines.append(f"#waveform: ricker 1 {fmt(cfg.center_freq)} src")
 
-        # 5. Geometry - Painter's Algorithm (Back to Front)
+        # 4. Geometry - Painter's Algorithm (Back to Front)
         
         # A. Background (Free Space)
         geometry_lines.append("## Fondo completo (free_space)")
-        geometry_lines.append(f"#box: 0.0 0.0 0.0   {cfg.domain_x} {cfg.domain_y} {cfg.domain_z} free_space")
+        geometry_lines.append(f"#box: 0.0 0.0 0.0   {fmt(cfg.domain_x)} {fmt(cfg.domain_y)} {fmt(cfg.domain_z)} free_space")
 
         # B. Subgrade
         y_subgrade = cfg.subgrade_thickness
-        geometry_lines.append(f"## Layer: subgrade (0.00–{y_subgrade:.4f})")
-        geometry_lines.append(f"#box: 0.0 0.0 0.0   {cfg.domain_x} {y_subgrade:.4f} {cfg.domain_z} subgrade")
+        geometry_lines.append(f"## Layer: subgrade (0.00–{fmt(y_subgrade)})")
+        geometry_lines.append(f"#box: 0.0 0.0 0.0   {fmt(cfg.domain_x)} {fmt(y_subgrade)} {fmt(cfg.domain_z)} subgrade")
 
         # C. Formation
         y_formation_top = y_subgrade + cfg.formation_thickness
-        geometry_lines.append(f"## Layer: formation ({y_subgrade:.4f}–{y_formation_top:.4f})")
-        geometry_lines.append(f"#box: 0.0 {y_subgrade:.4f} 0.0   {cfg.domain_x} {y_formation_top:.4f} {cfg.domain_z} formation")
+        geometry_lines.append(f"## Layer: formation ({fmt(y_subgrade)}–{fmt(y_formation_top)})")
+        geometry_lines.append(f"#box: 0.0 {fmt(y_subgrade)} 0.0   {fmt(cfg.domain_x)} {fmt(y_formation_top)} {fmt(cfg.domain_z)} formation")
 
         # D. Ballast Region (Fouled + Rock)
         ballast_bottom = y_formation_top
@@ -278,10 +278,10 @@ class BallastScenarioGenerator:
         rock_top = min(rock_top, cfg.domain_y)
 
         # 1. Define the entire ballast layer as Clean Rock (Largest Area for this section)
-        geometry_lines.append(f"## Layer: bal_rock (Entire Ballast: {ballast_bottom:.4f}–{rock_top:.4f})")
-        geometry_lines.append(f"#box: 0.0 {ballast_bottom:.4f} 0.0   {cfg.domain_x} {rock_top:.4f} {cfg.domain_z} bal_rock")
+        geometry_lines.append(f"## Layer: bal_rock (Entire Ballast: {fmt(ballast_bottom)}–{fmt(rock_top)})")
+        geometry_lines.append(f"#box: 0.0 {fmt(ballast_bottom)} 0.0   {fmt(cfg.domain_x)} {fmt(rock_top)} {fmt(cfg.domain_z)} bal_rock")
 
-        # 2. Overwrite with Fouling (Smaller/Inner Area)
+        # 2. Overwrite with Fouling (Smaller/Inner Area) - Updates scenario_info!
         if scenario_type == "uniform":
             scenario_info.update(
                 self._add_uniform_fouling(material_lines, geometry_lines, ballast_bottom, foul_top, base_foul_eps, base_foul_sigma)
@@ -329,20 +329,45 @@ class BallastScenarioGenerator:
             # Enforce 53 cm air gap
             antenna_y = rock_top + 0.53
             
-            # Warn if antenna is out of bounds
-            if antenna_y > cfg.domain_y:
-                print(f"WARNING: Antenna height {antenna_y:.4f} exceeds domain Y {cfg.domain_y:.4f}")
+            # Warn if antenna is out of bounds or too close to PML
+            margin = 15 * cfg.dy  # 15 cells margin
+            if antenna_y > (cfg.domain_y - margin):
+                raise ValueError(
+                    f"Antenna height {antenna_y:.4f} is too close to domain top {cfg.domain_y:.4f}. "
+                    f"Must be < {cfg.domain_y - margin:.4f} (15 cells margin)."
+                )
 
             geometry_lines.append("## TX/RX en aire (sobre la superficie + 53cm)")
-            geometry_lines.append(f"#hertzian_dipole: z {cfg.tx_x} {antenna_y:.4f} {cfg.tx_rx_z} src")
-            geometry_lines.append(f"#rx: {cfg.rx_x} {antenna_y:.4f} {cfg.tx_rx_z}")
+            geometry_lines.append(f"#hertzian_dipole: z {fmt(cfg.tx_x)} {fmt(antenna_y)} {fmt(cfg.tx_rx_z)} src")
+            geometry_lines.append(f"#rx: {fmt(cfg.rx_x)} {fmt(antenna_y)} {fmt(cfg.tx_rx_z)}")
 
         # F. Geometry View
         if cfg.add_geometry_view:
             geometry_lines.append(
-                f"#geometry_view: 0 0 0  {cfg.domain_x} {cfg.domain_y} {cfg.domain_z}  "
-                f"{cfg.dx} {cfg.dy} {cfg.dz} {base_name}.vtk n"
+                f"#geometry_view: 0 0 0  {fmt(cfg.domain_x)} {fmt(cfg.domain_y)} {fmt(cfg.domain_z)}  "
+                f"{fmt(cfg.dx)} {fmt(cfg.dy)} {fmt(cfg.dz)} {base_name}.vtk n"
             )
+
+        # --- BUILD HEADER LAST (using potentially updated scenario_info) ---
+        header_lines: List[str] = []
+        header_lines.append("## ------------------------------------------------------------")
+        header_lines.append("## Generated gprMax Input File")
+        header_lines.append(f"## Scenario: {scenario_type}")
+        header_lines.append(f"## Date: {date.today().isoformat()}")
+        header_lines.append(f"## Base Seed: {cfg.base_seed}")
+        header_lines.append(f"## Rock Height: {fmt(rock_h)}")
+        header_lines.append(f"## Foul Height: {fmt(foul_h)}")
+        header_lines.append(f"## FI (%): {fmt(FI)}")
+        header_lines.append(f"## FI class: {FI_class}")
+        
+        # Add dynamic scenario details
+        for k, v in scenario_info.items():
+            if k not in ["bal_rock_eps", "bal_rock_sigma", "bal_foul_eps_base", "bal_foul_sigma_base", "scenario_detail"]:
+                # Format float values nicely if possible, otherwise str
+                val_str = fmt(v) if isinstance(v, float) else str(v)
+                header_lines.append(f"## {k}: {val_str}")
+
+        header_lines.append("## ------------------------------------------------------------")
 
         # Assemble final text
         all_lines = header_lines + setup_lines + material_lines + geometry_lines
@@ -365,9 +390,10 @@ class BallastScenarioGenerator:
         """
         cfg = self.cfg
 
-        # Fouled layer
-        geometry.append(f"## Layer: bal_foul ({ballast_bottom:.4f}–{foul_top:.4f})")
-        geometry.append(f"#box: 0.0 {ballast_bottom:.4f} 0.0   {cfg.domain_x} {foul_top:.4f} {cfg.domain_z} bal_foul")
+        # Fouled layer - only add if strictly positive thickness
+        if foul_top > ballast_bottom + 1e-9:
+            geometry.append(f"## Layer: bal_foul ({fmt(ballast_bottom)}–{fmt(foul_top)})")
+            geometry.append(f"#box: 0.0 {fmt(ballast_bottom)} 0.0   {fmt(cfg.domain_x)} {fmt(foul_top)} {fmt(cfg.domain_z)} bal_foul")
 
         return {"scenario_detail": "uniform"}
 
@@ -403,14 +429,14 @@ class BallastScenarioGenerator:
         for i in range(n_layers):
             label = f"bal_foul_g{i+1}"
             grad_labels.append(label)
-            materials.append(f"#material: {eps_values[i]:.3f} {sigma_values[i]:.4e} 1 0 {label}")
+            materials.append(f"#material: {fmt(eps_values[i])} {fmt(sigma_values[i])} 1 0 {label}")
 
         # Define geometry (bottom up)
         y0 = ballast_bottom
         for i, label in enumerate(grad_labels):
             y1 = ballast_bottom + (i + 1) * sub_thick
-            geometry.append(f"## Gradient Layer {i+1}: {label} ({y0:.4f}–{y1:.4f})")
-            geometry.append(f"#box: 0.0 {y0:.4f} 0.0   {cfg.domain_x} {y1:.4f} {cfg.domain_z} {label}")
+            geometry.append(f"## Gradient Layer {i+1}: {label} ({fmt(y0)}–{fmt(y1)})")
+            geometry.append(f"#box: 0.0 {fmt(y0)} 0.0   {fmt(cfg.domain_x)} {fmt(y1)} {fmt(cfg.domain_z)} {label}")
             y0 = y1
 
         return {
@@ -435,13 +461,13 @@ class BallastScenarioGenerator:
         cfg = self.cfg
 
         # Base fouled layer
-        geometry.append(f"## Layer: bal_foul ({ballast_bottom:.4f}–{foul_top:.4f})")
-        geometry.append(f"#box: 0.0 {ballast_bottom:.4f} 0.0   {cfg.domain_x} {foul_top:.4f} {cfg.domain_z} bal_foul")
+        geometry.append(f"## Layer: bal_foul ({fmt(ballast_bottom)}–{fmt(foul_top)})")
+        geometry.append(f"#box: 0.0 {fmt(ballast_bottom)} 0.0   {fmt(cfg.domain_x)} {fmt(foul_top)} {fmt(cfg.domain_z)} bal_foul")
 
         # Pocket material
         pocket_eps = random.uniform(cfg.pocket_eps_min, cfg.pocket_eps_max)
         pocket_sigma = random.uniform(cfg.pocket_sigma_min, cfg.pocket_sigma_max)
-        materials.append(f"#material: {pocket_eps:.3f} {pocket_sigma:.4e} 1 0 foul_pocket")
+        materials.append(f"#material: {fmt(pocket_eps)} {fmt(pocket_sigma)} 1 0 foul_pocket")
 
         # Pockets (defined AFTER layers so they overwrite)
         n_pockets = random.randint(1, cfg.max_pockets)
@@ -454,8 +480,9 @@ class BallastScenarioGenerator:
             y2 = y1 + random.uniform(0.01, (foul_top - ballast_bottom) * 0.6)
             y2 = min(y2, foul_top)
 
-            geometry.append(f"## Fouling pocket {i+1} (x: {x1:.3f}-{x2:.3f}, y: {y1:.3f}-{y2:.3f})")
-            geometry.append(f"#box: {x1:.3f} {y1:.4f} 0.0   {x2:.3f} {y2:.4f} {cfg.domain_z} foul_pocket")
+            if y2 > y1 + 1e-9 and x2 > x1 + 1e-9:
+                geometry.append(f"## Fouling pocket {i+1} (x: {fmt(x1)}-{fmt(x2)}, y: {fmt(y1)}-{fmt(y2)})")
+                geometry.append(f"#box: {fmt(x1)} {fmt(y1)} 0.0   {fmt(x2)} {fmt(y2)} {fmt(cfg.domain_z)} foul_pocket")
 
         return {
             "scenario_detail": "pockets",
@@ -490,15 +517,17 @@ class BallastScenarioGenerator:
         wet_eps = base_eps * eps_factor
         wet_sigma = base_sigma * sigma_factor
 
-        materials.append(f"#material: {wet_eps:.3f} {wet_sigma:.4e} 1 0 bal_foul_wet")
+        materials.append(f"#material: {fmt(wet_eps)} {fmt(wet_sigma)} 1 0 bal_foul_wet")
 
         # Dry fouling (bottom part)
-        geometry.append(f"## Layer: bal_foul (dry) ({ballast_bottom:.4f}–{wet_top:.4f})")
-        geometry.append(f"#box: 0.0 {ballast_bottom:.4f} 0.0   {cfg.domain_x} {wet_top:.4f} {cfg.domain_z} bal_foul")
+        if wet_top > ballast_bottom + 1e-9:
+            geometry.append(f"## Layer: bal_foul (dry) ({fmt(ballast_bottom)}–{fmt(wet_top)})")
+            geometry.append(f"#box: 0.0 {fmt(ballast_bottom)} 0.0   {fmt(cfg.domain_x)} {fmt(wet_top)} {fmt(cfg.domain_z)} bal_foul")
 
         # Wet fouling (top part)
-        geometry.append(f"## Layer: bal_foul_wet ({wet_top:.4f}–{foul_top:.4f})")
-        geometry.append(f"#box: 0.0 {wet_top:.4f} 0.0   {cfg.domain_x} {foul_top:.4f} {cfg.domain_z} bal_foul_wet")
+        if foul_top > wet_top + 1e-9:
+            geometry.append(f"## Layer: bal_foul_wet ({fmt(wet_top)}–{fmt(foul_top)})")
+            geometry.append(f"#box: 0.0 {fmt(wet_top)} 0.0   {fmt(cfg.domain_x)} {fmt(foul_top)} {fmt(cfg.domain_z)} bal_foul_wet")
 
         return {
             "scenario_detail": "wet",
@@ -529,12 +558,13 @@ if __name__ == "__main__":
     # Domain size (optional override)
     parser.add_argument("--domain_x", type=float, default=None, help="Domain X size (optional)")
     parser.add_argument("--domain_y", type=float, default=None, help="Domain Y size (optional)")
+    parser.add_argument("--start_id", type=int, default=0, help="Starting ID for samples (default: 0)")
 
     args = parser.parse_args()
 
     # Create config with parsed arguments
     cfg = GeneratorConfig(
-        base_seed=42,
+        base_seed=42 + args.start_id, # varies seed with start_id to avoid repeats if running multiple batches
         add_waveform=True,
         add_source=True,
         add_geometry_view=False,
@@ -552,7 +582,7 @@ if __name__ == "__main__":
 
     gen = BallastScenarioGenerator(cfg)
 
-    print(f"Generating {args.n_samples} samples...")
+    print(f"Generating {args.n_samples} samples starting at ID {args.start_id}...")
     print(f"  Frequency: {args.freq/1e6:.1f} MHz")
     print(f"  Output Dir: {args.out_dir}")
     
@@ -560,5 +590,6 @@ if __name__ == "__main__":
         out_dir=args.out_dir,
         n_samples=args.n_samples,
         csv_name="metadata.csv",
+        start_id=args.start_id,
     )
     print(f"Done. Metadata saved to {Path(args.out_dir) / 'metadata.csv'}")
