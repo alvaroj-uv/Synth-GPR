@@ -5,6 +5,65 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
 from .config import GeneratorConfig, topp_mixing_model, fmt
 
+def apply_spatial_jitter(commands: List[str], config: GeneratorConfig) -> List[str]:
+    """
+    Apply spatial jitter to rock positions for domain randomization.
+    
+    Adds Gaussian noise to rock (x, y) positions to simulate natural
+    variation and improve ML model robustness.
+    
+    Args:
+        commands: List of gprMax command strings
+        config: GeneratorConfig with spatial_jitter_sigma
+    
+    Returns:
+        List of modified command strings
+    """
+    if not config.enable_domain_randomization or config.spatial_jitter_sigma <= 0:
+        return commands
+    
+    jittered_commands = []
+    
+    for cmd in commands:
+        if cmd.startswith('#cylinder:') and 'bal_rock' in cmd:
+            # Parse cylinder command
+            # Format: #cylinder: x y z x y z radius material
+            parts = cmd.split()
+            if len(parts) >= 9:
+                try:
+                    x = float(parts[1])
+                    y = float(parts[2])
+                    z = float(parts[3])
+                    radius = float(parts[7])
+                    
+                    # Apply jitter
+                    x_jitter = random.gauss(0, config.spatial_jitter_sigma)
+                    y_jitter = random.gauss(0, config.spatial_jitter_sigma)
+                    
+                    x_new = x + x_jitter
+                    y_new = y + y_jitter
+                    
+                    # Ensure within bounds
+                    x_new = max(radius, min(x_new, config.domain_x - radius))
+                    y_new = max(0.3 + radius, min(y_new, config.domain_y - radius))
+                    
+                    # Reconstruct command
+                    # parts[6] is z2, usually same as z1 (z)
+                    z2 = float(parts[6]) 
+                    jittered_cmd = (f"#cylinder: {fmt(x_new)} {fmt(y_new)} {fmt(z)} "
+                                   f"{fmt(x_new)} {fmt(y_new)} {fmt(z2)} "
+                                   f"{fmt(radius)} {parts[8]}")
+                    jittered_commands.append(jittered_cmd)
+                except (ValueError, IndexError):
+                    # If parsing fails, keep original
+                    jittered_commands.append(cmd)
+            else:
+                jittered_commands.append(cmd)
+        else:
+            jittered_commands.append(cmd)
+    
+    return jittered_commands
+
 class Layer(ABC):
     """
     Abstract Base Class for a geometry layer.
@@ -213,12 +272,29 @@ class MasterPatternLayer(Layer):
 
         rocks = data.get("rocks", [])
         
-        # Calculate derived electrical properties
-        foul_eps = topp_mixing_model(self.moisture)
-        foul_sigma = 0.001 + 0.2 * self.moisture
+        # Calculate derived electrical properties (with optional randomization)
+        if config.enable_domain_randomization:
+            # Randomize moisture (affects foul_eps and foul_sigma)
+            moisture = random.uniform(0, config.moisture_randomization_range)
+            # Randomize rock properties
+            rock_eps = config.bal_rock_eps * random.uniform(
+                1 - config.rock_eps_variation,
+                1 + config.rock_eps_variation
+            )
+            rock_sigma = config.bal_rock_sigma * random.uniform(
+                1 - config.rock_sigma_variation,
+                1 + config.rock_sigma_variation
+            )
+        else:
+            moisture = self.moisture
+            rock_eps = config.bal_rock_eps
+            rock_sigma = config.bal_rock_sigma
+        
+        foul_eps = topp_mixing_model(moisture)
+        foul_sigma = 0.001 + 0.2 * moisture
         
         cmd.append(f"## Master Pattern Ballast Layer")
-        cmd.append(f"#material: {fmt(config.bal_rock_eps)} {fmt(config.bal_rock_sigma)} 1 0 bal_rock")
+        cmd.append(f"#material: {fmt(rock_eps)} {fmt(rock_sigma)} 1 0 bal_rock")
         cmd.append(f"#material: {fmt(foul_eps)} {fmt(foul_sigma)} 1 0 bal_foul_granular")
 
         ballast_h = config.max_ballast_thickness
@@ -276,7 +352,7 @@ class MasterPatternLayer(Layer):
         meta['rock_count'] = count
         meta['type'] = 'master_pattern'
         
-        return cmd, top_y, meta
+        return apply_spatial_jitter(cmd, config), top_y, meta
 
 class GranularBallastLayer(Layer):
     """
@@ -310,18 +386,77 @@ class GranularBallastLayer(Layer):
         rock_top = min(rock_top, config.domain_y) # Clip
         
         # 1. Fouling Matrix Material
-        foul_eps = topp_mixing_model(self.moisture)
-        foul_sigma = 0.001 + 0.2 * self.moisture
-        cmd.append(f"#material: {fmt(config.bal_rock_eps)} {fmt(config.bal_rock_sigma)} 1 0 bal_rock")
+        # Apply domain randomization if enabled
+        if config.enable_domain_randomization:
+            # Randomize moisture
+            moisture = random.uniform(0, config.moisture_randomization_range)
+            # Randomize rock properties
+            rock_eps = config.bal_rock_eps * random.uniform(
+                1 - config.rock_eps_variation,
+                1 + config.rock_eps_variation
+            )
+            rock_sigma = config.bal_rock_sigma * random.uniform(
+                1 - config.rock_sigma_variation,
+                1 + config.rock_sigma_variation
+            )
+        else:
+            moisture = self.moisture
+            rock_eps = config.bal_rock_eps
+            rock_sigma = config.bal_rock_sigma
+        
+        foul_eps = topp_mixing_model(moisture)
+        foul_sigma = 0.001 + 0.2 * moisture
+        cmd.append(f"#material: {fmt(rock_eps)} {fmt(rock_sigma)} 1 0 bal_rock")
         cmd.append(f"#material: {fmt(foul_eps)} {fmt(foul_sigma)} 1 0 bal_foul_granular")
         
-        # 2. Fouling Box
+        # 2. Fouling: Gravity-Settled Void Filling
+        # ==========================================
+        # Simulates realistic fouling accumulation in railway ballast:
+        # - Bottom layer: Dense settled fines (gravity settling over time)
+        # - Upper voids: Sparse particles (recent infiltration)
+        #
+        # Physical basis:
+        # - Fine particles (clay, silt, sand) settle to bottom due to gravity
+        # - Recent contamination dispersed in upper voids
+        # - PVC (Percentage Void Contamination) determines total fouling volume
+        #
+        # Implementation:
+        # - 70% of fouling: Continuous box at bottom (settled layer)
+        # - 30% of fouling: Small cylinders in upper voids (dispersed particles)
+        
         foul_fill_height = rock_h * (self.pvc / 100.0)
-        foul_horizon_y = start_y + foul_fill_height
         
         if foul_fill_height > (config.dy * 0.5):
-            cmd.append(f"## Fouling Matrix (PVC={self.pvc:.1f}%)")
+            cmd.append(f"## Fouling: Gravity-Settled Distribution (PVC={self.pvc:.1f}%)")
+            
+            # Component 1: Settled layer (70% of total fouling)
+            # -------------------------------------------------
+            # Dense accumulation at bottom from long-term settling
+            settled_fraction = 0.7
+            settled_height = foul_fill_height * settled_fraction
+            foul_horizon_y = start_y + settled_height
+            
+            cmd.append("## - Settled Layer (bottom)")
             cmd.append(f"#box: 0.0 {fmt(start_y)} 0.0 {fmt(config.domain_x)} {fmt(foul_horizon_y)} {fmt(config.domain_z)} bal_foul_granular")
+            
+            # Component 2: Dispersed particles (30% of total fouling)
+            # --------------------------------------------------------
+            # Small particles in upper voids representing recent contamination
+            # Only placed in actual voids (not overlapping with rocks)
+            
+            # Note: Rock generation happens after this, so we'll add a method
+            # to generate dispersed particles that can be called after rocks are placed
+            # For now, store parameters for later use
+            meta['dispersed_fouling'] = {
+                'enabled': True,
+                'y_min': foul_horizon_y,
+                'y_max': start_y + foul_fill_height,
+                'fraction': 0.3,
+                'particle_size_min': 0.002,  # 2mm
+                'particle_size_max': 0.008,  # 8mm
+            }
+        else:
+            meta['dispersed_fouling'] = {'enabled': False}
             
         # 3. Rocks
         cmd.append("## Granular Aggregates")
@@ -351,6 +486,33 @@ class GranularBallastLayer(Layer):
              cmd.extend(c_cmds)
              total_rocks += count
              
+        # 4. Dispersed Fouling Particles (if enabled)
+        # ============================================
+        # Generate small particles in upper voids after rocks are placed
+        # This ensures particles only appear in actual voids
+        
+        if meta.get('dispersed_fouling', {}).get('enabled', False):
+            cmd.append("## - Dispersed Particles (upper voids)")
+            
+            # Extract rock positions for void detection
+            rock_list = self._extract_rock_positions(cmd)
+            
+            # Generate particles in voids
+            particle_cmds = self._generate_dispersed_fouling_particles(
+                rock_list=rock_list,
+                domain_x=config.domain_x,
+                domain_z=config.domain_z,
+                y_min=meta['dispersed_fouling']['y_min'],
+                y_max=meta['dispersed_fouling']['y_max'],
+                pvc=self.pvc,
+                particle_size_min=meta['dispersed_fouling']['particle_size_min'],
+                particle_size_max=meta['dispersed_fouling']['particle_size_max']
+            )
+            cmd.extend(particle_cmds)
+            meta['dispersed_particle_count'] = len(particle_cmds)
+        else:
+            meta['dispersed_particle_count'] = 0
+        
         meta.update({
             "rock_height": rock_h,
             "foul_height": foul_fill_height,
@@ -358,18 +520,22 @@ class GranularBallastLayer(Layer):
             "foul_eps_derived": foul_eps
         })
         
+        # Apply spatial jitter if domain randomization is enabled
+        if config.enable_domain_randomization:
+            cmd = apply_spatial_jitter(cmd, config)
+        
         return cmd, rock_top, meta
 
     def _generate_rocks(self, cfg, y_min, y_max, r_min, r_max, layer_idx):
-        # Simplified rock generation logic
+        """Generate rocks for a single layer with size constraints."""
         cmds = []
         count = 0
         attempts = 0
-        max_attempts = 1000 # Safety
+        max_attempts = 1000
         
         # Volume heuristic
         vol = (cfg.domain_x) * (y_max - y_min)
-        target_fill = 0.6 # 60% rocks
+        target_fill = 0.6  # 60% rocks
         current_fill = 0.0
         
         while current_fill < target_fill and attempts < max_attempts:
@@ -378,8 +544,153 @@ class GranularBallastLayer(Layer):
             y = random.uniform(y_min + r, y_max - r)
             
             cmds.append(f"#cylinder: {fmt(x)} {fmt(y)} 0.0 {fmt(x)} {fmt(y)} {fmt(cfg.domain_z)} {fmt(r)} bal_rock")
-            current_fill += (3.14159 * r * r) / vol # Area fraction 2D
+            current_fill += (np.pi * r * r) / vol
             count += 1
             attempts += 1
             
         return cmds, count
+    
+    def _calculate_rock_area_monte_carlo(self, rocks, domain_x, y_min, y_max, n_samples=50000):
+        """
+        Calculate total rock area using Monte Carlo integration.
+        Accounts for overlapping rocks correctly.
+        
+        Args:
+            rocks: List of dicts with 'x', 'y', 'radius' keys
+            domain_x: Width of domain
+            y_min: Bottom of ballast layer
+            y_max: Top of ballast layer
+            n_samples: Number of random samples (higher = more accurate)
+        
+        Returns:
+            float: Total rock area in m²
+        """
+        if not rocks:
+            return 0.0
+        
+        # Generate random sample points
+        x_samples = np.random.uniform(0, domain_x, n_samples)
+        y_samples = np.random.uniform(y_min, y_max, n_samples)
+        
+        # Count points inside any rock
+        inside_count = 0
+        for x, y in zip(x_samples, y_samples):
+            for rock in rocks:
+                dist_sq = (x - rock['x'])**2 + (y - rock['y'])**2
+                if dist_sq <= rock['radius']**2:
+                    inside_count += 1
+                    break  # Count each point only once
+        
+        # Calculate area
+        ballast_area = domain_x * (y_max - y_min)
+        rock_area = (inside_count / n_samples) * ballast_area
+        
+        return rock_area
+    
+    def _extract_rock_positions(self, commands):
+        """
+        Extract rock positions from generated gprMax commands.
+        
+        Parses cylinder commands to extract x, y, radius for void detection.
+        
+        Args:
+            commands: List of gprMax command strings
+        
+        Returns:
+            List of dicts with 'x', 'y', 'radius' keys
+        """
+        rocks = []
+        for cmd in commands:
+            if cmd.startswith('#cylinder:') and 'bal_rock' in cmd:
+                # Parse: #cylinder: x y z x y z radius material
+                parts = cmd.split()
+                if len(parts) >= 8:
+                    try:
+                        x = float(parts[1])
+                        y = float(parts[2])
+                        radius = float(parts[7])
+                        rocks.append({'x': x, 'y': y, 'radius': radius})
+                    except (ValueError, IndexError):
+                        continue
+        return rocks
+    
+    def _generate_dispersed_fouling_particles(self, rock_list, domain_x, domain_z,
+                                              y_min, y_max, pvc, 
+                                              particle_size_min, particle_size_max):
+        """
+        Generate dispersed fouling particles in upper voids.
+        
+        Simulates recent contamination that hasn't settled to the bottom yet.
+        Particles are only placed in actual voids (not overlapping with rocks).
+        
+        Physical Basis:
+        ---------------
+        - Recent infiltration: Fine particles entering from above (ballast pumping,
+          track maintenance, environmental deposition)
+        - Not yet settled: Particles suspended in upper voids
+        - Sparse distribution: Unlike dense bottom layer, these are scattered
+        
+        Algorithm:
+        ----------
+        1. Calculate target number of particles based on PVC
+        2. Generate random candidate positions in upper region
+        3. Filter out positions that overlap with rocks
+        4. Create small cylinders (2-8mm) at valid positions
+        
+        Args:
+            rock_list: List of dicts with 'x', 'y', 'radius' for existing rocks
+            domain_x: Width of domain (m)
+            domain_z: Depth of domain (m)
+            y_min: Bottom of dispersed particle region (m)
+            y_max: Top of dispersed particle region (m)
+            pvc: Percentage Void Contamination (0-100)
+            particle_size_min: Minimum particle radius (m)
+            particle_size_max: Maximum particle radius (m)
+        
+        Returns:
+            List of gprMax cylinder command strings
+        """
+        cmds = []
+        
+        # Calculate target particle count
+        # Scale with PVC: more fouling = more particles
+        # Base: ~50 particles at 100% PVC
+        target_count = int(50 * (pvc / 100.0))
+        
+        if target_count == 0:
+            return cmds
+        
+        # Generate candidates (try more than needed to account for filtering)
+        max_attempts = target_count * 5
+        placed_count = 0
+        
+        for _ in range(max_attempts):
+            if placed_count >= target_count:
+                break
+            
+            # Random position in upper region
+            x = random.uniform(0, domain_x)
+            y = random.uniform(y_min, y_max)
+            r = random.uniform(particle_size_min, particle_size_max)
+            
+            # Check if position is in a void (not overlapping any rock)
+            in_void = True
+            for rock in rock_list:
+                # Distance between particle center and rock center
+                dist_sq = (x - rock['x'])**2 + (y - rock['y'])**2
+                # Check if particle would overlap rock (with small buffer)
+                if dist_sq <= (rock['radius'] + r + 0.001)**2:
+                    in_void = False
+                    break
+            
+            # Place particle if in void
+            if in_void:
+                cmds.append(f"#cylinder: {fmt(x)} {fmt(y)} 0.0 "
+                           f"{fmt(x)} {fmt(y)} {fmt(domain_z)} "
+                           f"{fmt(r)} bal_foul_granular")
+                placed_count += 1
+        
+        return cmds
+    
+
+

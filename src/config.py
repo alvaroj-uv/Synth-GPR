@@ -134,7 +134,7 @@ class GeneratorConfig:
     
     # Aggregate properties
     rock_radius_min: float = 0.02
-    rock_radius_max: float = 0.05
+    rock_radius_max: float = 0.032
     
     # Moisture & Fouling Props
     moisture_min: float = 0.0  # Volumetric water content (0-1)
@@ -178,6 +178,51 @@ class GeneratorConfig:
     # Vertical gradient: number of fouled sublayers
     grad_min_layers: int = 2
     grad_max_layers: int = 5
+    
+    # ============================================================
+    # Domain Randomization (for ML robustness)
+    # ============================================================
+    # Enable/disable domain randomization
+    enable_domain_randomization: bool = False
+    
+    # Soil property variation (±percentage)
+    soil_eps_variation: float = 0.2      # ±20% variation in soil permittivity
+    soil_sigma_variation: float = 0.5    # ±50% variation in conductivity
+    
+    # Rock property variation (±percentage)
+    rock_eps_variation: float = 0.1      # ±10% variation in rock permittivity
+    rock_sigma_variation: float = 0.5    # ±50% variation in conductivity
+    
+    # Moisture randomization (overrides moisture_min/max when enabled)
+    moisture_randomization_range: float = 0.15  # 0-15% volumetric water content
+    
+    # Spatial jitter for rock positions
+    spatial_jitter_sigma: float = 0.02   # 2cm standard deviation (Gaussian)
+    
+    # Noise injection (post-processing, SNR in dB)
+    noise_snr_min: float = 20.0          # Minimum SNR (more noise)
+    noise_snr_max: float = 40.0          # Maximum SNR (less noise)
+    add_noise: bool = False              # Enable noise injection
+    
+    # ============================================================
+    # Workflow Parameters (for script execution)
+    # ============================================================
+    # Dataset generation
+    output_dir: str = "output"
+    labels: list = field(default_factory=lambda: ["CL", "MC", "MF", "F"])
+    samples_per_label: int = 10
+    start_id: int = 1000
+    
+    # Batch simulation
+    num_jobs: int = 4                    # Parallel simulation jobs
+    gpu_devices: list = field(default_factory=list)  # GPU device IDs
+    
+    # Feature extraction
+    feature_output_csv: str = "features.csv"
+    
+    # Visualization
+    show_plot: bool = False
+    output_dpi: int = 150
 
     # Random seed base (optional)
     base_seed: int | None = None
@@ -279,6 +324,43 @@ class GeneratorConfig:
         if 'VerticalGradient' in config:
             args['grad_min_layers'] = get_int('VerticalGradient', 'grad_min_layers')
             args['grad_max_layers'] = get_int('VerticalGradient', 'grad_max_layers')
+        
+        # [domain_randomization] (NEW)
+        if 'domain_randomization' in config:
+            args['enable_domain_randomization'] = get_bool('domain_randomization', 'enable_domain_randomization')
+            args['soil_eps_variation'] = get_float('domain_randomization', 'soil_eps_variation')
+            args['soil_sigma_variation'] = get_float('domain_randomization', 'soil_sigma_variation')
+            args['rock_eps_variation'] = get_float('domain_randomization', 'rock_eps_variation')
+            args['rock_sigma_variation'] = get_float('domain_randomization', 'rock_sigma_variation')
+            args['moisture_randomization_range'] = get_float('domain_randomization', 'moisture_randomization_range')
+            args['spatial_jitter_sigma'] = get_float('domain_randomization', 'spatial_jitter_sigma')
+            args['noise_snr_min'] = get_float('domain_randomization', 'noise_snr_min')
+            args['noise_snr_max'] = get_float('domain_randomization', 'noise_snr_max')
+            args['add_noise'] = get_bool('domain_randomization', 'add_noise')
+        
+        # [workflow] (NEW)
+        if 'workflow' in config:
+            args['output_dir'] = config.get('workflow', 'output_dir', fallback=None)
+            
+            # Parse labels (comma-separated)
+            labels_str = config.get('workflow', 'labels', fallback=None)
+            if labels_str:
+                args['labels'] = [l.strip() for l in labels_str.split(',')]
+            
+            args['samples_per_label'] = get_int('workflow', 'samples_per_label')
+            args['start_id'] = get_int('workflow', 'start_id')
+            args['num_jobs'] = get_int('workflow', 'num_jobs')
+            
+            # Parse GPU devices (comma-separated)
+            gpu_str = config.get('workflow', 'gpu_devices', fallback=None)
+            if gpu_str and gpu_str.strip():
+                args['gpu_devices'] = [int(x.strip()) for x in gpu_str.split(',')]
+            
+            args['feature_output_csv'] = config.get('workflow', 'feature_output_csv', fallback=None)
+            args['show_plot'] = get_bool('workflow', 'show_plot')
+            args['output_dpi'] = get_int('workflow', 'output_dpi')
+
+
 
         # Filter None values (use defaults)
         filtered_args = {k: v for k, v in args.items() if v is not None}

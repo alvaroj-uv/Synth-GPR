@@ -5,7 +5,7 @@ import pandas as pd
 from src.data_loader import read_gprmax_hdf5
 from src.feature_extraction import extract_features
 from visualization.plot_utils import save_feature_summary_plot
-from scripts.batch_extract_features import process_single_file_features, load_metadata
+from scripts.main.batch_extract_features import process_single_file_features, load_metadata
 
 def process_file(filepath, output_dir=None, fields=['Ez'], generate_images=False):
     """

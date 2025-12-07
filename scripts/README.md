@@ -13,15 +13,26 @@ Primary scripts for generating data, running simulations, and extracting feature
 - **`batch_extract_features.py`**: (Legacy) Lower-level batch extractor using OS-based iteration.
 
 ### `tools/` - Utilities & Helpers
-Helper tools for visualization, validation, and asset generation.
-- **`visualize_gprmax_blueprint.py`**: Generates high-quality blueprints (PNG) of `.in` file geometry.
-- **`generate_master_pattern.py`**: Generates the RSA (Random Sequential Adsorption) master circle patterns used for ballast.
-- **`validate_dataset.py`**: Checks a dataset folder for consistency (missing inputs/outputs).
+Helper tools categorized by function.
+
+#### `tools/data_management/`
 - **`merge_datasets.py`**: Merges multiple feature CSV files into one.
 - **`update_hdf5_titles.py`**: Updates internal HDF5 Title attributes based on a metadata CSV.
+- **`validate_dataset.py`**: Checks a dataset folder for consistency (missing inputs/outputs).
+
+#### `tools/visualization/`
+- **`visualize_gprmax_blueprint.py`**: Generates high-quality blueprints (PNG) of `.in` file geometry.
 - **`read_gprmax_output.py`**: Helper functions for reading gprMax HDF5 outputs.
-- **`analyze_selected_pdfs.py`**: Text extraction tool for literature review.
+
+#### `tools/generation/`
+- **`generate_master_pattern.py`**: Generates the RSA (Random Sequential Adsorption) master circle patterns.
+- **`generate_dummy_hdf5.py`**: Creates dummy HDF5 files for validaton testing.
+
+#### `tools/tests/`
 - **`test_data_generator.py`**: Quick test for the generator pipeline.
+
+#### `tools/research/`
+- **`analyze_selected_pdfs.py`**: Extract text from literature PDFs.
 
 ## Usage
 
@@ -47,5 +58,5 @@ python scripts/main/create_feature_dataset.py d:/Codigo/Synth-Data/Batch1 -o fea
 
 **Visualizing Geometry:**
 ```bash
-python scripts/tools/visualize_gprmax_blueprint.py d:/Codigo/Synth-Data/Batch1/s_00000.in
+python scripts/tools/visualization/visualize_gprmax_blueprint.py d:/Codigo/Synth-Data/Batch1/s_00000.in
 ```

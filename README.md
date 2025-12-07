@@ -24,6 +24,8 @@ The codebase is organized as follows:
 
 ## Getting Started
 
+For full detailed usage instructions, please refer to the **[User Guide](docs/USER_GUIDE.md)**.
+
 ### Prerequisites
 
 Ensure you have Python 3.8+ installed. Key dependencies include:

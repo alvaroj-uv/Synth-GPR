@@ -1,4 +1,19 @@
-import os
+#!/usr/bin/env python3
+"""
+Consolidate datasets from multiple folders into a single canonical directory.
+Renames files sequentially (s_0000, s_0001, ...) and creates a master metadata index.
+
+Usage:
+    python scripts/main/consolidate_dataset.py
+
+Configuration:
+    Edit the 'folders' list in the main block of this script to specify source directories.
+
+Verification:
+    1. Check the target folder (e.g. d:/Codigo/Synth-Data/Consolidated) for rename files.
+    2. Check 'master_index.csv' in the target folder for the mapping of Old Name -> New Name.
+"""
+
 import shutil
 import glob
 import pandas as pd

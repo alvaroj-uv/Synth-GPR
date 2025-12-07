@@ -13,29 +13,53 @@ def get_label_from_filename(filename):
     """
     Extracts the classification label from the filename.
     Assumes format like 'A_Cle-A_0000.out', where 'Cle' is the label.
-    Specifically, takes characters at indices 2:5.
     """
     basename = os.path.basename(filename)
-    # Based on user request: "classify by the tree letters of the filename after the two first letters"
-    # Example: A_Cle... -> indices 0,1 are 'A_', then 'Cle' are indices 2,3,4.
-    # So slice [2:5] seems correct.
     return basename[6]
 
 def load_metadata(metadata_path):
     """
     Loads metadata from CSV and returns a dictionary mapping filename (.in) to label (FI_class).
+    If metadata_path is a directory, it will look for all metadata_*.csv files and merge them.
     """
     try:
-        df = pd.read_csv(metadata_path)
+        # If it's a directory, find all metadata_*.csv files
+        if os.path.isdir(metadata_path):
+            metadata_files = glob.glob(os.path.join(metadata_path, 'metadata_*.csv'))
+            if not metadata_files:
+                # Try single metadata.csv
+                single_file = os.path.join(metadata_path, 'metadata.csv')
+                if os.path.exists(single_file):
+                    metadata_files = [single_file]
+                else:
+                    print(f"Warning: No metadata files found in {metadata_path}")
+                    return {}
+        else:
+            metadata_files = [metadata_path]
+        
+        # Merge all metadata files
+        all_data = []
+        for mf in metadata_files:
+            print(f"  Loading: {os.path.basename(mf)}")
+            df_temp = pd.read_csv(mf)
+            all_data.append(df_temp)
+        
+        if not all_data:
+            return {}
+        
+        df = pd.concat(all_data, ignore_index=True)
+        
         # Ensure filename and FI_class columns exist
         if 'filename' not in df.columns or 'FI_class' not in df.columns:
-            print(f"Error: metadata.csv must contain 'filename' and 'FI_class' columns.")
+            print(f"Error: metadata files must contain 'filename' and 'FI_class' columns.")
             return {}
+        
+        print(f"  Loaded {len(df)} entries from {len(metadata_files)} metadata file(s)")
         
         # Create mapping: filename -> FI_class
         return pd.Series(df.FI_class.values, index=df.filename).to_dict()
     except Exception as e:
-        print(f"Error loading metadata from {metadata_path}: {e}")
+        print(f"Error loading metadata: {e}")
         return {}
 
 def process_single_file_features(filepath, label_mapping=None):
@@ -103,7 +127,7 @@ def process_files(input_dir, output_csv='features_dataset.csv', metadata_file=No
     
     # Load metadata if available
     label_mapping = {}
-    if metadata_file and os.path.exists(metadata_file):
+    if metadata_file:
         print(f"Loading metadata from {metadata_file}...")
         label_mapping = load_metadata(metadata_file)
     
@@ -134,20 +158,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract GPR features from .out files.")
     parser.add_argument("--input_dir", type=str, default=r'd:\Codigo\Synth-Data\400MHz', help="Directory containing .out files")
     parser.add_argument("--output_csv", type=str, default='features_dataset.csv', help="Output CSV filename")
-    parser.add_argument("--metadata", type=str, help="Path to metadata.csv. Defaults to input_dir/metadata.csv")
+    parser.add_argument("--metadata", type=str, help="Path to metadata.csv or directory with metadata_*.csv files")
     
     args = parser.parse_args()
     
     input_dir = args.input_dir
     output_csv = args.output_csv
     
+    # If metadata not specified, use input_dir (will find all metadata_*.csv files)
     if args.metadata:
         metadata_file = args.metadata
     else:
-        metadata_file = os.path.join(input_dir, 'metadata.csv')
+        metadata_file = input_dir  # Pass directory, load_metadata will find all metadata files
     
     print(f"Input Directory: {input_dir}")
-    print(f"Metadata File: {metadata_file}")
+    print(f"Metadata: {metadata_file}")
     
     if not os.path.exists(input_dir):
         print(f"Error: Input directory {input_dir} does not exist.")
