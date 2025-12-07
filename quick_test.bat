@@ -30,22 +30,34 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo [2/3] Running simulation...
-python -m gprMax d:\Codigo\Synth-Data\Tests\QuickTest\s_50000.in -n 1
+echo [2/3] Running simulations for all .in files...
+for %%f in (d:\Codigo\Synth-Data\Tests\QuickTest\*.in) do (
+    echo   Simulating: %%~nxf
+    python -m gprMax "%%f" -n 1
+    if %ERRORLEVEL% NEQ 0 (
+        echo   [WARN] Simulation failed for %%~nxf
+    )
+)
 
 if %ERRORLEVEL% NEQ 0 (
     echo [FAILED] Simulation failed!
     exit /b 1
 )
 
-echo [3/3] Creating blueprint...
-python scripts\tools\visualization\visualize_gprmax_blueprint.py ^
-    d:\Codigo\Synth-Data\Tests\QuickTest\s_50000.in ^
-    -o d:\Codigo\Synth-Data\Tests\QuickTest\quick_test.png ^
-    --no-show
+echo [3/3] Creating blueprints for all .in files...
+for %%f in (d:\Codigo\Synth-Data\Tests\QuickTest\*.in) do (
+    echo   Processing: %%~nxf
+    python scripts\tools\visualization\visualize_gprmax_blueprint.py ^
+        "%%f" ^
+        -o "d:\Codigo\Synth-Data\Tests\QuickTest\%%~nf_blueprint.png" ^
+        --no-show
+    if %ERRORLEVEL% NEQ 0 (
+        echo   [WARN] Blueprint failed for %%~nxf
+    )
+)
 
 if %ERRORLEVEL% NEQ 0 (
-    echo [FAILED] Blueprint failed!
+    echo [FAILED] Blueprint generation had errors!
     exit /b 1
 )
 
@@ -53,6 +65,5 @@ echo.
 echo ============================================================
 echo QUICK TEST PASSED!
 echo ============================================================
-echo Output: d:\Codigo\Synth-Data\Tests\QuickTest\quick_test.png
+echo Output images: d:\Codigo\Synth-Data\Tests\QuickTest\*_blueprint.png
 pause
-

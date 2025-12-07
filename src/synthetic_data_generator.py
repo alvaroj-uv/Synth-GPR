@@ -12,21 +12,23 @@ import numpy as np
 import pandas as pd
 import h5py
 
-from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, MasterPatternLayer, AntennaLayer, SleeperLayer, fmt
+from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, AntennaLayer, SleeperLayer, fmt
 from .config import GeneratorConfig, get_fi_class, get_fi_class_legacy, get_pvc_class, compute_fi, classify_fi, topp_mixing_model
+from .file_writer import GPRMaxFileWriter
+from .scenario_factory import ScenarioFactory
+from .scene_validator import SceneValidator
+import dataclasses
 
 class BallastScenarioGenerator:
-    """
-    Main orchestrator for generating synthetic GPR ballast scenarios.
-    
-    Responsible for:
-    1. Sampling random parameters (Geometry, Moisture, PVC) based on configuration.
-    2. Composing the gprMax input file using ScenePainter.
-    3. Generating metadata for Machine Learning.
-    
-    Attributes:
-        cfg (GeneratorConfig): Configuration object containing ranges and settings.
-    """
+    # Main orchestrator for generating synthetic GPR ballast scenarios.
+    # 
+    # Responsible for:
+    # 1. Sampling random parameters (Geometry, Moisture, PVC) based on configuration.
+    # 2. Composing the gprMax input file using ScenePainter.
+    # 3. Generating metadata for Machine Learning.
+    # 
+    # Attributes:
+    #     cfg (GeneratorConfig): Configuration object containing ranges and settings.
     def __init__(self, config: GeneratorConfig):
         self.cfg = config
         if self.cfg.base_seed is not None:
@@ -42,166 +44,195 @@ class BallastScenarioGenerator:
         csv_name: str = "metadata.csv",
         start_id: int = 0,
     ) -> pd.DataFrame:
-        """
-        Generate n_samples .in files under out_dir and a CSV with metadata.
-        """
+        # Generate n_samples .in files under out_dir and a CSV with metadata.
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         metadata_rows: List[Dict[str, Any]] = []
 
         for i in range(n_samples):
-            idx = start_id + i
+            sample_id = start_id + i
             
-            pvc = 0.0
-            moisture = 0.0
-
-            if self.cfg.granular_mode:
-                scenario_type = "granular"
-                # Sample granular params
-                pvc = random.uniform(self.cfg.pvc_min, self.cfg.pvc_max)
-                moisture = random.uniform(self.cfg.moisture_min, self.cfg.moisture_max)
-                
-                # In granular mode, we don't pick 'uniform/vertical' etc.
-                # And 'foul_h' from _sample_heights represents the legacy layer thickness.
-                # We need total ballast thickness.
-                rock_part, foul_part = self._sample_heights()
-                rock_h = rock_part + foul_part # Total thickness
-                foul_h = 0.0 # Not used in legacy sense
-                
-                # Recompute FI equivalent for metadata? 
-                # FI is historically weight-based. PVC is volume-based. 
-                # Let's just track them separately.
-                # User Request: "FI of 21.77% labeled MF". Assume FI field should hold PVC to align with legacy analysis.
-                FI = pvc 
-                FI_class = get_pvc_class(pvc)
-                FI_class_legacy = get_fi_class_legacy(pvc)
-                
-            else:
-                # Decide scenario (Legacy)
-                scenario_type = random.choice(
-                    ["uniform", "vertical_gradient", "pockets", "wet"]
-                )
-
-                # Sample geometry (ballast and fouling thicknesses)
-                rock_h, foul_h = self._sample_heights()
-
-                # Compute FI and class
-                FI = compute_fi(rock_h, foul_h)
-                FI_class = classify_fi(FI)
-                FI_class_legacy = classify_fi(FI) # Legacy scenarios map directly 
-
-
-            # File naming
-            base_name = f"s_{idx:04d}"
+            # 1. Sample scenario parameters
+            context = self._sample_scenario_parameters()
+            
+            base_name = f"s_{sample_id:04d}"
             in_filename = f"{base_name}.in"
 
-            # Build content
-            in_text, scenario_info = self._compose_file(
-                base_name=base_name,
-                scenario_type=scenario_type,
-                rock_h=rock_h,
-                foul_h=foul_h,
-                FI=FI,
-                FI_class=FI_class,
-                FI_class_legacy=FI_class_legacy,
-                pvc=pvc,
-                moisture=moisture,
-            )
-
-            # Write base file
+            # 2. Generate base file (deterministic)
+            cfg_base = dataclasses.replace(self.cfg, enable_domain_randomization=False)
+            in_text, scenario_info = self._compose_scenario(cfg_base, base_name, context["scenario_type"], context)
             (out_dir / in_filename).write_text(in_text + "\n", encoding="utf-8")
 
-            # Collect metadata for base file
-            row = {
-                "sample_id": idx,
-                "filename": in_filename,
-                "scenario_type": scenario_type,
-                "rock_height_m": rock_h,
-                "foul_height_m": foul_h,
-                "FI_percent": FI,
-                "FI_class": FI_class,
-                "FI_class_legacy": FI_class_legacy,
-                "is_randomized": False,
-                "base_file": in_filename,
-            }
-            row.update(scenario_info)
-            metadata_rows.append(row)
+            # 3. Collect base metadata
+            metadata_rows.append(self._create_metadata_row(
+                sample_id, in_filename, context, scenario_info, is_randomized=False
+            ))
             
-            # Create 3 randomized variants
-            for r_idx in range(1, 4):
-                rand_filename = f"s_{idx:05d}_r{r_idx}.in"
+            # 4. Generate antenna-shifted variants (same geometry, different observation point)
+            if self.cfg.generate_antenna_variants:
+                antenna_shift = self.cfg.antenna_shift_amount
                 
-                # Generate randomized variant (re-compose with domain randomization)
-                cfg_rand = self.cfg
-                # Temporarily enable randomization
-                original_rand_state = cfg_rand.enable_domain_randomization
-                cfg_rand.enable_domain_randomization = True
-                
-                rand_text, rand_info = self._compose_file(
-                    base_name=base_name,
-                    scenario_type=scenario_type,
-                    rock_h=rock_h,
-                    foul_h=foul_h,
-                    FI=FI,
-                    FI_class=FI_class,
-                    FI_class_legacy=FI_class_legacy,
-                    pvc=pvc,
-                    moisture=moisture,
-                )
-                
-                # Restore original state
-                cfg_rand.enable_domain_randomization = original_rand_state
-                
-                # Add reference comment at top (using gprMax-compatible ## syntax)
-                reference_comment = f"## Randomized variant {r_idx} of base file: {in_filename}\n"
-                rand_text_with_ref = reference_comment + rand_text
-                
-                # Write randomized file
-                (out_dir / rand_filename).write_text(rand_text_with_ref + "\n", encoding="utf-8")
-                
-                # Collect metadata for randomized variant
-                rand_row = {
-                    "sample_id": idx,
-                    "filename": rand_filename,
-                    "scenario_type": scenario_type,
-                    "rock_height_m": rock_h,
-                    "foul_height_m": foul_h,
-                    "FI_percent": FI,
-                    "FI_class": FI_class,
-                    "FI_class_legacy": FI_class_legacy,
-                    "is_randomized": True,
-                    "base_file": in_filename,
-                }
-                rand_row.update(rand_info)
-                metadata_rows.append(rand_row)
+                for suffix, shift in [("_L", -antenna_shift), ("_R", +antenna_shift)]:
+                    variant_filename = f"s_{sample_id:05d}{suffix}.in"
+                    
+                    # Create variant by modifying the BASE text (not regenerating)
+                    # Replace antenna positions in the already-generated file
+                    new_tx_x = self.cfg.tx_x + shift
+                    new_rx_x = self.cfg.rx_x + shift
+                    
+                    shifted_text = self._shift_antenna_in_text(
+                        in_text, 
+                        self.cfg.tx_x, self.cfg.rx_x,
+                        new_tx_x, new_rx_x
+                    )
+                    
+                    reference_comment = f"## Antenna-shifted variant ({suffix}) of base file: {in_filename}\n"
+                    (out_dir / variant_filename).write_text(reference_comment + shifted_text + "\n", encoding="utf-8")
+                    
+                    # Copy metadata from base, update antenna info
+                    variant_info = dict(scenario_info)
+                    variant_info['tx_x'] = new_tx_x
+                    variant_info['rx_x'] = new_rx_x
+                    
+                    metadata_rows.append(self._create_metadata_row(
+                        sample_id, variant_filename, context, variant_info, 
+                        is_randomized=False, base_file=in_filename
+                    ))
 
+        return self._save_metadata(metadata_rows, out_dir, csv_name)
+
+    def _sample_scenario_parameters(self) -> Dict[str, Any]:
+        # Sample all scenario parameters (geometry, moisture, PVC, FI classification).
+        pvc = 0.0
+        moisture = 0.0
+
+        if self.cfg.granular_mode:
+            scenario_type = "granular"
+            pvc = random.uniform(self.cfg.pvc_min, self.cfg.pvc_max)
+            moisture = random.uniform(self.cfg.moisture_min, self.cfg.moisture_max)
+            
+            rock_part, foul_part = self._sample_heights()
+            rock_thickness = rock_part + foul_part
+            fouling_thickness = 0.0
+            
+            FI = pvc
+            FI_class = get_pvc_class(pvc)
+            FI_class_legacy = get_fi_class_legacy(pvc)
+        else:
+            scenario_type = random.choice(["uniform", "vertical_gradient", "pockets", "wet"])
+            rock_thickness, fouling_thickness = self._sample_heights()
+            
+            FI = compute_fi(rock_thickness, fouling_thickness)
+            FI_class = classify_fi(FI)
+            FI_class_legacy = classify_fi(FI)
+
+        return {
+            "scenario_type": scenario_type,
+            "rock_thickness": rock_thickness,
+            "fouling_thickness": fouling_thickness,
+            "FI": FI,
+            "FI_class": FI_class,
+            "FI_class_legacy": FI_class_legacy,
+            "pvc": pvc,
+            "moisture": moisture
+        }
+
+    def _create_metadata_row(
+        self,
+        sample_id: int,
+        filename: str,
+        context: Dict[str, Any],
+        scenario_info: Dict[str, Any],
+        is_randomized: bool,
+        base_file: str = None
+    ) -> Dict[str, Any]:
+        # Create a metadata dictionary for a single sample.
+        row = {
+            "sample_id": sample_id,
+            "filename": filename,
+            "scenario_type": context["scenario_type"],
+            "rock_thickness_m": context["rock_thickness"],
+            "fouling_thickness_m": context["fouling_thickness"],
+            "FI_percent": context["FI"],
+            "FI_class": context["FI_class"],
+            "FI_class_legacy": context["FI_class_legacy"],
+            "is_randomized": is_randomized,
+            "base_file": base_file or filename,
+        }
+        row.update(scenario_info)
+        return row
+
+    def _save_metadata(self, metadata_rows: List[Dict], out_dir: Path, csv_name: str) -> pd.DataFrame:
+        # Format and save metadata to CSV.
         df = pd.DataFrame(metadata_rows)
         
-        # Reorder columns: sample_id, FI_class (label) first, then rest
         priority_cols = ['sample_id', 'FI_class', 'filename', 'is_randomized', 'base_file']
         other_cols = [c for c in df.columns if c not in priority_cols]
         df = df[priority_cols + other_cols]
         
-        # Round float columns to 5 significant figures
         float_cols = df.select_dtypes(include=['float64', 'float32']).columns
         for col in float_cols:
             df[col] = df[col].apply(lambda x: float(f'{x:.5g}') if pd.notna(x) else x)
         
-        # Always overwrite the metadata CSV to prevent duplicates
         csv_path = out_dir / csv_name
         df.to_csv(csv_path, index=False, float_format='%.5g')
         return df
 
+    # --------------- antenna shifting -----------------
+
+    def _shift_antenna_in_text(
+        self, 
+        base_text: str, 
+        old_tx_x: float, old_rx_x: float,
+        new_tx_x: float, new_rx_x: float
+    ) -> str:
+        """
+        Modify antenna positions in an already-generated .in file text.
+        Uses line-by-line parsing for reliability.
+        
+        Formats:
+        - #hertzian_dipole: polarization X Y Z waveform_id  
+        - #rx: X Y Z
+        """
+        lines = base_text.split('\n')
+        result_lines = []
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Handle hertzian_dipole line
+            if stripped.startswith('#hertzian_dipole:'):
+                # Parse: #hertzian_dipole: polarization X Y Z waveform_id
+                parts = stripped.split()
+                # parts = ['#hertzian_dipole:', 'z', 'X', 'Y', 'Z', 'waveform_id']
+                if len(parts) >= 6:
+                    parts[2] = f"{new_tx_x:.5g}"  # Replace X position
+                    result_lines.append(' '.join(parts))
+                    continue
+            
+            # Handle rx line
+            elif stripped.startswith('#rx:'):
+                # Parse: #rx: X Y Z
+                parts = stripped.split()
+                # parts = ['#rx:', 'X', 'Y', 'Z']
+                if len(parts) >= 4:
+                    parts[1] = f"{new_rx_x:.5g}"  # Replace X position
+                    result_lines.append(' '.join(parts))
+                    continue
+            
+            # Keep other lines unchanged
+            result_lines.append(line)
+        
+        return '\n'.join(result_lines)
+
     # --------------- geometry sampling -----------------
 
     def _sample_heights(self) -> tuple[float, float]:
-        """
-        Sample rock and foul heights in a physically realistic way based on configuration ranges.
-        
-        Returns:
-            tuple[float, float]: (rock_thickness, foul_thickness)
-        """
+        # Sample rock and foul heights in a physically realistic way based on configuration ranges.
+        # 
+        # Returns:
+        #     tuple[float, float]: (rock_thickness, foul_thickness)
         cfg = self.cfg
         total_ballast = random.uniform(
             cfg.min_ballast_thickness, cfg.max_ballast_thickness
@@ -213,117 +244,53 @@ class BallastScenarioGenerator:
 
     # --------------- file composition -----------------
 
-    def _compose_file(
+
+    def _compose_scenario(
         self,
+        config: GeneratorConfig,
         base_name: str,
         scenario_type: str,
-        rock_h: float,
-        foul_h: float,
-        FI: float,
-        FI_class: str,
-        FI_class_legacy: str = "NA",
-        pvc: float = 0.0,
-        moisture: float = 0.0,
+        context: Dict[str, Any]
     ) -> tuple[str, Dict[str, Any]]:
         """
-        Create the text of the .in file and return (text, scenario_metadata).
+        Orchestrates the creation of the scenario using Factory and Writer.
         """
-        cfg = self.cfg
-
-        # Base fouled material properties (Legacy support)
-        base_foul_eps = random.uniform(cfg.bal_foul_eps_min, cfg.bal_foul_eps_max)
-        base_foul_sigma = random.uniform(
-            cfg.bal_foul_sigma_min, cfg.bal_foul_sigma_max
+        # 1. Use Factory to create Painter
+        # Pass context for layer configuration (e.g., PVC, moisture)
+        painter = ScenarioFactory.create_painter(config, scenario_type, context)
+            
+        # 2. Execute Painting (Generate SceneDefinition)
+        scene = painter.paint(base_name)
+        
+        # Validate Scene
+        errors = SceneValidator.validate(scene)
+        if errors:
+             print(f"[{base_name}] Validation Errors:")
+             for e in errors:
+                 print(f"  ! {e}")
+        
+        # 3. Augment Metadata
+        # Add context info (FI class, etc) to scene metadata for reporting, but PREFER realized values
+        # (e.g. calculated fouling_thickness) over input context samples.
+        for k, v in context.items():
+            if k not in scene.metadata:
+                scene.metadata[k] = v
+        
+        # 4. Use Writer to generate string
+        # Extra headers for the top of the file
+        extra_headers = {
+             "FI (%)": context.get("FI", 0),
+             "FI class": context.get("FI_class", "NA"),
+             "FI Class Leg": context.get("FI_class_legacy", "NA")
+        }
+        
+        final_text = GPRMaxFileWriter.write_scene(
+            scene=scene,
+            scenario_type=scenario_type,
+            extra_headers=extra_headers
         )
 
-        scenario_info: Dict[str, Any] = {
-            "bal_rock_eps": cfg.bal_rock_eps,
-            "bal_rock_sigma": cfg.bal_rock_sigma,
-            "bal_foul_eps_base": base_foul_eps,
-            "bal_foul_sigma_base": base_foul_sigma,
-        }
-
-        # --- NEW OOP SCENE PAINTER ---
-        painter = ScenePainter(cfg)
-        
-        # 1. Background
-        painter.add_layer(BackgroundLayer())
-        
-        # 2. Subgrade
-        painter.add_layer(SubgradeLayer())
-        
-        # 3. Formation
-        painter.add_layer(FormationLayer())
-        
-        # 4. Ballast
-        if cfg.granular_mode:
-            # Check for Master Pattern
-            master_pattern_path = Path("src/patterns/ballast_master.json")
-            if master_pattern_path.exists():
-                painter.add_layer(MasterPatternLayer(str(master_pattern_path), pvc, moisture))
-            else:
-                # Fallback to legacy random placement
-                # print("Warning: Master Pattern not found. using random placement.")
-                painter.add_layer(GranularBallastLayer(None, pvc, moisture))
-        else:
-            # Fallback for legacy modes not fully implemented in OOP yet
-            # For now, we only support Granular in this refactor pass as per plan
-            # Or we can wrap legacy logic in a SimpleBallastLayer later.
-            # Given the user context ("granular generation"), we prioritize Granular.
-            # We implemented GranularBallastLayer in the composer.
-            pass
-            
-        # 4.5 Sleepers (New Research Feature)
-        if cfg.add_sleepers:
-            painter.add_layer(SleeperLayer())
-
-        # 5. Antenna
-        if cfg.add_source:
-            painter.add_layer(AntennaLayer())
-            
-        # Execute Painting
-        setup_lines, geometry_lines, meta_painter = painter.paint(base_name)
-        
-        # Merge results (Update scenario info)
-        scenario_info.update(meta_painter)
-
-        # --- BUILD HEADER LAST ---
-        header_lines: List[str] = []
-        header_lines.append("## ------------------------------------------------------------")
-        header_lines.append("## Generated gprMax Input File")
-        header_lines.append(f"## Scenario: {scenario_type}")
-        header_lines.append(f"## Date: {date.today().isoformat()}")
-        header_lines.append(f"## Base Seed: {cfg.base_seed}")
-        # header_lines.append(f"## Rock Height: {fmt(rock_h)}") # Now in scenario_info
-        # header_lines.append(f"## Foul Height: {fmt(foul_h)}")
-        header_lines.append(f"## FI (%): {fmt(FI)}")
-        header_lines.append(f"## FI class: {FI_class}")
-        header_lines.append(f"## FI Class Leg: {FI_class_legacy}")
-        if cfg.granular_mode:
-            header_lines.append(f"## Mode: Granular (High-Fidelity)")
-            
-        # Add dynamic details from painter metadata
-        for k, v in scenario_info.items():
-             header_lines.append(f"## {k}: {v}")
-
-        return "\n".join(header_lines + setup_lines + geometry_lines), scenario_info
-        for k, v in scenario_info.items():
-            if k not in ["bal_rock_eps", "bal_rock_sigma", "bal_foul_eps_base", "bal_foul_sigma_base", "scenario_detail"]:
-                # Format float values nicely if possible, otherwise str
-                val_str = fmt(v) if isinstance(v, float) else str(v)
-                header_lines.append(f"## {k}: {val_str}")
-        
-        # Add layer-specific air area metrics if available
-        for layer_key in ["L1_air_percent", "L2_air_percent", "L3_air_percent"]:
-            if layer_key in scenario_info:
-                header_lines.append(f"## {layer_key}: {fmt(scenario_info[layer_key])}")
-
-        header_lines.append("## ------------------------------------------------------------")
-
-        # Assemble final text
-        all_lines = header_lines + setup_lines + material_lines + geometry_lines
-        text = "\n".join(all_lines)
-        return text, scenario_info
+        return final_text, scene.metadata
 
     # --------------- scenario implementations (Legacy/Superseded) -----------------
     # The following methods have been refactored into geometry_composer.py Layers.

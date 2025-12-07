@@ -7,82 +7,96 @@ from typing import Dict, Any
 # ------------------------------------------------------------
 # Utility: FI and classification
 # ------------------------------------------------------------
-def get_fi_class(fi_val: float) -> str:
-    """
-    Classification based on Percentage Voids Contaminated (PVC) as per user spec:
-    1. Clean (CL): PVC <= 5%
-    2. Moderately Clean (MC): 5% < PVC <= 20%
-    3. Moderately Fouled (MF): 20% < PVC <= 40%
-    4. Fouled (F): 40% < PVC <= 60%
-    5. Highly Fouled (HF): PVC > 60%
-    """
-    if fi_val <= 5.0:
-        return "CL" # Clean
-    elif fi_val <= 20.0:
-        return "MC" # Moderately Clean
-    elif fi_val <= 40.0:
-        return "MF" # Moderately Fouled
-    elif fi_val <= 60.0:
-        return "F"  # Fouled
-    else:
-        return "HF" # Highly Fouled / Failure
-
-def get_fi_class_legacy(fi_val: float) -> str:
-    """
-    Selig & Waters (1994) standard classification (Legacy).
-    Keep for comparison.
-    CL: < 1
-    MC: 1 - 10
-    M: 10 - 20
-    MF: 20 - 40
-    HF: > 40
-    """
-    if fi_val < 1.0:
+def classify_pvc(pvc_value: float) -> str:
+    # Classify ballast fouling based on Percentage Voids Contaminated (PVC).
+    # 
+    # Classification thresholds (user-specified):
+    #     - Clean (CL):            PVC <= 5%
+    #     - Moderately Clean (MC): 5% < PVC <= 20%
+    #     - Moderately Fouled (MF):20% < PVC <= 40%
+    #     - Fouled (F):           40% < PVC <= 60%
+    #     - Highly Fouled (HF):    PVC > 60%
+    # 
+    # Args:
+    #     pvc_value: Percentage of Voids Contaminated (0-100).
+    #     
+    # Returns:
+    #     Two-letter class code (CL, MC, MF, F, HF).
+    if pvc_value <= 5.0:
         return "CL"
-    elif fi_val < 10.0:
+    elif pvc_value <= 20.0:
         return "MC"
-    elif fi_val < 20.0:
+    elif pvc_value <= 40.0:
+        return "MF"
+    elif pvc_value <= 60.0:
+        return "F"
+    else:
+        return "HF"
+
+def classify_pvc_legacy(pvc_value: float) -> str:
+    # Classify ballast fouling using Selig & Waters (1994) thresholds.
+    # 
+    # Legacy thresholds (kept for comparison):
+    #     - CL: < 1%
+    #     - MC: 1-10%
+    #     - M:  10-20%
+    #     - MF: 20-40%
+    #     - HF: > 40%
+    # 
+    # Args:
+    #     pvc_value: Percentage of Voids Contaminated (0-100).
+    if pvc_value < 1.0:
+        return "CL"
+    elif pvc_value < 10.0:
+        return "MC"
+    elif pvc_value < 20.0:
         return "M"
-    elif fi_val < 40.0:
+    elif pvc_value < 40.0:
         return "MF"
     else:
         return "HF"
 
-def get_pvc_class(pvc_val: float) -> str:
-    """Classify based on PVC using the standard defined in get_fi_class."""
-    return get_fi_class(pvc_val)
+# Backward compatibility aliases
+get_fi_class = classify_pvc
+get_fi_class_legacy = classify_pvc_legacy
+get_pvc_class = classify_pvc
 
-def compute_fi(rock_h: float, foul_h: float) -> float:
-    total = rock_h + foul_h
+def compute_fouling_index(rock_thickness: float, fouling_thickness: float) -> float:
+    # Compute Fouling Index (FI) as percentage of fouling in total ballast depth.
+    total = rock_thickness + fouling_thickness
     if total <= 0:
         return 0.0
-    return (foul_h / total) * 100.0
+    return (fouling_thickness / total) * 100.0
 
-def classify_fi(FI: float) -> str:
-    # Selig & Waters style bands - short codes
-    if FI < 20:
+# Backward compatibility alias
+compute_fi = compute_fouling_index
+
+def classify_fouling_index(fouling_index: float) -> str:
+    # Simple 3-band classification based on FI percentage.
+    if fouling_index < 20:
         return "CL"
-    elif FI < 40:
+    elif fouling_index < 40:
         return "MF"
     else:
-        return "F" # Fallback
+        return "F"
+
+# Backward compatibility alias
+classify_fi = classify_fouling_index
 
 # ------------------------------------------------------------
 # Formatting Helper
 # ------------------------------------------------------------
 def topp_mixing_model(theta: float) -> float:
-    """
-    Topp's equation for soil dielectric constant based on volumetric water content.
-    Ref: Topp et al (1980).
-    theta: Volumetric water content (0.0 - 1.0)
-    """
+    # Topp's equation for soil dielectric constant based on volumetric water content.
+    # Ref: Topp et al (1980).
+    # theta: Volumetric water content (0.0 - 1.0)
     # Clamp theta to realistic range
     theta = max(0.0, min(theta, 1.0))
     e_r = 3.03 + 9.3 * theta + 146.0 * theta**2 - 76.7 * theta**3
     return e_r
 
 def fmt(val: float) -> str:
-    """Format float to 5 significant figures."""
+    # Format float to 5 significant figures.
     if abs(val) < 1e-9:
         return "0.0"
     return f"{val:.5g}"
@@ -91,45 +105,38 @@ def fmt(val: float) -> str:
 # Config dataclass
 # ------------------------------------------------------------
 
-@dataclass
+@dataclass(frozen=True)
 class GeneratorConfig:
-    """
-    Configuration Data Transfer Object (DTO) for the synthetic generator.
-    
-    This class holds all parameters governing the simulation, including:
-    - Domain geometry (size, grid step).
-    - Antenna settings (freq, positions).
-    - Material properties (dielectric constant, conductivity).
-    - Scenario parameters (moisture, fouling levels).
-    
-    Can be initialized directly or loaded from an INI file via `from_ini`.
-    """
+    # Configuration Data Transfer Object (DTO) for the synthetic generator.
+    # 
+    # This class holds all parameters governing the simulation.
+    # Immutable: Changes require creating a new instance (e.g., using dataclasses.replace).
     # Geometry and grid
     domain_x: float = 0.5
-    domain_y: float = 1.5   # Increased from 1.3 to accommodate thicker subgrade
+    domain_y: float = 1.5
     domain_z: float = 0.005
 
     dx: float = 0.005
     dy: float = 0.005
     dz: float = 0.005
-
+    
     # Time window
     time_window: float = 1.5e-8
 
     # Waveform / antenna
-    center_freq: float = 1.5e9  # Hz
+    center_freq: float = 1.5e9
     tx_x: float = 0.300
     rx_x: float = 0.35
     tx_rx_y: float = 0.904
-    tx_rx_z: float = 0.0025 # Centered in Z for 2D
+    tx_rx_z: float = 0.0025
     add_waveform: bool = True
     add_source: bool = True
     add_geometry_view: bool = False
-    add_sleepers: bool = False # Disabled by default as per user request
+    add_sleepers: bool = False
 
     # Granular & High-Fidelity Settings
     granular_mode: bool = False
-    pvc_min: float = 0.0   # Percentage Voids Contaminated (0-100)
+    pvc_min: float = 0.0
     pvc_max: float = 100.0
     
     # Aggregate properties
@@ -137,19 +144,23 @@ class GeneratorConfig:
     rock_radius_max: float = 0.032
     
     # Moisture & Fouling Props
-    moisture_min: float = 0.0  # Volumetric water content (0-1)
+    moisture_min: float = 0.0
     moisture_max: float = 0.3
-    fractal_dimension: float = 1.5 # Texture of fouling
+    fractal_dimension: float = 1.5
     
-    # Ballast/subgrade nominal depths (y-direction)
-    min_ballast_thickness: float = 0.25 # Increased for granular realism
+    # Rock Packing Strategy
+    rock_packing_algorithm: str = "wang"  # "random", "poisson", "wang"
+    wang_tile_size: float = 0.1  # Size of Wang tiles in meters
+    
+    # Ballast/subgrade nominal depths
+    min_ballast_thickness: float = 0.25
     max_ballast_thickness: float = 0.45 
 
     min_foul_thickness: float = 0.00
     max_foul_thickness: float = 0.10
 
     formation_thickness: float = 0.10
-    subgrade_thickness: float = 0.20 # Increased from 0.05 to avoid PML artifacts
+    subgrade_thickness: float = 0.20
 
     # Material ranges
     # Clean ballast
@@ -182,54 +193,74 @@ class GeneratorConfig:
     # ============================================================
     # Domain Randomization (for ML robustness)
     # ============================================================
-    # Enable/disable domain randomization
     enable_domain_randomization: bool = False
     
-    # Soil property variation (±percentage)
-    soil_eps_variation: float = 0.2      # ±20% variation in soil permittivity
-    soil_sigma_variation: float = 0.5    # ±50% variation in conductivity
+    soil_eps_variation: float = 0.2
+    soil_sigma_variation: float = 0.5
     
-    # Rock property variation (±percentage)
-    rock_eps_variation: float = 0.1      # ±10% variation in rock permittivity
-    rock_sigma_variation: float = 0.5    # ±50% variation in conductivity
+    rock_eps_variation: float = 0.1
+    rock_sigma_variation: float = 0.5
     
-    # Moisture randomization (overrides moisture_min/max when enabled)
-    moisture_randomization_range: float = 0.15  # 0-15% volumetric water content
+    moisture_randomization_range: float = 0.15
     
-    # Spatial jitter for rock positions
-    spatial_jitter_sigma: float = 0.02   # 2cm standard deviation (Gaussian)
+    spatial_jitter_sigma: float = 0.02
     
-    # Noise injection (post-processing, SNR in dB)
-    noise_snr_min: float = 20.0          # Minimum SNR (more noise)
-    noise_snr_max: float = 40.0          # Maximum SNR (less noise)
-    add_noise: bool = False              # Enable noise injection
+    noise_snr_min: float = 20.0
+    noise_snr_max: float = 40.0
+    add_noise: bool = False
+    
+    # Antenna-shifted variant generation
+    generate_antenna_variants: bool = False
+    antenna_shift_amount: float = 0.05  # 5cm shift left/right
     
     # ============================================================
     # Workflow Parameters (for script execution)
     # ============================================================
-    # Dataset generation
     output_dir: str = "output"
     labels: list = field(default_factory=lambda: ["CL", "MC", "MF", "F"])
     samples_per_label: int = 10
     start_id: int = 1000
     
-    # Batch simulation
-    num_jobs: int = 4                    # Parallel simulation jobs
-    gpu_devices: list = field(default_factory=list)  # GPU device IDs
+    num_jobs: int = 4
+    gpu_devices: list = field(default_factory=list)
     
-    # Feature extraction
     feature_output_csv: str = "features.csv"
     
-    # Visualization
     show_plot: bool = False
     output_dpi: int = 150
 
-    # Random seed base (optional)
     base_seed: int | None = None
 
+
+    def __post_init__(self):
+        # Validate configuration invariants with clear error messages.
+        # 
+        # Follows gprMax validation pattern: each parameter gets explicit
+        # validation with descriptive error messages.
+        # Spatial discretization validation
+        if self.dx <= 0:
+            raise ValueError("#dx_dy_dz: x-direction spatial step (dx) must be greater than zero")
+        
+        # PVC (Percentage Voids Contaminated) must be valid percentage
+        if self.pvc_min < 0 or self.pvc_min > 100:
+            raise ValueError(f"pvc_min must be between 0 and 100, got {self.pvc_min}")
+        if self.pvc_max < 0 or self.pvc_max > 100:
+            raise ValueError(f"pvc_max must be between 0 and 100, got {self.pvc_max}")
+        if self.pvc_min > self.pvc_max:
+            raise ValueError(f"pvc_min ({self.pvc_min}) cannot exceed pvc_max ({self.pvc_max})")
+        
+        # Moisture must be valid fraction
+        if self.moisture_min < 0 or self.moisture_min > 1:
+            raise ValueError(f"moisture_min must be between 0 and 1, got {self.moisture_min}")
+        if self.moisture_max < 0 or self.moisture_max > 1:
+            raise ValueError(f"moisture_max must be between 0 and 1, got {self.moisture_max}")
+        if self.moisture_min > self.moisture_max:
+            raise ValueError(f"moisture_min ({self.moisture_min}) cannot exceed moisture_max ({self.moisture_max})")
+            
+    
     @classmethod
     def from_ini(cls, ini_path: str):
-        """Load configuration from an INI file."""
+        # Load configuration from an INI file.
         if not Path(ini_path).exists():
             raise FileNotFoundError(f"Config file not found: {ini_path}")
             
@@ -296,6 +327,10 @@ class GeneratorConfig:
             args['rock_radius_min'] = get_float('Granular', 'rock_radius_min')
             args['rock_radius_max'] = get_float('Granular', 'rock_radius_max')
             args['max_pockets'] = get_int('Granular', 'max_pockets')
+            
+            # Rock Packing
+            args['rock_packing_algorithm'] = config.get('Granular', 'rock_packing_algorithm', fallback='wang')
+            args['wang_tile_size'] = get_float('Granular', 'wang_tile_size')
 
         # [Moisture]
         if 'Moisture' in config:
@@ -359,6 +394,10 @@ class GeneratorConfig:
             args['feature_output_csv'] = config.get('workflow', 'feature_output_csv', fallback=None)
             args['show_plot'] = get_bool('workflow', 'show_plot')
             args['output_dpi'] = get_int('workflow', 'output_dpi')
+            
+            # Antenna variants
+            args['generate_antenna_variants'] = get_bool('workflow', 'generate_antenna_variants')
+            args['antenna_shift_amount'] = get_float('workflow', 'antenna_shift_amount')
 
 
 

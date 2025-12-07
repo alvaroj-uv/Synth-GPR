@@ -463,88 +463,6 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             ax.plot(top_cyl['x'], max_y_cyl, 'kx', markersize=5, zorder=21)
 
     # --------------------------------------------------------
-    # Annotation: Material Areas (Rocks vs Air/Matrix)
-    # --------------------------------------------------------
-    # Calculate areas
-    total_rock_area = 0.0
-    
-    # 1. Sum Rock Areas (Cylinders)
-    for o in data.get('objects', []):
-        if o['type'] == 'cylinder' and 'bal_rock' in o['material']:
-            total_rock_area += np.pi * (o['radius'] ** 2)
-            
-    # 2. Determine Total Ballast Volume (Area in 2D)
-    # Base is formation top. Top is max rock height.
-    formation_top = 0.0
-    for o in data.get('objects', []):
-        if o['type'] == 'box' and o['material'] == 'formation':
-            formation_top = max(formation_top, o['y1'])
-            
-    max_rock_y = formation_top
-    for o in data.get('objects', []):
-        if o['type'] == 'cylinder' and 'bal_rock' in o['material']:
-            top = o['y'] + o['radius']
-            if top > max_rock_y:
-                max_rock_y = top
-                
-    if max_rock_y > formation_top:
-        ballast_height = max_rock_y - formation_top
-        total_ballast_area = domain['x'] * ballast_height
-        
-        # Add shading for the Ballast Layer (Highlight)
-        # Use a subtle brown tint to visually group the layer
-        ballast_shade = mpatches.Rectangle(
-            (0, formation_top), domain['x'], ballast_height,
-            linewidth=0,
-            facecolor='#8B7355', 
-            alpha=0.15,
-            zorder=0.5  # Behind objects (assuming objects start at z=1)
-        )
-        ax.add_patch(ballast_shade)
-        
-        # Add label for the layer on the right side
-        ax.text(domain['x'], formation_top + ballast_height/2, 
-               " Ballast Layer", 
-               color='#8B7355',
-               va='center', fontsize=9, fontweight='bold', style='italic',
-               rotation=90)
-        
-        # Check if there's a fouling box to determine labeling
-        fouling_area = 0.0
-        for o in data.get('objects', []):
-            if o['type'] == 'box' and 'bal_foul' in o['material']:
-                w = abs(o['x1'] - o['x0'])
-                h = abs(o['y1'] - o['y0'])
-                fouling_area += w * h
-        
-        void_area = total_ballast_area - total_rock_area
-        rock_density = (total_rock_area / total_ballast_area) * 100
-        
-        # Adjust labels based on fouling presence
-        if fouling_area > 0.001:  # Fouled scenario
-            fouling_density = (fouling_area / total_ballast_area) * 100
-            air_density = 100 - rock_density - fouling_density
-            area_text = (f"Ballast Stats:\n"
-                         f" - Rock:     {total_rock_area:.4f} m² ({rock_density:.1f}%)\n"
-                         f" - Fouling:  {fouling_area:.4f} m² ({fouling_density:.1f}%)\n"
-                         f" - Air/Void: {void_area - fouling_area:.4f} m² ({air_density:.1f}%)")
-        else:  # Clean scenario
-            area_text = (f"Ballast Stats:\n"
-                         f" - Rock Area: {total_rock_area:.4f} m² ({rock_density:.1f}%)\n"
-                         f" - Void/Air:  {void_area:.4f} m² ({100-rock_density:.1f}%)")
-        
-        # Place text below the horizontal axis (X-axis)
-        # transform=ax.transAxes means (0,0) is bottom-left of the axes box.
-        # y=-0.15 places it below labels.
-        ax.text(0.0, -0.12, 
-               area_text,
-               transform=ax.transAxes,
-               ha='left', va='top', fontsize=9,
-               fontfamily='monospace',
-               bbox=dict(facecolor='white', alpha=0.9, 
-                        edgecolor='#CCCCCC', linewidth=0.5), # Minimal box
-               zorder=30)
-
     # Plot Hz signal if available
     if show_signal and signal_data is not None:
         time = signal_data['Time'].values if 'Time' in signal_data.columns else np.arange(len(signal_data))
@@ -555,13 +473,12 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         analytic_signal = hilbert(hx_signal)
         envelope = np.abs(analytic_signal)
         
-        # --- Top Right: Signal Graph (Time starting from 0 on left) ---
+        # --- Top Right: Signal Graph ---
         ax_signal.plot(time_ns, hx_signal, 'b-', linewidth=1, label='Hx Signal')
         ax_signal.set_ylabel('Amplitude (A/m)', fontsize=10, fontweight='bold')
         ax_signal.set_title('A-Scan Signal', fontsize=12, fontweight='bold')
         ax_signal.grid(True, alpha=0.3, linestyle='--')
         ax_signal.set_xlim(0, max(time_ns))
-        # Add x-label to top plot as requested
         ax_signal.set_xlabel('Time (ns)', fontsize=10, fontweight='bold')
         
         # --- Bottom Right: Hilbert Envelope ---
@@ -572,9 +489,6 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         ax_envelope.set_title('Hilbert Envelope', fontsize=12, fontweight='bold')
         ax_envelope.grid(True, alpha=0.3, linestyle='--')
         ax_envelope.set_xlim(0, max(time_ns))
-
-        # Align y-axes ranges if helpful? No, scales might differ.
-        # But ensure they look clean.
     
     plt.tight_layout()
     
@@ -593,9 +507,6 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
 def main():
     """
     Main entry point for the blueprint visualization script.
-    
-    Parses command line arguments, reads the input file, checks for an optional .out file,
-    and calls the visualization function.
     """
     parser = argparse.ArgumentParser(
         description='Create a blueprint visualization of gprMax input files',
@@ -632,7 +543,6 @@ Examples:
         return 1
     
     print(f"Reading: {args.input_file}")
-    
     
     # Parse input file
     data = parse_gprmax_input(args.input_file)
