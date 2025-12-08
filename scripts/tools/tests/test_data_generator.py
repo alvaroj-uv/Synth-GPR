@@ -5,7 +5,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.config import GeneratorConfig
 from src.dataset_generator import DatasetGenerator
-import pandas as pd
 from pathlib import Path
 
 def test_generation():

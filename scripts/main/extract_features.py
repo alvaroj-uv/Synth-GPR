@@ -134,7 +134,7 @@ def extract_dataset_features(
     feature_dataset.to_csv(output_path, index=False)
     
     print(f"\n{'='*60}")
-    print(f"Feature Extraction Complete!")
+    print("Feature Extraction Complete!")
     print(f"{'='*60}")
     print(f"Processed:  {len(feature_rows)} samples")
     print(f"Skipped:    {skipped} samples")
@@ -169,11 +169,11 @@ if __name__ == "__main__":
         dataset = extract_dataset_features(args.data_dir, args.output)
         
         # Display sample
-        print(f"\nSample rows:")
+        print("\nSample rows:")
         print(dataset.head())
         
-        print(f"\nColumn summary:")
-        print(f"  - sample_id: integer")
+        print("\nColumn summary:")
+        print("  - sample_id: integer")
         print(f"  - FI_class: {dataset['FI_class'].unique().tolist()}")
         print(f"  - Features: {len(dataset.columns) - 2} columns")
         

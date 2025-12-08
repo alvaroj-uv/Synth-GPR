@@ -1,9 +1,17 @@
-import sys
 import os
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 import numpy as np
 from src.data_loader import read_gprmax_hdf5
 from src.feature_extraction import extract_features
-from visualization.plot_utils import save_feature_summary_plot
+try:
+    from .plot_utils import save_feature_summary_plot
+except ImportError:
+    from plot_utils import save_feature_summary_plot
 
 def visualize_single_file(filename, target_signal=None, fields=['E', 'H']):
     """

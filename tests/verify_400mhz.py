@@ -1,6 +1,5 @@
 from src.dataset_generator import DatasetGenerator
 from src.config import GeneratorConfig
-import glob
 import os
 
 # Create 400MHz config mimicking 400MHz_production.ini

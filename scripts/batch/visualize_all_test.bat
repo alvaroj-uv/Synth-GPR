@@ -2,6 +2,7 @@
 REM Visualize all .in files in test directory
 
 setlocal enabledelayedexpansion
+set PYTHON_EXE=c:\Users\barba\.conda\envs\gprMax\python.exe
 
 set TEST_DIR=d:\Codigo\Synth-Data\Tests\PipelineTest\Generation
 
@@ -14,7 +15,7 @@ set COUNT=0
 for %%f in ("%TEST_DIR%\*.in") do (
     set /a COUNT+=1
     echo [!COUNT!] Visualizing %%~nxf...
-    python scripts\tools\visualization\visualize_gprmax_blueprint.py "%%f" -o "%%~dpnf.png" --no-show
+    %PYTHON_EXE% scripts\tools\visualization\visualize_gprmax_blueprint.py "%%f" -o "%%~dpnf.png" --no-show
     
     if errorlevel 1 (
         echo   ERROR: Failed to visualize %%~nxf

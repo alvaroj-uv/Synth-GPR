@@ -1,9 +1,8 @@
 import random
-from typing import List, Tuple
-from .config import GeneratorConfig, fmt, topp_mixing_model
+from .config import GeneratorConfig, topp_mixing_model
 from .scene_descriptor import LayerResult
 from .scene_graph import LeafLayer, CompositeNode, BuildContext
-from .gpr_commands import CommentCommand, BoxCommand, CylinderCommand, MaterialCommand
+from .gpr_commands import Header, BoxCommand, CylinderCommand, MaterialCommand
 from .rock_packing import RockPackingStrategy, PoissonDiskPacking, PackingBounds
 from .ballast_stats import BallastStatsCalculator
 
@@ -50,7 +49,7 @@ class SettledFoulingLayer(Layer):
         if fouling_height < ctx.config.dy:
             return res
         
-        res.geometry.append(CommentCommand(f"Fouling: Gravity-Settled Distribution (PVC={self.pvc:.1f}%)"))
+        res.geometry.append(Header(f"Fouling: Gravity-Settled Distribution (PVC={self.pvc:.1f}%)"))
         
         settled_height = fouling_height * SETTLED_FOULING_FRACTION
         if settled_height < 1e-6:
@@ -62,7 +61,7 @@ class SettledFoulingLayer(Layer):
         if foul_horizon_y <= ctx.current_y:
             foul_horizon_y = ctx.current_y + 1e-5
         
-        res.geometry.append(CommentCommand("- Settled Layer (bottom)"))
+        res.geometry.append(Header("- Settled Layer (bottom)"))
         res.geometry.append(BoxCommand(0.0, ctx.current_y, 0.0, ctx.config.domain_x, foul_horizon_y, ctx.config.domain_z, "bal_foul_granular"))
         
         # Export metadata for siblings
@@ -98,7 +97,7 @@ class RockAggregateLayer(Layer):
         ballast_thickness = ctx.params.get('ballast_thickness', 0.4) # Default fallback
         start_y = ctx.current_y
         
-        res.geometry.append(CommentCommand("Granular Aggregates"))
+        res.geometry.append(Header("Granular Aggregates"))
         
         # Generation Logic
         commands = []
@@ -194,7 +193,7 @@ class DispersedFoulingLayer(Layer):
         target_count = int(BASE_PARTICLE_COUNT_PER_100_PVC * (self.pvc / 100.0))
         
         if target_count > 0:
-            res.geometry.append(CommentCommand("- Dispersed Particles (upper voids)"))
+            res.geometry.append(Header("- Dispersed Particles (upper voids)"))
             
             max_attempts = target_count * PARTICLE_ATTEMPT_MULTIPLIER
             placed_count = 0

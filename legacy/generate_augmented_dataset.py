@@ -1,10 +1,7 @@
 import pandas as pd
-import numpy as np
 import argparse
 from pathlib import Path
 import sys
-import shutil
-import re
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -20,7 +17,7 @@ def generate_augmented_dataset(output_dir, labels, n_per_label=50, start_id=2000
     
     # 1. Generate Base Dataset (Center)
     # We reuse the logic from generate_stratified_dataset.py roughly
-    print(f"Generating base samples (Center)...")
+    print("Generating base samples (Center)...")
     
     pvc_ranges = {
         'CL': (0.0, 5.0),

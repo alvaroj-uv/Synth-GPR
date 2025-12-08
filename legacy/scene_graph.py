@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from dataclasses import dataclass, field
-import copy
 
 from .config import GeneratorConfig, fmt
 from .scene_descriptor import LayerResult
-from .gpr_commands import GPRCommand, CommentCommand
+from .gpr_commands import Header
 
 @dataclass
 class BuildContext:
@@ -68,7 +67,7 @@ class CompositeNode(SceneNode):
         combined_result = LayerResult()
         
         # Optional: Start Marker
-        combined_result.geometry.append(CommentCommand(f"--- Group: {self.name} Start (Y={fmt(ctx.current_y)}) ---"))
+        combined_result.geometry.append(Header(f"--- Group: {self.name} Start (Y={fmt(ctx.current_y)}) ---"))
 
         for child in self.children:
             # Build child
@@ -90,7 +89,7 @@ class CompositeNode(SceneNode):
         combined_result.top_y = ctx.current_y
         
         # Optional: End Marker
-        combined_result.geometry.append(CommentCommand(f"--- Group: {self.name} End (Top={fmt(ctx.current_y)}) ---"))
+        combined_result.geometry.append(Header(f"--- Group: {self.name} End (Top={fmt(ctx.current_y)}) ---"))
         
         return combined_result
 
@@ -102,7 +101,7 @@ class LeafLayer(SceneNode):
     def build(self, ctx: BuildContext) -> LayerResult:
         result = LayerResult()
         
-        result.geometry.append(CommentCommand(f"--- Layer: {self.name} ---"))
+        result.geometry.append(Header(f"--- Layer: {self.name} ---"))
         
         # Hook for specific logic
         sub_res = self._generate(ctx)
@@ -122,7 +121,7 @@ class LeafLayer(SceneNode):
         else:
              result.top_y = sub_res.top_y
              
-        result.geometry.append(CommentCommand(f"--- End {self.name} (Top: {fmt(result.top_y)}) ---"))
+        result.geometry.append(Header(f"--- End {self.name} (Top: {fmt(result.top_y)}) ---"))
         return result
 
     @abstractmethod

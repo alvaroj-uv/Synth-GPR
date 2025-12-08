@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 from src.workers import AirWorker, SubgradeWorker, FormationWorker, BallastWorker, RockWorker, FoulingWorker, AntennaWorker, AssemblerWorker
 from src.worker import SceneCheckpoint

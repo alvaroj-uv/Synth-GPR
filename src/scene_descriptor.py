@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from .gpr_commands import GPRCommand
 from .config import GeneratorConfig
 

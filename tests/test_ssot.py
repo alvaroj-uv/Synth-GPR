@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from src.worker import SceneCheckpoint
 from src.work_order import WorkOrder, WorkOrderSystem
 from src.workers import BallastWorker, RockWorker
-from src.gpr_commands import BoxCommand
 
 # Mock Config
 @dataclass

@@ -4,8 +4,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from src.geometry_composer import AntennaLayer, ScenePainter
 from src.config import GeneratorConfig
-from src.scene_descriptor import LayerResult, SceneDefinition
-from src.gpr_commands import HertzianDipoleCommand, CommentCommand, RxCommand
+from src.gpr_commands import HertzianDipoleCommand, Header, RxCommand
 
 def test_antenna_layer_output():
     config = GeneratorConfig()
@@ -27,8 +26,8 @@ def test_antenna_layer_output():
     geom = result.geometry
     print(f"Geometry count: {len(geom)}")
     # Should have Start Layer, End Layer, and maybe "TX/RX in aire" comment
-    assert any("Start Layer" in c.render() for c in geom if isinstance(c, CommentCommand)), "Missing Start Layer comment"
-    assert any("End Layer" in c.render() for c in geom if isinstance(c, CommentCommand)), "Missing End Layer comment"
+    assert any("Start Layer" in c.render() for c in geom if isinstance(c, Header)), "Missing Start Layer comment"
+    assert any("End Layer" in c.render() for c in geom if isinstance(c, Header)), "Missing End Layer comment"
     
     print("PASS: Antenna Layer output is correctly decoupled.")
 

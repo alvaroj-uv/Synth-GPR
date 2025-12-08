@@ -2,12 +2,11 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 # Add src to path
 sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 
-from src.workers import AirWorker, SubgradeWorker, FormationWorker, BallastWorker, RockWorker, AntennaWorker, AssemblerWorker
+from src.workers import SubgradeWorker, AntennaWorker
 from src.worker import SceneCheckpoint
 from src.config import GeneratorConfig
 from src.work_order import WorkOrderSystem, WorkOrder

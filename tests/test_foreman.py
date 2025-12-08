@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from src.worker import SceneCheckpoint
 from src.work_order import WorkOrder, WorkOrderSystem
-from src.workers import AssemblerWorker, FoulingWorker
+from src.workers import AssemblerWorker
 from src.gpr_commands import BoxCommand
 
 # Mock Config
@@ -51,7 +51,7 @@ expected_msg = "Foreman: WorkOrder requested PVC=20.0%, but no fouling material 
 
 found_expected = any(expected_msg in e for e in errors_bad)
 if found_expected:
-    print(f"[PASS] Non-compliant scene correctly flagged:")
+    print("[PASS] Non-compliant scene correctly flagged:")
     for e in errors_bad: print(f" - {e}")
 else:
     print(f"[FAIL] Foreman failed to catch missing fouling. Errors: {errors_bad}")

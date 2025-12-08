@@ -15,13 +15,14 @@ for GPR while enabling efficient large-scale dataset generation.
 """
 import random
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import pandas as pd
 
 from .config import GeneratorConfig
 from .physics import classify_pvc, compute_fouling_index, classify_fouling_index, convert_pvc_to_fi
 from .work_order import WorkOrder, WorkOrderSystem
 from .production_line import ProductionLine
+from .sampling import ParameterSampler
 
 
 class DatasetGenerator:
@@ -40,6 +41,7 @@ class DatasetGenerator:
         """
         self.config = config
         self.pipeline = ProductionLine(config)
+        self.sampler = ParameterSampler(config)
         
         # Set random seeds for reproducibility
         if config.base_seed is not None:

@@ -3,7 +3,7 @@ RecipeBook: Registry of standard production sequences.
 
 Defines the order of operations (workers) for different product types.
 """
-from typing import List, Dict, Type
+from typing import List
 from .worker import Worker
 from .workers import (
     AirWorker, SubgradeWorker, FormationWorker, BallastWorker, 

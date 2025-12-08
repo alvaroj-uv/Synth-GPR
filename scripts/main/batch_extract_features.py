@@ -1,7 +1,6 @@
 import os
 import glob
 import pandas as pd
-import numpy as np
 import sys
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -51,7 +50,7 @@ def load_metadata(metadata_path):
         
         # Ensure filename and FI_class columns exist
         if 'filename' not in df.columns or 'FI_class' not in df.columns:
-            print(f"Error: metadata files must contain 'filename' and 'FI_class' columns.")
+            print("Error: metadata files must contain 'filename' and 'FI_class' columns.")
             return {}
         
         print(f"  Loaded {len(df)} entries from {len(metadata_files)} metadata file(s)")

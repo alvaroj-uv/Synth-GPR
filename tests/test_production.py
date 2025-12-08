@@ -1,6 +1,5 @@
 import os
 import shutil
-from dataclasses import dataclass
 from src.production_line import ProductionLine
 from src.work_order import WorkOrder, WorkOrderSystem
 from src.config import GeneratorConfig

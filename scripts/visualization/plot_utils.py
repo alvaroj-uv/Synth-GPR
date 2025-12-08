@@ -92,7 +92,7 @@ def save_feature_summary_plot(features_df, original_df, signal_name, output_file
     
     if values:
         ax_scalar.bar(labels, values, color='skyblue')
-        ax_scalar.set_title(f'Key Scalar Features')
+        ax_scalar.set_title('Key Scalar Features')
         ax_scalar.set_xticks(range(len(labels)))
         ax_scalar.set_xticklabels(labels, rotation=45, ha='right')
         ax_scalar.set_ylabel('Value')
@@ -113,7 +113,7 @@ def save_feature_summary_plot(features_df, original_df, signal_name, output_file
     if means:
         ax_slice.plot(range(14), means, marker='o', label='Mean')
         ax_slice.plot(range(14), stds, marker='x', linestyle='--', label='Std Dev')
-        ax_slice.set_title(f'Slice Statistics (14 Slices)')
+        ax_slice.set_title('Slice Statistics (14 Slices)')
         ax_slice.set_xlabel('Slice Index')
         ax_slice.set_ylabel('Amplitude')
         ax_slice.legend()
@@ -135,13 +135,13 @@ def save_feature_summary_plot(features_df, original_df, signal_name, output_file
     # Time Domain Grid
     ax_grid_time = fig.add_subplot(gs[2, 0])
     im1 = ax_grid_time.imshow(grid_time, cmap='viridis', aspect='auto')
-    ax_grid_time.set_title(f'Time Domain Grid (16x10)')
+    ax_grid_time.set_title('Time Domain Grid (16x10)')
     fig.colorbar(im1, ax=ax_grid_time)
 
     # Hilbert Envelope Grid
     ax_grid_hilbert = fig.add_subplot(gs[2, 1])
     im2 = ax_grid_hilbert.imshow(grid_hilbert, cmap='plasma', aspect='auto')
-    ax_grid_hilbert.set_title(f'Hilbert Envelope Grid (16x10)')
+    ax_grid_hilbert.set_title('Hilbert Envelope Grid (16x10)')
     fig.colorbar(im2, ax=ax_grid_hilbert)
     
     # Info Text

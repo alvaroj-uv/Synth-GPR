@@ -10,8 +10,7 @@ from src.workers import RockWorker
 from src.config import GeneratorConfig
 from src.work_order import WorkOrderSystem, WorkOrder
 from src.warehouses import MaterialWarehouse
-from src.rock_packing import RockPackingStrategy, PackingBounds, Rock
-from src.physics import classify_pvc
+from src.rock_packing import RockPackingStrategy
 
 class BrokenStrategy(RockPackingStrategy):
     """Mocks a strategy that always fails (returns empty list)."""

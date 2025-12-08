@@ -2,18 +2,13 @@
 import argparse
 import random
 import configparser
-import sys
-from datetime import date
-from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
 import numpy as np
 import pandas as pd
-import h5py
 
-from .geometry_composer import ScenePainter, BackgroundLayer, SubgradeLayer, FormationLayer, GranularBallastLayer, AntennaLayer, SleeperLayer, fmt
-from .config import GeneratorConfig, get_fi_class, get_fi_class_legacy, get_pvc_class, compute_fi, classify_fi, topp_mixing_model
+from .config import GeneratorConfig, get_fi_class_legacy, get_pvc_class, compute_fi, classify_fi
 from .file_writer import GPRMaxFileWriter
 from .scenario_factory import ScenarioFactory
 from .scene_validator import SceneValidator

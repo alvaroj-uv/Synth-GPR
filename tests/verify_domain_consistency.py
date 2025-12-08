@@ -4,12 +4,11 @@ import unittest
 from pathlib import Path
 sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 
-from src.workers import AirWorker, SubgradeWorker, FormationWorker, BallastWorker, RockWorker, AntennaWorker, AssemblerWorker
+from src.workers import AirWorker, SubgradeWorker, AssemblerWorker
 from src.worker import SceneCheckpoint
 from src.config import GeneratorConfig
 from src.work_order import WorkOrderSystem, WorkOrder
 from src.warehouses import MaterialWarehouse
-from src.gpr_commands import BoxCommand
 
 class TestDomainConsistency(unittest.TestCase):
     def setUp(self):

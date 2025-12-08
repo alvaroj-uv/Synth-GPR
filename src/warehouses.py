@@ -5,7 +5,6 @@ These components act as central repositories or factories for resources
 needed by workers, ensuring consistency and centralizing configuration.
 """
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
 from .gpr_commands import MaterialCommand
 
 class MaterialWarehouse:

@@ -110,7 +110,7 @@ if __name__ == "__main__":
     
     # Fall back to command-line arguments
     else:
-        print(f"No INI file found. Using command-line arguments.")
+        print("No INI file found. Using command-line arguments.")
         print(f"(Tip: Create '{default_ini}' for easier configuration)")
         print()
         

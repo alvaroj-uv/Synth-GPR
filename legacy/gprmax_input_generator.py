@@ -1,6 +1,5 @@
 import os
 import glob
-import argparse
 import pandas as pd
 from src.data_loader import read_gprmax_hdf5
 from src.feature_extraction import extract_features

@@ -1,11 +1,9 @@
 from typing import List, Optional
-from dataclasses import dataclass
 from .scene_descriptor import SceneDefinition
 from .gpr_commands import (
     BoxCommand, CylinderCommand, DomainCommand, DxDyDzCommand, 
     TimeWindowCommand, WaveformCommand, HertzianDipoleCommand, MaterialCommand
 )
-from .config import GeneratorConfig
 from .quality_log import QualityLog  # NEW: Optional quality logging
 
 class SceneValidator:
@@ -137,7 +135,7 @@ class SceneValidator:
                         log_issue(
                             "antenna_clearance", 
                             "error",
-                            f"Rock breaches antenna clearance zone",
+                            "Rock breaches antenna clearance zone",
                             {
                                 "rock_x": cmd.x1,
                                 "rock_y": cmd.y1,

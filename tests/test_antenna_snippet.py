@@ -1,4 +1,8 @@
 
+from src.workers import Layer, LayerResult
+from src.gpr_commands import HertzianDipoleCommand, RxCommand, Header
+from src.config import GeneratorConfig
+
 class AntennaLayer(Layer):
     # Adds the antenna source and receiver commands.
     
@@ -8,7 +12,7 @@ class AntennaLayer(Layer):
         # We don't change geometry or materials, just sources
         # We use the config coordinates
         
-        res.geometry.append(CommentCommand("Antenna: Hertzian Dipole + Rx"))
+        res.geometry.append(Header("Antenna: Hertzian Dipole + Rx"))
         
         # Transmitter (Hz Dipole)
         # Note: In gprMax, hertzian_dipole is a source. 

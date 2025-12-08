@@ -13,6 +13,7 @@ call C:\ProgramData\miniconda3\Scripts\activate.bat C:\ProgramData\miniconda3
 call conda activate gprMax
 
 cd d:\Codigo\Synth-GPR
+set PYTHON_EXE=c:\Users\barba\.conda\envs\gprMax\python.exe
 
 echo Running comprehensive domain randomization test...
 echo This will:
@@ -23,7 +24,7 @@ echo   4. Create blueprints for comparison
 echo   5. Compare signals
 echo.
 
-python scripts\tools\tests\compare_domain_randomization.py
+%PYTHON_EXE% scripts\tools\tests\compare_domain_randomization.py
 
 if %ERRORLEVEL% NEQ 0 (
     echo [FAILED] Domain randomization test failed!

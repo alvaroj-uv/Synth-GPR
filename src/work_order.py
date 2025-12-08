@@ -135,3 +135,22 @@ class WorkOrderSystem:
     def export_issues(self) -> List[Dict[str, Any]]:
         """Export all quality issues."""
         return list(self._issues)
+
+    def export_metadata(self) -> Dict[str, Any]:
+        """
+        Extract complete metadata for the scenario.
+        Combines Input Params and Blackboard Output.
+        """
+        # Start with input parameters
+        meta = self._work_order.params.copy()
+        
+        # Overlay Blackboard outputs (Worker results)
+        # e.g. rock_count, highest_rock_y
+        for k, v in self._blackboard.items():
+            if isinstance(v, (int, float, str, bool)):
+                meta[k] = v
+                
+        # Critical Identifiers
+        meta['sample_id'] = self._work_order.id
+        
+        return meta

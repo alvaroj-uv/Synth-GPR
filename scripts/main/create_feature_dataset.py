@@ -67,7 +67,7 @@ def load_metadata(metadata_path):
         if not filename_col or not label_col:
             print(f"Warning: Could not find required columns in {metadata_path}")
             print(f"  Found columns: {list(df.columns)}")
-            print(f"  Expected: 'filename' and 'FI_class' (or similar)")
+            print("  Expected: 'filename' and 'FI_class' (or similar)")
             return {}
         
         # Create mapping: filename -> label
@@ -197,7 +197,7 @@ def create_feature_dataset(input_folder, output_csv='features_dataset.csv',
     
     if verbose:
         print(f"\n{'='*60}")
-        print(f"Creating Feature Dataset")
+        print("Creating Feature Dataset")
         print(f"{'='*60}")
         print(f"Input folder: {input_folder}")
         print(f"Output file:  {output_csv}")

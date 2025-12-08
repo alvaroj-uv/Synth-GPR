@@ -176,10 +176,10 @@ def main():
         # Fallback/Check for common names
         print(f"Warning: Target '{args.target}' not found in DataFrame.")
         if 'Label' in df.columns:
-            print(f"Using 'Label' instead.")
+            print("Using 'Label' instead.")
             target_col = 'Label'
         elif 'FI_class' in df.columns: # Sometimes Label might be named differently
-             print(f"Using 'FI_class' instead.")
+             print("Using 'FI_class' instead.")
              target_col = 'FI_class'
         else:
              raise ValueError(f"Target column '{args.target}' not found in dataset columns: {df.columns}")

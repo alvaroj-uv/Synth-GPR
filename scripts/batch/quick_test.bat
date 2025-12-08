@@ -13,6 +13,7 @@ call C:\ProgramData\miniconda3\Scripts\activate.bat C:\ProgramData\miniconda3
 call conda activate gprMax
 
 cd d:\Codigo\Synth-GPR
+set PYTHON_EXE=c:\Users\barba\.conda\envs\gprMax\python.exe
 
 echo Cleaning up old test data...
 if exist "d:\Codigo\Synth-Data\Tests\QuickTest\s_50000.in" (
@@ -23,7 +24,7 @@ echo.
 
 echo [1/3] Generating 1 sample...
 echo Using config: config_quick_test.ini
-python scripts\main\generate_dataset.py config_quick_test.ini
+%PYTHON_EXE% scripts\main\generate_dataset.py config_quick_test.ini
 
 if %ERRORLEVEL% NEQ 0 (
     echo [FAILED] Generation failed!
@@ -33,7 +34,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [2/3] Running simulations for all .in files...
 for %%f in (d:\Codigo\Synth-Data\Tests\QuickTest\*.in) do (
     echo   Simulating: %%~nxf
-    python -m gprMax "%%f" -n 1
+    %PYTHON_EXE% -m gprMax "%%f" -n 1
     if %ERRORLEVEL% NEQ 0 (
         echo   [WARN] Simulation failed for %%~nxf
     )
@@ -47,7 +48,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [3/3] Creating blueprints for all .in files...
 for %%f in (d:\Codigo\Synth-Data\Tests\QuickTest\*.in) do (
     echo   Processing: %%~nxf
-    python scripts\tools\visualization\visualize_gprmax_blueprint.py ^
+    %PYTHON_EXE% scripts\tools\visualization\visualize_gprmax_blueprint.py ^
         "%%f" ^
         -o "d:\Codigo\Synth-Data\Tests\QuickTest\%%~nf_blueprint.png" ^
         --no-show

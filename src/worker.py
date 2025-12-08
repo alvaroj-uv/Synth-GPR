@@ -22,7 +22,6 @@ Usage:
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
-from copy import deepcopy
 from .gpr_commands import DomainCommand, DxDyDzCommand, TimeWindowCommand
 
 if TYPE_CHECKING:

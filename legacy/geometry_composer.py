@@ -1,19 +1,15 @@
 import random
-import json
-import numpy as np
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Tuple
-from .config import GeneratorConfig, topp_mixing_model, fmt
+from abc import abstractmethod
+from typing import List
+from .config import GeneratorConfig, fmt
 from .gpr_commands import (
     GPRCommand, DomainCommand, DxDyDzCommand, TimeWindowCommand, 
     MaterialCommand, BoxCommand, CylinderCommand, WaveformCommand, 
-    HertzianDipoleCommand, RxCommand, GeometryViewCommand, CommentCommand, RawCommand
+    HertzianDipoleCommand, RxCommand, GeometryViewCommand, Header
 )
-from .rock_packing import RockPackingStrategy, PoissonDiskPacking, PackingBounds
 
 from .scene_descriptor import LayerResult, SceneDefinition
 from .scene_graph import LeafLayer, CompositeNode, BuildContext, SceneNode
-from .granular_layers import GranularBallastLayer
 
 def apply_spatial_jitter(commands: List[GPRCommand], config: GeneratorConfig) -> List[GPRCommand]:
     # Apply spatial jitter to rock positions for domain randomization.
@@ -127,8 +123,8 @@ class ScenePainter:
         if self.config.add_geometry_view:
             scene.geometry_commands.append(gv)
         else:
-             scene.geometry_commands.append(CommentCommand("Geometry View disabled (uncomment in source to enable)"))
-             scene.geometry_commands.append(CommentCommand(gv.render()))
+             scene.geometry_commands.append(Header("Geometry View disabled (uncomment in source to enable)"))
+             scene.geometry_commands.append(Header(gv.render()))
              
         return scene
 
@@ -139,7 +135,7 @@ class BackgroundLayer(Layer):
     
     def _apply_layer_logic(self, config: GeneratorConfig, start_y: float) -> LayerResult:
         res = LayerResult()
-        res.geometry.append(CommentCommand("Background: free_space canvas"))
+        res.geometry.append(Header("Background: free_space canvas"))
         res.geometry.append(BoxCommand(0.0, 0.0, 0.0, config.domain_x, config.domain_y, config.domain_z, "free_space"))
         res.top_y = start_y
         return res
@@ -153,7 +149,7 @@ class SubgradeLayer(Layer):
         res.top_y = start_y + thickness
         
         res.materials.append(MaterialCommand(7.0, 0.01, 1, 0, "subgrade"))
-        res.geometry.append(CommentCommand(f"Subgrade layer ({fmt(start_y)} to {fmt(res.top_y)})"))
+        res.geometry.append(Header(f"Subgrade layer ({fmt(start_y)} to {fmt(res.top_y)})"))
         res.geometry.append(BoxCommand(0.0, start_y, 0.0, config.domain_x, res.top_y, config.domain_z, "subgrade"))
         
         return res
@@ -167,7 +163,7 @@ class FormationLayer(Layer):
         res.top_y = start_y + h
         
         res.materials.append(MaterialCommand(10.0, 0.03, 1, 0, "formation"))
-        res.geometry.append(CommentCommand(f"Layer: formation ({fmt(start_y)}-{fmt(res.top_y)})"))
+        res.geometry.append(Header(f"Layer: formation ({fmt(start_y)}-{fmt(res.top_y)})"))
         res.geometry.append(BoxCommand(0.0, start_y, 0.0, config.domain_x, res.top_y, config.domain_z, "formation"))
         return res
 
@@ -183,7 +179,7 @@ class SleeperLayer(Layer):
         
         # Material: Concrete
         res.materials.append(MaterialCommand(9.0, 0.01, 1, 0, "concrete_sleeper"))
-        res.geometry.append(CommentCommand("Sleepers (Concrete)"))
+        res.geometry.append(Header("Sleepers (Concrete)"))
         
         # Start placing from X=0 with some offset
         current_x = 0.1 
@@ -213,7 +209,7 @@ class AntennaLayer(Layer):
         # We don't change geometry or materials, just sources
         # We use the config coordinates
         
-        res.geometry.append(CommentCommand("Antenna: Hertzian Dipole + Rx"))
+        res.geometry.append(Header("Antenna: Hertzian Dipole + Rx"))
         
         # Transmitter (Hz Dipole)
         # Note: In gprMax, hertzian_dipole is a source. 

@@ -1,8 +1,6 @@
 import os
 import random
-import shutil
 import sys
-from pathlib import Path
 from src.dataset_generator import DatasetGenerator
 from src.config import GeneratorConfig
 from src.physics import inverse_convert_fi_to_pvc
@@ -104,6 +102,59 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
         csv_path = os.path.join(output_dir, "metadata.csv")
         df.to_csv(csv_path, index=False, float_format='%.5g')
         print(f"[OK] Full Metadata saved to {csv_path} with {len(df)} rows")
+
+    # Create run_simulations.bat
+    python_exe = sys.executable
+    sim_bat_path = os.path.join(output_dir, "run_simulations.bat")
+    with open(sim_bat_path, "w") as f:
+        f.write("@echo off\n")
+        f.write(f'set PYTHON_EXE="{python_exe}"\n')
+        f.write("echo [BATCH] Running Simulations...\n")
+        f.write('for %%f in (*.in) do (\n')
+        f.write('    if not exist "%%~nf.out" (\n')
+        f.write('        echo Running %%f\n')
+        f.write('        %PYTHON_EXE% -m gprMax %%f -n 1\n')
+        f.write('    ) else (\n')
+        f.write('        echo Skipping %%f (Already exists)\n')
+        f.write('    )\n')
+        f.write(')\n')
+        f.write("echo [BATCH] Simulations Complete.\n")
+    print(f"[OK] Created {sim_bat_path}")
+
+    # Create extract_features.bat
+    extract_bat_path = os.path.join(output_dir, "extract_features.bat")
+    # Determine path to create_feature_dataset.py (assume in root relative to script)
+    # This script is in root d:\Codigo\Synth-GPR
+    # extract script is d:\Codigo\Synth-GPR\create_feature_dataset.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    extract_script = os.path.join(script_dir, "create_feature_dataset.py")
+    
+    with open(extract_bat_path, "w") as f:
+        f.write("@echo off\n")
+        f.write(f'set PYTHON_EXE="{python_exe}"\n')
+        f.write(f'set SCRIPT="{extract_script}"\n')
+        f.write('echo [BATCH] Extracting Features...\n')
+        f.write('echo Input: %CD%\n')
+        f.write('%PYTHON_EXE% %SCRIPT% "%CD%"\n')
+        f.write("echo [BATCH] Extraction Complete.\n")
+    print(f"[OK] Created {extract_bat_path}")
+
+    # Create visualize_blueprints.bat
+    viz_bat_path = os.path.join(output_dir, "visualize_blueprints.bat")
+    # Path to visualize_gprmax_blueprint.py
+    viz_script = os.path.join(script_dir, "scripts", "tools", "visualization", "visualize_gprmax_blueprint.py")
+    
+    with open(viz_bat_path, "w") as f:
+        f.write("@echo off\n")
+        f.write(f'set PYTHON_EXE="{python_exe}"\n')
+        f.write(f'set SCRIPT="{viz_script}"\n')
+        f.write("echo [BATCH] Visualizing Blueprints...\n")
+        f.write('for %%f in (*.in) do (\n')
+        f.write('    echo   Processing: %%~nxf\n')
+        f.write('    %PYTHON_EXE% %SCRIPT% "%%f" -o "%%~nf_blueprint.png" --no-show\n')
+        f.write(')\n')
+        f.write("echo [BATCH] Visualization Complete.\n")
+    print(f"[OK] Created {viz_bat_path}")
 
 if __name__ == "__main__":
     import argparse

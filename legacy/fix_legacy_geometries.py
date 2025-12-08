@@ -25,8 +25,6 @@ Usage:
     python fix_legacy_geometries.py <directory_of_in_files>
 """
 
-import sys
-import re
 from pathlib import Path
 import argparse
 

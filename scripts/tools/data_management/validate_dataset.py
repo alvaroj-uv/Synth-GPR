@@ -1,6 +1,4 @@
-import os
 from pathlib import Path
-import collections
 
 def validate_dataset(folder_path):
     print(f"Validating dataset in: {folder_path}")

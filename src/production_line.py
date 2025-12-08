@@ -1,6 +1,5 @@
 import os
-import dataclasses
-from typing import List, Dict, Any, Optional
+from typing import List
 from .config import GeneratorConfig
 from .work_order import WorkOrderSystem
 from .worker import SceneCheckpoint

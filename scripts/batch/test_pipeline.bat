@@ -16,9 +16,9 @@ call conda activate gprMax
 REM Change to project directory (for INI file detection)
 cd d:\Codigo\Synth-GPR
 
-REM Set test output directory
 set TEST_DIR=d:\Codigo\Synth-Data\Tests\PipelineTest
 set CONFIG_DIR=d:\Codigo\Synth-GPR
+set PYTHON_EXE=c:\Users\barba\.conda\envs\gprMax\python.exe
 
 echo Test Directory: %TEST_DIR%
 echo Config Directory: %CONFIG_DIR%
@@ -51,7 +51,7 @@ echo [1/4] Testing Dataset Generation...
 echo ============================================================
 echo Using config: config_pipeline_test.ini
 
-python scripts\main\generate_dataset.py config_pipeline_test.ini
+%PYTHON_EXE% scripts\main\generate_dataset.py config_pipeline_test.ini
 
 if %ERRORLEVEL% NEQ 0 (
     echo [FAILED] Dataset generation failed!
@@ -66,7 +66,7 @@ REM ============================================================
 echo [2/4] Testing Batch Simulations...
 echo ============================================================
 
-python scripts\main\run_simulations.py ^
+%PYTHON_EXE% scripts\main\run_simulations.py ^
     %TEST_DIR%\Generation ^
     -j 4
 
@@ -85,7 +85,7 @@ REM ============================================================
 echo [3/4] Testing Dataset Validation...
 echo ============================================================
 
-python scripts\tools\data_management\validate_dataset.py ^
+%PYTHON_EXE% scripts\tools\data_management\validate_dataset.py ^
     %TEST_DIR%\Generation
 
 if %ERRORLEVEL% NEQ 0 (
@@ -101,7 +101,7 @@ REM ============================================================
 echo [4/4] Testing Feature Extraction...
 echo ============================================================
 
-python scripts\main\batch_extract_features.py ^
+%PYTHON_EXE% scripts\main\batch_extract_features.py ^
     --input_dir %TEST_DIR%\Generation ^
     --output_csv %TEST_DIR%\features_test.csv
 

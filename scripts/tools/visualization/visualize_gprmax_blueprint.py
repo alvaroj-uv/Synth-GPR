@@ -12,14 +12,12 @@ Example:
     python visualize_gprmax_blueprint.py input/generated/synthetic_inputs/s0000_unif.in
 """
 
-import re
 import sys
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
 import numpy as np
-import h5py
 from scipy.signal import hilbert
 import matplotlib.gridspec as gridspec
 
@@ -178,7 +176,7 @@ def parse_gprmax_input(filepath):
             # Parse metadata
             elif line.startswith('## FI (%):'):
                 data['metadata']['FI'] = line.split(':')[1].strip()
-            elif line.startswith('## FI class:'):
+            elif line.startswith('## FI_class:'):
                 data['metadata']['FI_class'] = line.split(':')[1].strip()
             elif line.startswith('## Scenario:'):
                 data['metadata']['scenario'] = line.split(':')[1].strip()
@@ -270,7 +268,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     # Helper to get color
     def get_mat_color_alpha(material):
         if material == 'free_space':
-            return '#E8F4F8', 0.3
+            return '#E8F4F8', 0.1 # Very subtle air
         
         mat_props = data['materials'].get(material, {})
         eps = mat_props.get('eps', 5.0)
@@ -281,7 +279,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             norm_eps = 0.5
         
         # Get color from colormap
-        return cmap(0.3 + norm_eps * 0.6), 0.8
+        return cmap(0.3 + norm_eps * 0.6), 1.0 # Opaque
 
     # Draw all objects in order
     objects = data.get('objects', [])
@@ -388,6 +386,8 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     title_parts = []
     if data['title']:
         title_parts.append(f"Class: {data['title']}")
+    if 'FI_class' in data['metadata']:
+        title_parts.append(f"Class: {data['metadata']['FI_class']}")
     if 'scenario' in data['metadata']:
         title_parts.append(f"Scenario: {data['metadata']['scenario']}")
     if 'FI' in data['metadata']:

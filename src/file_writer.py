@@ -7,16 +7,14 @@
 
 from datetime import date
 from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
 
-from .config import GeneratorConfig
 from .physics import fmt
 
 
 from .gpr_commands import (
     GPRCommand, DomainCommand, DxDyDzCommand, TimeWindowCommand, 
-    MaterialCommand, BoxCommand, CylinderCommand, WaveformCommand, 
-    HertzianDipoleCommand, RxCommand, GeometryViewCommand, CommentCommand, PythonBlockCommand, RawCommand
+    WaveformCommand, 
+    HertzianDipoleCommand, RxCommand, Header
 )
 from .scene_descriptor import SceneDefinition
 
@@ -85,25 +83,25 @@ class GPRMaxFileWriter:
         lines = []
         
         # 1. Header
-        lines.append(CommentCommand("=" * 60).render())
-        lines.append(CommentCommand("Generated gprMax Input File").render())
-        lines.append(CommentCommand(f"Scenario: {scenario_type}").render())
-        lines.append(CommentCommand(f"Date: {date.today().isoformat()}").render())
+        lines.append(Header("=" * 60).render())
+        lines.append(Header("Generated gprMax Input File").render())
+        lines.append(Header(f"Scenario: {scenario_type}").render())
+        lines.append(Header(f"Date: {date.today().isoformat()}").render())
         
         if scene.config.base_seed is not None:
-             lines.append(CommentCommand(f"Base Seed: {scene.config.base_seed}").render())
+             lines.append(Header(f"Base Seed: {scene.config.base_seed}").render())
              
         # Metadata
         for k, v in scene.metadata.items():
             val_str = fmt(v) if isinstance(v, float) else str(v)
-            lines.append(CommentCommand(f"{k}: {val_str}").render())
+            lines.append(Header(f"{k}: {val_str}").render())
             
         if extra_headers:
             for k, v in extra_headers.items():
                 val_str = fmt(v) if isinstance(v, float) else str(v)
-                lines.append(CommentCommand(f"{k}: {val_str}").render())
+                lines.append(Header(f"{k}: {val_str}").render())
                 
-        lines.append(CommentCommand("=" * 60).render())
+        lines.append(Header("=" * 60).render())
         
         # 2. Python Blocks
         for cmd in scene.python_blocks:
@@ -111,13 +109,13 @@ class GPRMaxFileWriter:
             
         # 3. Domain (FIXED from config)
         if scene.domain_commands:
-            lines.append(CommentCommand("Domain Configuration").render())
+            lines.append(Header("Domain Configuration").render())
             for cmd in scene.domain_commands:
                 lines.append(cmd.render())
 
         # 4. Sources (Antenna + Waveform) - Explicit Sorting
         if scene.source_commands:
-            lines.append(CommentCommand("Sources and Receivers").render())
+            lines.append(Header("Sources and Receivers").render())
             
             # Sort: Waveforms FIRST, then Dipoles/Rx (Antenna)
             # Use strict order: Waveforms definition must precede their usage in Dipoles.
@@ -131,7 +129,7 @@ class GPRMaxFileWriter:
             
         # 5. Materials
         if scene.material_commands:
-            lines.append(CommentCommand("Materials").render())
+            lines.append(Header("Materials").render())
             # Deduplication could happen here if needed, but Layer logic usually handles specific names
             # We can use a set to track rendered material identifiers if we wanted strict uniqueness.
             for cmd in scene.material_commands:
@@ -139,15 +137,19 @@ class GPRMaxFileWriter:
 
         # 6. Geometry Layers
         if scene.geometry_commands:
-            lines.append(CommentCommand("Geometry").render())
-            for cmd in scene.geometry_commands:
+            lines.append(Header("Geometry").render())
+
+            # SORT BY PRIORITY
+            sorted_geometry = sorted(scene.geometry_commands, key=lambda c: getattr(c, 'priority', 10))
+
+            for cmd in sorted_geometry:
                 if isinstance(cmd, str): 
                      # Should not happen with typed system, but safety net
-                     lines.append(CommentCommand(f"RAW: {cmd}").render())
+                     lines.append(Header(f"RAW: {cmd}").render())
                 elif hasattr(cmd, 'render'):
                      lines.append(cmd.render())
                 else:
-                     lines.append(CommentCommand(f"INVALID: {repr(cmd)}").render())
+                     lines.append(Header(f"INVALID: {repr(cmd)}").render())
 
         return "\n".join(lines)
     

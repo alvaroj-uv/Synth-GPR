@@ -3,7 +3,6 @@ import random
 import json
 import time
 import math
-import numpy as np
 from pathlib import Path
 import sys
 import os
@@ -83,7 +82,7 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     
-    print(f"Generating RSA base circles...")
+    print("Generating RSA base circles...")
     # 1. Generate Base Circles
     circles = generate_rsa_pattern(
         args.width, args.height,

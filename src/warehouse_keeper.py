@@ -4,7 +4,6 @@ Warehouse Keeper - Intermediary between Workers and Warehouses.
 Implements the Facade pattern to provide a clean interface for workers
 to request materials and tools without directly accessing warehouses.
 """
-from typing import Any
 from .gpr_commands import MaterialCommand
 from .warehouses import MaterialWarehouse, ToolWarehouse
 

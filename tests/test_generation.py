@@ -10,7 +10,6 @@ sys.path.append(str(project_root))
 
 from src.dataset_generator import DatasetGenerator
 from src.config import GeneratorConfig
-import re
 
 class TestDataGeneration(unittest.TestCase):
     

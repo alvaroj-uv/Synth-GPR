@@ -10,7 +10,6 @@ sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 from src.config import GeneratorConfig
 from src.geometry_composer import ScenePainter, BackgroundLayer
 from src.dataset_generator import DatasetGenerator
-from src.scenario_factory import ScenarioFactory
 
 def test_generator_config_immutability():
     print("Testing GeneratorConfig immutability...")
@@ -60,7 +59,7 @@ def test_full_generation_pipeline():
     if out_dir.exists():
         shutil.rmtree(out_dir)
         
-    files = gen.generate_samples(out_dir, n_samples=2)
+    files, metadata = gen.generate_samples(out_dir, n_samples=2)
     
     if not (out_dir / "s_0000.in").exists():
         print("FAIL: Base file not generated.")
@@ -70,7 +69,7 @@ def test_full_generation_pipeline():
          print("FAIL: Randomized variant not generated.")
          sys.exit(1)
          
-    print(f"PASS: Generated {len(df)} records.")
+    print(f"PASS: Generated {len(metadata)} records.")
     
     # Check if file contains expected headers
     content = (out_dir / "s_0000.in").read_text()

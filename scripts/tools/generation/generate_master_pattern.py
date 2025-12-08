@@ -3,7 +3,6 @@ import random
 import json
 import time
 import math
-import numpy as np
 from pathlib import Path
 
 def generate_rsa_pattern(width, height, r_min, r_max, target_density=0.60, max_attempts=500000):

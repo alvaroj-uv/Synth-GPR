@@ -14,7 +14,7 @@ Example:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from collections import defaultdict
 from enum import IntEnum

@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 
 from src.file_writer import GPRMaxFileWriter, StructuredCommands
-from src.gpr_commands import CommentCommand, BoxCommand, DomainCommand, GPRCommand
+from src.gpr_commands import Header, GPRCommand
 from src.geometry_composer import ScenePainter, BackgroundLayer, GeneratorConfig
 
 def test_manual_structure():

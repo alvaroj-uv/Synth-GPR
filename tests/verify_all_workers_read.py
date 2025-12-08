@@ -5,7 +5,10 @@ from pathlib import Path
 
 sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 
-from src.workers import *
+from src.workers import (
+    AirWorker, SubgradeWorker, FormationWorker, BallastWorker, 
+    RockWorker, FoulingWorker, AntennaWorker
+)
 from src.worker import SceneCheckpoint
 from src.config import GeneratorConfig
 from src.work_order import WorkOrderSystem, WorkOrder

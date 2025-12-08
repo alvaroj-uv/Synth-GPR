@@ -15,7 +15,6 @@ Verification:
 """
 
 import shutil
-import glob
 import pandas as pd
 from pathlib import Path
 from tqdm import tqdm

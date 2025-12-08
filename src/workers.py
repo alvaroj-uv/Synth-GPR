@@ -7,12 +7,12 @@ from typing import List, Dict, Any, TYPE_CHECKING
 import random
 import pandas as pd
 from .worker import Worker, SceneCheckpoint
-from .gpr_commands import BoxCommand, MaterialCommand, CylinderCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
-from .rock_packing import PoissonDiskPacking, PackingBounds, GridPacking
-from .physics import classify_pvc, fmt, topp_mixing_model
+from .gpr_commands import BoxCommand, CylinderCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
+from .rock_packing import PoissonDiskPacking, PackingBounds
+from .physics import classify_pvc
 
 if TYPE_CHECKING:
-    from .quality_log import QualityLog
+    pass
 
 
 class AirWorker(Worker):
@@ -493,11 +493,15 @@ class FoulingWorker(Worker):
         
         if settled_h > 2e-3: # Enforce 2mm min thickness to avoid geometry errors
             foul_horizon_y = start_y + settled_h
-            scene.add_geometry(BoxCommand(
+            
+            box_cmd = BoxCommand(
                 0, start_y, 0,
                 domain_x, foul_horizon_y, domain_z,
                 "bal_foul_granular"
-            ))
+            )
+            
+            # SIMPLIFIED: Priority system (Box=10) ensures this renders before Rocks (20).
+            scene.add_geometry(box_cmd)
             
             # Log for Dispersed
             settled_top = foul_horizon_y
@@ -660,6 +664,37 @@ class AssemblerWorker(Worker):
     name = "AssemblerWorker"
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+        # 1. Add Geometry View (for Paraview)
+        # Covers entire domain
+        domain_x = scene.config.domain_x
+        domain_y = scene.config.domain_y
+        domain_z = scene.config.domain_z
+        
+        if scene.work_order:
+             domain_x = scene.work_order.get_input('domain_x', domain_x)
+             domain_y = scene.work_order.get_input('domain_y', domain_y)
+             domain_z = scene.work_order.get_input('domain_z', domain_z)
+             
+        # Filename based on ID if possible
+        filename = "geometry"
+        if scene.work_order:
+            filename = f"{scene.work_order.work_order.id}_geo"
+            
+        from .gpr_commands import GeometryViewCommand
+        
+        # Use fine resolution (same as sim) or slightly coarser?
+        # Usually same as dx_dy_dz
+        dx = scene.config.dx
+        dy = scene.config.dy
+        dz = scene.config.dz
+        
+        scene.add_geometry(GeometryViewCommand(
+            0, 0, 0,
+            domain_x, domain_y, domain_z,
+            dx, dy, dz, 
+            filename, 'n'
+        ))
+
         # Mark as assembled
         scene.assembled = True
         
