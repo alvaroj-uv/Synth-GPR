@@ -8,7 +8,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root))
 
-from src.synthetic_data_generator import BallastScenarioGenerator
+from src.dataset_generator import DatasetGenerator
 from src.config import GeneratorConfig
 import re
 
@@ -34,7 +34,7 @@ class TestDataGeneration(unittest.TestCase):
     def test_generation_end_to_end(self):
         """Test full generation pipeline using BallastScenarioGenerator."""
         cfg = GeneratorConfig.from_ini(str(self.test_config_path))
-        generator = BallastScenarioGenerator(cfg)
+        generator = DatasetGenerator(cfg)
         
         # We need to manually parse the DatasetGeneration params since they aren't in cfg
         import configparser

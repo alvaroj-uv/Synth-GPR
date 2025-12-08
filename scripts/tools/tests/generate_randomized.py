@@ -11,7 +11,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import GeneratorConfig
-from src.synthetic_data_generator import BallastScenarioGenerator
+from src.dataset_generator import DatasetGenerator
 
 # Set seed for reproducibility
 random.seed(30000)
@@ -30,7 +30,7 @@ print(f"  Spatial jitter σ: {config.spatial_jitter_sigma*100}cm")
 print()
 
 # Generate dataset
-generator = BallastScenarioGenerator(
+generator = DatasetGenerator(
     output_dir="d:/Codigo/Synth-Data/ComparisonTest/Randomized",
     config=config
 )

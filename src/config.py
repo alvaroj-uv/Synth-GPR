@@ -8,57 +8,35 @@ from typing import Dict, Any
 # Utility: FI and classification
 # ------------------------------------------------------------
 def classify_pvc(pvc_value: float) -> str:
-    # Classify ballast fouling based on Percentage Voids Contaminated (PVC).
-    # 
-    # Classification thresholds (user-specified):
-    #     - Clean (CL):            PVC <= 5%
-    #     - Moderately Clean (MC): 5% < PVC <= 20%
-    #     - Moderately Fouled (MF):20% < PVC <= 40%
-    #     - Fouled (F):           40% < PVC <= 60%
-    #     - Highly Fouled (HF):    PVC > 60%
-    # 
-    # Args:
-    #     pvc_value: Percentage of Voids Contaminated (0-100).
-    #     
-    # Returns:
-    #     Two-letter class code (CL, MC, MF, F, HF).
-    if pvc_value <= 5.0:
-        return "CL"
-    elif pvc_value <= 20.0:
-        return "MC"
-    elif pvc_value <= 40.0:
-        return "MF"
-    elif pvc_value <= 60.0:
-        return "F"
-    else:
-        return "HF"
-
-def classify_pvc_legacy(pvc_value: float) -> str:
-    # Classify ballast fouling using Selig & Waters (1994) thresholds.
-    # 
-    # Legacy thresholds (kept for comparison):
-    #     - CL: < 1%
-    #     - MC: 1-10%
-    #     - M:  10-20%
-    #     - MF: 20-40%
-    #     - HF: > 40%
-    # 
-    # Args:
-    #     pvc_value: Percentage of Voids Contaminated (0-100).
+    """
+    Classify ballast fouling using Selig and Waters (1994) standard.
+    
+    Official thresholds:
+        - C  (Clean):            0%  <= FI < 1%
+        - MC (Moderately Clean): 1%  <= FI < 10%
+        - MF (Moderately Fouled): 10% <= FI < 20%
+        - F  (Fouled):           20% <= FI < 40%
+        - HF (Highly Fouled):    FI >= 40%
+    
+    Args:
+        pvc_value: Percentage Void Contamination (0-100)
+        
+    Returns:
+        Class code: C, MC, MF, F, or HF
+    """
     if pvc_value < 1.0:
-        return "CL"
+        return "C"
     elif pvc_value < 10.0:
         return "MC"
     elif pvc_value < 20.0:
-        return "M"
-    elif pvc_value < 40.0:
         return "MF"
+    elif pvc_value < 40.0:
+        return "F"
     else:
         return "HF"
 
 # Backward compatibility aliases
 get_fi_class = classify_pvc
-get_fi_class_legacy = classify_pvc_legacy
 get_pvc_class = classify_pvc
 
 def compute_fouling_index(rock_thickness: float, fouling_thickness: float) -> float:
@@ -111,10 +89,15 @@ class GeneratorConfig:
     # 
     # This class holds all parameters governing the simulation.
     # Immutable: Changes require creating a new instance (e.g., using dataclasses.replace).
-    # Geometry and grid
+    # Domain size (Railway GPR standard)
     domain_x: float = 0.5
     domain_y: float = 1.5
     domain_z: float = 0.005
+    
+    # Domain Height Limits (Railway Literature)
+    # Typical GPR antenna: 30-100cm above ballast surface
+    # Max realistic height: subgrade(0.5) + formation(0.1) + ballast(0.45) + antenna(0.5) + buffer(0.1) = 1.65m
+    max_domain_y: float = 1.65  # Hard limit from literature
 
     dx: float = 0.005
     dy: float = 0.005
@@ -127,7 +110,7 @@ class GeneratorConfig:
     center_freq: float = 1.5e9
     tx_x: float = 0.300
     rx_x: float = 0.35
-    tx_rx_y: float = 0.904
+    tx_rx_y: float = 1.4  # Raised to use domain efficiently (10cm below top, 50cm above max rocks)
     tx_rx_z: float = 0.0025
     add_waveform: bool = True
     add_source: bool = True
@@ -143,18 +126,33 @@ class GeneratorConfig:
     rock_radius_min: float = 0.02
     rock_radius_max: float = 0.032
     
+    # Rock Packing Parameters
+    rock_layers: int = 3  # Number of vertical layers for rock placement
+    rock_packing_target_fill: float = 0.6  # Target density (60% filled)
+    rock_packing_max_attempts: int = 1000  # Max attempts for packing algorithm
+    
     # Moisture & Fouling Props
     moisture_min: float = 0.0
     moisture_max: float = 0.3
     fractal_dimension: float = 1.5
+    
+    # Fouling Distribution Parameters
+    fouling_settled_fraction: float = 0.7  # 70% settles to bottom layer
+    fouling_particle_size_min: float = 0.002  # 2mm
+    fouling_particle_size_max: float = 0.008  # 8mm
+    
+    # Antenna Placement
+    antenna_clearance_above_ballast: float = 0.50  # 50cm above highest rock (railway standard)
+    antenna_rock_clearance: float = 0.02  # 2cm minimum clearance from rocks
     
     # Rock Packing Strategy
     rock_packing_algorithm: str = "wang"  # "random", "poisson", "wang"
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
     
     # Ballast/subgrade nominal depths
-    min_ballast_thickness: float = 0.25
-    max_ballast_thickness: float = 0.45 
+    subgrade_height: float = 0.3  # Increased to 0.3m for more realistic railway geometry
+    min_ballast_thickness: float = 0.35  # More realistic range now that antenna is higher
+    max_ballast_thickness: float = 0.55  # Max: subgrade(0.3) + formation(0.1) + ballast(0.55) = 0.95m > max_rock(0.9m) 
 
     min_foul_thickness: float = 0.00
     max_foul_thickness: float = 0.10
@@ -217,7 +215,7 @@ class GeneratorConfig:
     # Workflow Parameters (for script execution)
     # ============================================================
     output_dir: str = "output"
-    labels: list = field(default_factory=lambda: ["CL", "MC", "MF", "F"])
+    labels: list = field(default_factory=lambda: ["C", "MC", "MF", "F", "HF"])
     samples_per_label: int = 10
     start_id: int = 1000
     

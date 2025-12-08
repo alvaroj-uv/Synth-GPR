@@ -3,7 +3,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from src.synthetic_data_generator import GeneratorConfig, BallastScenarioGenerator
+from src.config import GeneratorConfig
+from src.dataset_generator import DatasetGenerator
 import pandas as pd
 from pathlib import Path
 
@@ -14,7 +15,7 @@ def test_generation():
         add_source=True,
         add_geometry_view=False
     )
-    gen = BallastScenarioGenerator(cfg)
+    gen = DatasetGenerator(cfg)
     
     out_dir = Path("test_output")
     if out_dir.exists():

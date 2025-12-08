@@ -11,7 +11,7 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import GeneratorConfig
-from src.synthetic_data_generator import BallastScenarioGenerator
+from src.dataset_generator import DatasetGenerator
 
 print("=" * 70)
 print("DOMAIN RANDOMIZATION COMPARISON TEST")
@@ -20,7 +20,7 @@ print("=" * 70)
 # Test 1: Baseline (randomization OFF)
 print("\n[1/6] Generating BASELINE sample (randomization OFF)...")
 config_baseline = GeneratorConfig.from_ini("config_baseline.ini")
-gen_baseline = BallastScenarioGenerator(config=config_baseline)
+gen_baseline = DatasetGenerator(config=config_baseline)
 gen_baseline.generate_dataset(
     out_dir="d:/Codigo/Synth-Data/Tests/RandomizationTest/Baseline",
     n_samples=1,
@@ -31,7 +31,7 @@ print("[OK] Generated: d:/Codigo/Synth-Data/Tests/RandomizationTest/Baseline/s_3
 # Test 2: Randomized (randomization ON)
 print("\n[2/6] Generating RANDOMIZED sample (randomization ON)...")
 config_randomized = GeneratorConfig.from_ini("config_randomized.ini")
-gen_randomized = BallastScenarioGenerator(config=config_randomized)
+gen_randomized = DatasetGenerator(config=config_randomized)
 gen_randomized.generate_dataset(
     out_dir="d:/Codigo/Synth-Data/Tests/RandomizationTest/Randomized",
     n_samples=1,

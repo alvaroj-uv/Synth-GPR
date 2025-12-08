@@ -32,8 +32,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 try:
     from src.data_loader import read_gprmax_hdf5
     HAS_DATA_LOADER = True
-except ImportError:
+    print("✓ Successfully loaded data_loader")
+except ImportError as e:
     HAS_DATA_LOADER = False
+    print(f"⚠️  Warning: Could not import data_loader (Signal plotting disabled): {e}")
 
 
 # Material color mapping for visualization

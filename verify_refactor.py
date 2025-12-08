@@ -9,7 +9,7 @@ sys.path.append(str(Path("d:/Codigo/Synth-GPR")))
 
 from src.config import GeneratorConfig
 from src.geometry_composer import ScenePainter, BackgroundLayer
-from src.synthetic_data_generator import BallastScenarioGenerator
+from src.dataset_generator import DatasetGenerator
 from src.scenario_factory import ScenarioFactory
 
 def test_generator_config_immutability():
@@ -54,13 +54,13 @@ def test_scenepainter_encapsulation():
 def test_full_generation_pipeline():
     print("Testing full generation pipeline...")
     cfg = GeneratorConfig(granular_mode=True, pvc_max=20.0, output_dir="test_output", add_sleepers=True)
-    gen = BallastScenarioGenerator(cfg)
+    gen = DatasetGenerator(cfg)
     
     out_dir = Path("d:/Codigo/Synth-GPR/test_output")
     if out_dir.exists():
         shutil.rmtree(out_dir)
         
-    df = gen.generate_dataset(out_dir, n_samples=2)
+    files = gen.generate_samples(out_dir, n_samples=2)
     
     if not (out_dir / "s_0000.in").exists():
         print("FAIL: Base file not generated.")

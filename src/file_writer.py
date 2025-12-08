@@ -108,7 +108,7 @@ class GPRMaxFileWriter:
         for cmd in scene.python_blocks:
             lines.append(cmd.render())
             
-        # 3. Domain
+        # 3. Domain (FIXED from config)
         if scene.domain_commands:
             lines.append(CommentCommand("Domain Configuration").render())
             for cmd in scene.domain_commands:

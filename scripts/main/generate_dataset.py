@@ -31,7 +31,8 @@ import time
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.synthetic_data_generator import GeneratorConfig, BallastScenarioGenerator
+from src.config import GeneratorConfig
+from src.dataset_generator import DatasetGenerator
 
 # Define PVC ranges for each class
 PVC_RANGES = {
@@ -107,20 +108,19 @@ def generate_dataset(output_dir, labels, n_per_label=50, start_id=10000, moistur
                 rock_radius_max=0.032,
             )
         
-        gen = BallastScenarioGenerator(cfg)
+        gen = DatasetGenerator(cfg)
         
         # Generate batch
         # We append the label to the metadata filename to avoid overwrites if running multiple batches
         metadata_name = f"metadata_{label_upper}.csv"
         
-        df = gen.generate_dataset(
-            out_dir=output_dir,
+        files = gen.generate_samples(
+            output_dir=output_dir,
             n_samples=n_per_label,
-            csv_name=metadata_name,
             start_id=current_id
         )
         
-        count = len(df)
+        count = n_per_label
         print(f"   Generated {count} samples. IDs: {current_id} - {current_id + count - 1}")
         
         current_id += count

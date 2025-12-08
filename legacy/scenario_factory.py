@@ -1,52 +1,35 @@
+"""
+ScenarioFactory: Manages the definition of production scenarios and variants.
+
+Decouples the logic of "what variants to produce" from the ProductionLine.
+"""
+from typing import List, Dict, Any
 from .config import GeneratorConfig
-from .geometry_composer import ScenePainter
-from .scene_builder import SceneBuilder
-from .rock_packing import RandomPacking, PoissonDiskPacking, WangTileRockPacking
 
 class ScenarioFactory:
     """
-    Factory acting as the Director for the SceneBuilder.
-    
-    Orchestrates the construction process using the SceneBuilder.
+    Determines the variations and parameters for a production run.
     """
     
-    @staticmethod
-    def create_painter(config: GeneratorConfig, scenario_type: str, context: dict) -> ScenePainter:
-        """
-        Creates a ScenePainter using the SceneBuilder.
+    def __init__(self, config: GeneratorConfig):
+        self.config = config
         
-        Args:
-            config: The generator configuration.
-            scenario_type: The type of scenario (e.g., 'granular').
-            context: Dynamic context (pvc, moisture, etc.).
-                     
+    def get_variants(self) -> List[Dict[str, Any]]:
+        """
+        Generate a list of parameter overrides for each variant.
+        
         Returns:
-            A fully configured ScenePainter.
+            List of dicts, where each dict contains parameters to override
+            in the WorkOrder for that variant (e.g., antenna_offset).
         """
-        # Select rock packing strategy
-        strategy_map = {
-            "random": RandomPacking(),
-            "poisson": PoissonDiskPacking(k_attempts=30),
-            "wang": WangTileRockPacking(tile_size=config.wang_tile_size)
-        }
+        variants = []
         
-        packing_strategy = strategy_map.get(
-            config.rock_packing_algorithm,
-            WangTileRockPacking(tile_size=config.wang_tile_size)  # Default
-        )
+        # Always include the base case (offset 0)
+        variants.append({'antenna_offset': 0.0, 'variant_id': 'base'})
         
-        builder = SceneBuilder(config, packing_strategy=packing_strategy)
+        # Check config for additional variants
+        # Example: if config.generate_offsets:
+        #    variants.append({'antenna_offset': -0.05, 'variant_id': 'left'})
+        #    variants.append({'antenna_offset': +0.05, 'variant_id': 'right'})
         
-        # Director orchestration sequence
-        builder.build_base_layers()
-        
-        # Determine specific strategy adjustments based on scenario_type if needed
-        # (Currently aligned with config.granular_mode inside builder, but could be explicit here)
-        granular_fallback = (scenario_type == 'granular' or config.granular_mode)
-        
-        builder.build_ballast_layer(context, granular_fallback=granular_fallback)
-        
-        builder.add_sleepers()
-        builder.add_antenna()
-        
-        return builder.get_result()
+        return variants
