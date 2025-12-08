@@ -31,6 +31,26 @@ class WorkOrder:
     
     def get(self, key: str, default: Any = None) -> Any:
         return self.params.get(key, default)
+        
+    def validate(self) -> None:
+        """
+        Enforce physical invariants. Fail fast if configuration is impossible.
+        """
+        # 1. Dimensions
+        for dim in ['domain_x', 'domain_y', 'domain_z']:
+            val = self.params.get(dim)
+            if val is not None and val <= 0:
+                raise ValueError(f"WorkOrder Error: {dim} must be positive, got {val}")
+                
+        # 2. Percentages (PVC)
+        pvc = self.params.get('pvc')
+        if pvc is not None and not (0 <= pvc <= 100):
+            raise ValueError(f"WorkOrder Error: PVC must be 0-100, got {pvc}")
+            
+        # 3. Fractions (Moisture)
+        moisture = self.params.get('moisture')
+        if moisture is not None and not (0 <= moisture <= 1.0):
+            raise ValueError(f"WorkOrder Error: moisture must be 0-1.0, got {moisture}")
 
 
 class WorkOrderSystem:

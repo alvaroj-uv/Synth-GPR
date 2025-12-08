@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from dataclasses import dataclass
 
-from .config import fmt
+from .physics import fmt
 
 class GPRCommand(ABC):
     """Abstract Base Class for all gprMax commands."""

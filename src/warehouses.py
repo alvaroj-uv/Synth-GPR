@@ -60,36 +60,10 @@ class MaterialWarehouse:
             "fouling_base"
         )
 
-    def get_material(self, name: str) -> Optional[MaterialCommand]:
+    def get_material(self, name: str, **kwargs) -> Optional[MaterialCommand]:
         """Retrieve a material definition by name."""
-        return self._materials.get(name)
-    
-    def get_fouled_material(self, moisture: float) -> MaterialCommand:
-        """
-        Generate fouled ballast material with moisture-dependent properties.
-        
-        Args:
-            moisture: Volumetric water content (0.0 - 1.0)
-            
-        Returns:
-            MaterialCommand for fouled ballast with computed dielectric properties
-        """
-        from .config import topp_mixing_model
-        
-        # Compute dielectric properties based on moisture
-        foul_eps = topp_mixing_model(moisture)
-        foul_sigma = 0.001 + 0.2 * moisture
-        
-        return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, "bal_foul_granular")
-
-    def mix_material(self, base_name: str, additive_name: str, fraction: float) -> MaterialCommand:
-        """
-        Create a new material by mixing two others (typically CRIM/Topp).
-        
-        Simplified Mixing (Linear Volumetric):
-        e_mix = e_base * (1-f) + e_add * f
-        s_mix = s_base * (1-f) + s_add * f
-        """
+        # Dynamic handling for moisture-dependent fouling
+        if name == "bal_foul_granular" and "moisture" in kwargs:
         base = self.get_material(base_name)
         add = self.get_material(additive_name)
         

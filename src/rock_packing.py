@@ -481,3 +481,51 @@ class WangTileRockPacking(RockPackingStrategy):
         
         return all_rocks
 
+
+class GridPacking(RockPackingStrategy):
+    """
+    Deterministic grid-based packing.
+    
+    "The Simple Rule": Places rocks at fixed intervals.
+    Guaranteed to produce results, never fails or hangs.
+    Used as a fallback when complex stochastic methods fail.
+    
+    Characteristics:
+        - Time Complexity: O(N)
+        - Overlaps: No (by definition)
+        - Packing Density: Low/Regular (~50%)
+        - Deterministic: Yes
+    """
+    
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.6,
+        max_attempts: int = 1000
+    ) -> List[Rock]:
+        """Generate rocks in a simple grid."""
+        rocks = []
+        
+        # Use average radius
+        r = (radius_min + radius_max) / 2
+        diameter = 2 * r
+        
+        # Grid spacing (add small epsilon to avoid float imprecision overlaps)
+        spacing = diameter * 1.05
+        
+        rows = int(bounds.height / spacing)
+        cols = int(bounds.width / spacing)
+        
+        for row in range(rows):
+            for col in range(cols):
+                # Center of cell
+                x = bounds.x_min + (col * spacing) + r
+                y = bounds.y_min + (row * spacing) + r
+                
+                if x + r <= bounds.x_max and y + r <= bounds.y_max:
+                    rocks.append(self._create_rock(x, y, r))
+                    
+        return rocks
+
