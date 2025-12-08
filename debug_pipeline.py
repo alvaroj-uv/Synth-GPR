@@ -43,9 +43,9 @@ try:
         for issue in issues:
             print(f"  [{issue['severity']}] {issue['worker']}: {issue['description']}")
     else:
-        print("\n✓ No issues detected")
+        print("\n[OK] No issues detected")
         
 except Exception as e:
-    print(f"\n✗ Exception: {e}")
+    print(f"\n[ERROR] Exception: {e}")
     import traceback
     traceback.print_exc()

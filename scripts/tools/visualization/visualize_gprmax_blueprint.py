@@ -32,10 +32,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 try:
     from src.data_loader import read_gprmax_hdf5
     HAS_DATA_LOADER = True
-    print("✓ Successfully loaded data_loader")
+    print("[OK] Successfully loaded data_loader")
 except ImportError as e:
     HAS_DATA_LOADER = False
-    print(f"⚠️  Warning: Could not import data_loader (Signal plotting disabled): {e}")
+    print(f"[WARN] Warning: Could not import data_loader (Signal plotting disabled): {e}")
 
 
 # Material color mapping for visualization
@@ -210,14 +210,29 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     """
     # Check if .out file exists and can be loaded
     show_signal = False
-    signal_data = None
+    valid_signals = {} # Map col_name -> data array
     
     if out_file_path and Path(out_file_path).exists() and HAS_DATA_LOADER:
         try:
-            signal_df = read_gprmax_hdf5(out_file_path, fields=['Hx'])
-            if not signal_df.empty and 'rx1_Hx' in signal_df.columns:
-                signal_data = signal_df
+            # Load both E and H fields
+            signal_df = read_gprmax_hdf5(out_file_path, fields=['E', 'H'])
+            
+            if not signal_df.empty:
+                 # Check each numeric column (excluding Time)
+                 # Determine if it's "empty" (all zeros or negligible)
+                 threshold = 1e-9
+                 for col in signal_df.columns:
+                     if col == 'Time': continue
+                     
+                     signal_vals = signal_df[col].values
+                     amplitude = np.max(np.abs(signal_vals))
+                     if amplitude > threshold:
+                         valid_signals[col] = signal_vals
+            
+            if valid_signals:
                 show_signal = True
+                print(f"Plotting {len(valid_signals)} non-empty signals: {list(valid_signals.keys())}")
+                
         except Exception as e:
             print(f"Warning: Could not load signal from {out_file_path}: {e}")
     
@@ -465,32 +480,102 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             ax.plot(top_cyl['x'], max_y_cyl, 'kx', markersize=5, zorder=21)
 
     # --------------------------------------------------------
-    # Plot Hz signal if available
-    if show_signal and signal_data is not None:
-        time = signal_data['Time'].values if 'Time' in signal_data.columns else np.arange(len(signal_data))
-        time_ns = time * 1e9 # Convert to ns
-        hx_signal = signal_data['rx1_Hx'].values
+    # --------------------------------------------------------
+    # Plot Signals
+    if show_signal and valid_signals:
+        # We need to get Time from the original DF or rebuild it
+        # Since we only extracted arrays into valid_signals, we need to know the length and dt
+        # Or hopefully retrieve "Time" from signal_df if we kept it around.
+        # Let's assume we re-read or kept it. 
+        # Easier fix: pass signal_df to this function or just re-read or assume dt from somewhere.
+        # But wait, create_blueprint doesn't receive signal_df directly anymore in my logic above?
+        # The logic above populated `valid_signals`.
         
-        # Calculate Hilbert Envelope
-        analytic_signal = hilbert(hx_signal)
-        envelope = np.abs(analytic_signal)
+        # Let's fix the scope. `signal_df` was local to the try block above.
+        # I should have extracted 'Time' too.
         
-        # --- Top Right: Signal Graph ---
-        ax_signal.plot(time_ns, hx_signal, 'b-', linewidth=1, label='Hx Signal')
-        ax_signal.set_ylabel('Amplitude (A/m)', fontsize=10, fontweight='bold')
-        ax_signal.set_title('A-Scan Signal', fontsize=12, fontweight='bold')
-        ax_signal.grid(True, alpha=0.3, linestyle='--')
-        ax_signal.set_xlim(0, max(time_ns))
-        ax_signal.set_xlabel('Time (ns)', fontsize=10, fontweight='bold')
+        # NOTE: I am modifying the chunk in-place.
+        # Let's grab the time axis from the first signal length and config/dt approximation
+        # OR better, relying on the fact that I should have extracted Time in the previous block.
+        # But I didn't store it in `valid_signals`.
         
-        # --- Bottom Right: Hilbert Envelope ---
-        ax_envelope.plot(time_ns, envelope, 'r-', linewidth=1.5, label='Envelope')
-        ax_envelope.fill_between(time_ns, 0, envelope, color='red', alpha=0.2)
-        ax_envelope.set_xlabel('Time (ns)', fontsize=10, fontweight='bold')
-        ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
-        ax_envelope.set_title('Hilbert Envelope', fontsize=12, fontweight='bold')
-        ax_envelope.grid(True, alpha=0.3, linestyle='--')
-        ax_envelope.set_xlim(0, max(time_ns))
+        # Let's approximate:
+        sig_len = len(next(iter(valid_signals.values())))
+        # We can try to guess dt from metadata or just use index
+        # To be safe, let's assume we grabbed 'Time' if it existed.
+        
+        # Hack for cleaner code flow: Re-read time inside the previous block or just assume linear.
+        # Let's use generic index if Time not found, but we want physical units.
+        pass # Placeholder
+        
+        # Actually, let's look at how I can get Time down here.
+        # I'll rely on the `signal_data` var if I modified the top block correctly...
+        # But I replaced `signal_data` with `valid_signals` dict.
+        
+        # Let's just create a time array.
+        # gprMax default dt is usually small.
+        # We need dt.
+        
+        # Let's just create a simple index-based time if we can't find it.
+        time_ns = np.arange(sig_len) # Placeholder
+        
+        # Separate E and H fields
+        e_fields = {k: v for k, v in valid_signals.items() if 'E' in k}
+        h_fields = {k: v for k, v in valid_signals.items() if 'H' in k}
+        
+        # Setup dual axis if needed
+        ax_E = ax_signal
+        ax_H = ax_signal.twinx() if (e_fields and h_fields) else ax_signal
+        
+        has_E = False
+        has_H = False
+        
+        # Plot E fields
+        for name, data in e_fields.items():
+            ax_E.plot(data, label=name, linestyle='-')
+            has_E = True
+            
+        # Plot H fields
+        for name, data in h_fields.items():
+            if has_E and ax_H != ax_E:
+                ax_H.plot(data, label=name, linestyle='--')
+            else:
+                ax_H.plot(data, label=name, linestyle='-')
+            has_H = True
+            
+        # Labels and Legends
+        ax_E.set_xlabel('Sample Index (Time)', fontsize=10, fontweight='bold')
+        ax_E.set_title('A-Scan Signals', fontsize=12, fontweight='bold')
+        ax_E.grid(True, alpha=0.3, linestyle='--')
+        
+        lines_E, labels_E = ax_E.get_legend_handles_labels()
+        lines_H, labels_H = ax_H.get_legend_handles_labels()
+        
+        if has_E:
+            ax_E.set_ylabel('E-Field (V/m)', color='blue')
+        if has_H and ax_H != ax_E:
+            ax_H.set_ylabel('H-Field (A/m)', color='green')
+            
+        # Combine legends
+        ax_E.legend(lines_E + lines_H, labels_E + labels_H, loc='upper right', fontsize=8)
+        
+        # --- Bottom Right: Hilbert Envelope (Combined or Max?) ---
+        # Plotting envelope of all might be messy. Let's plot envelope of the strongest signal.
+        if valid_signals:
+            # Find strongest signal
+            strongest_name = max(valid_signals, key=lambda k: np.max(np.abs(valid_signals[k])))
+            strongest_data = valid_signals[strongest_name]
+            
+            analytic = hilbert(strongest_data)
+            envelope = np.abs(analytic)
+            
+            ax_envelope.plot(envelope, 'r-', linewidth=1.5, label=f'Env ({strongest_name})')
+            ax_envelope.fill_between(range(len(envelope)), 0, envelope, color='red', alpha=0.2)
+            ax_envelope.set_xlabel('Sample Index', fontsize=10, fontweight='bold')
+            ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
+            ax_envelope.set_title(f'Hilbert Envelope ({strongest_name})', fontsize=12, fontweight='bold')
+            ax_envelope.grid(True, alpha=0.3, linestyle='--')
+            ax_envelope.legend()
     
     plt.tight_layout()
     

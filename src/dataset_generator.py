@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
-from .config import GeneratorConfig, get_pvc_class, compute_fi, classify_fi
+from .config import GeneratorConfig
+from .physics import classify_pvc, compute_fouling_index, classify_fouling_index, convert_pvc_to_fi
 from .work_order import WorkOrder, WorkOrderSystem
 from .production_line import ProductionLine
 
@@ -53,7 +54,8 @@ class DatasetGenerator:
         self,
         output_dir: Path | str,
         n_samples: int,
-        start_id: int = 0
+        start_id: int = 0,
+        save_metadata: bool = True
     ) -> List[str]:
         """
         Generate n samples to output directory.
@@ -64,7 +66,7 @@ class DatasetGenerator:
             start_id: Starting sample ID
             
         Returns:
-            List of generated file paths
+            Tuple[List[str], List[Dict]]
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -93,30 +95,30 @@ class DatasetGenerator:
                 # Calculate FI_class from actual PVC (for metadata CSV)
                 actual_pvc = wos.get('pvc', params['pvc'])
                 if self.config.granular_mode:
-                    FI_class = get_pvc_class(actual_pvc)
+                    FI_class = classify_pvc(actual_pvc)
                 else:
                     # Get actual ballast composition from workers
                     actual_ballast = wos.get('ballast_thickness', params['ballast_thickness'])
-                    FI = compute_fi(actual_ballast, 0.0)
-                    FI_class = classify_fi(FI)
+                    FI = compute_fouling_index(actual_ballast, 0.0)
+                    FI_class = classify_fouling_index(FI)
                 
                 # Extract metadata
                 metadata = self._extract_metadata(sample_id, wos, params)
                 metadata['FI_class'] = FI_class  # Use actual FI_class
                 metadata_rows.append(metadata)
                 
-                print(f"✓ Sample {sample_id}: {len(files)} file(s) generated")
+                print(f"[OK] Sample {sample_id}: {len(files)} file(s) generated")
                 
             except Exception as e:
-                print(f"✗ Sample {sample_id} failed: {e}")
+                print(f"[ERROR] Sample {sample_id} failed: {e}")
                 import traceback
                 traceback.print_exc()
         
         # Save metadata CSV
-        if metadata_rows:
+        if save_metadata and metadata_rows:
             self._save_metadata(metadata_rows, output_dir)
         
-        return generated_files
+        return generated_files, metadata_rows
     
     def _sample_parameters(self) -> Dict[str, Any]:
         """
@@ -139,12 +141,12 @@ class DatasetGenerator:
         
         # Calculate Fouling Index (FI) - critical for ML training
         if cfg.granular_mode:
-            FI = pvc
-            FI_class = get_pvc_class(pvc)
+            FI = convert_pvc_to_fi(pvc)
+            FI_class = classify_fouling_index(FI)
         else:
             rock_thickness, fouling_thickness = self._sample_heights()
-            FI = compute_fi(rock_thickness, fouling_thickness)
-            FI_class = classify_fi(FI)
+            FI = compute_fouling_index(rock_thickness, fouling_thickness)
+            FI_class = classify_fouling_index(FI)
         
         return {
             'ballast_thickness': ballast_thickness,
@@ -211,4 +213,4 @@ class DatasetGenerator:
         
         csv_path = output_dir / 'metadata.csv'
         df.to_csv(csv_path, index=False, float_format='%.5g')
-        print(f"✓ Metadata saved to {csv_path}")
+        print(f"[OK] Metadata saved to {csv_path}")

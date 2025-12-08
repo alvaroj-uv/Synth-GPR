@@ -141,8 +141,6 @@ class ToolWarehouse:
                 from .rock_packing import RandomPacking
                 return RandomPacking()
         
-        elif name == "packing_bounds":
-             # This might be context dependent, maybe not a singleton tool
-             pass
+
              
         raise ValueError(f"Unknown tool requested: {name}")

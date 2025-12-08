@@ -9,7 +9,8 @@ from datetime import date
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
-from .config import GeneratorConfig, fmt
+from .config import GeneratorConfig
+from .physics import fmt
 
 
 from .gpr_commands import (

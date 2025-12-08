@@ -4,10 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any
 
-# ------------------------------------------------------------
-# NOTE: Physics and classification formulas (classify_pvc, topp_mixing, etc.)
-# have been moved to src/physics.py to separate concerns.
-# ------------------------------------------------------------
+
 
 # ------------------------------------------------------------
 # Config dataclass

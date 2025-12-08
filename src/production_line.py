@@ -104,16 +104,10 @@ class ProductionLine:
                  path = os.path.join(output_dir, filename)
                  
                  try:
-                     # Calculate FI_class from actual PVC (after FoulingWorker)
-                     from .config import get_pvc_class
-                     actual_pvc = work_order.get('pvc', 0.0)
-                     FI_class = get_pvc_class(actual_pvc) if self.config.granular_mode else "N/A"
-                     
-                     # Build extra headers including FI_class
+                     # Build extra headers
                      extra_headers = {
                          "Variant": var_idx,
-                         "Offset": offset,
-                         "FI_class": FI_class
+                         "Offset": offset
                      }
                      
                      # Create SceneDefinition from SceneCheckpoint

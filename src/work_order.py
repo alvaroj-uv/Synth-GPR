@@ -50,7 +50,15 @@ class WorkOrder:
         # 3. Fractions (Moisture)
         moisture = self.params.get('moisture')
         if moisture is not None and not (0 <= moisture <= 1.0):
+
             raise ValueError(f"WorkOrder Error: moisture must be 0-1.0, got {moisture}")
+            
+        # 4. Geometry Invariants (Fail Fast)
+        # Antenna should never be below ground
+        offset = self.params.get('antenna_offset')
+        if offset is not None:
+             if abs(offset) > self.params.get('domain_x', 0.5) / 2:
+                 raise ValueError(f"WorkOrder Error: antenna_offset {offset} exceeds domain bounds")
 
 
 class WorkOrderSystem:

@@ -381,7 +381,7 @@ class RockWorker(Worker):
                 
                 total_rocks += 1
             
-                total_rocks += 1
+
             
         scene.metadata['rock_count'] = total_rocks
         
@@ -459,7 +459,7 @@ class FoulingWorker(Worker):
         scene.metadata['moisture'] = moisture
         
         # NEW: Register FI Class explicitly (ensure it matches PVC)
-        scene.metadata['fi_class'] = classify_pvc(pvc)
+        scene.metadata['FI_class'] = classify_pvc(pvc)
             
         if pvc <= 0:
             return # No fouling
