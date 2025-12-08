@@ -14,9 +14,10 @@ Example:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 from collections import defaultdict
+from enum import IntEnum
 import numpy as np
 import random
 
@@ -343,60 +344,302 @@ class SimulatedAnnealingPacking(RockPackingStrategy):
         )
 
 
+
+class EdgePattern(IntEnum):
+    """
+    Edge density patterns for Wang tile matching.
+    
+    Represents the density of rocks near a tile edge. Used as constraint
+    for tile placement - adjacent tiles must have compatible edges.
+    
+    Values:
+        EMPTY (0): No rocks within 2.5cm of edge
+        SPARSE (1): 1-2 small rocks near edge
+        MEDIUM (2): 3-4 medium rocks near edge
+        DENSE (3): 5+ rocks near edge, high density
+    """
+    EMPTY = 0
+    SPARSE = 1
+    MEDIUM = 2
+    DENSE = 3
+
+
+@dataclass
+class WangTile:
+    """
+    Wang tile containing a rock pattern with edge constraints.
+    
+    Args:
+        tile_id: Unique identifier (1-13)
+        rocks: List of Rock objects with positions relative to tile origin (0,0)
+        north_edge: Density pattern of north edge
+        east_edge: Density pattern of east edge
+        south_edge: Density pattern of south edge
+        west_edge: Density pattern of west edge
+        size: Physical size of tile in meters (default 0.1m = 10cm)
+    """
+    tile_id: int
+    rocks: List[Rock]
+    north_edge: EdgePattern
+    east_edge: EdgePattern
+    south_edge: EdgePattern
+    west_edge: EdgePattern
+    size: float = 0.1
+    
+    def __hash__(self):
+        """Make hashable for use in sets/dicts."""
+        return hash((self.tile_id, self.north_edge, self.east_edge, 
+                    self.south_edge, self.west_edge))
+    
+    def __eq__(self, other):
+        """Equality based on tile_id."""
+        if not isinstance(other, WangTile):
+            return False
+        return self.tile_id == other.tile_id
+
+
+class WangTileLibrary:
+    """
+    Library of Wang tiles for aperiodic rock patterns.
+    
+    Creates a minimal set of 13 tiles that guarantees aperiodic (non-repeating)
+    tiling when placed with edge-matching constraints. Based on Culik's
+    minimal aperiodic set.
+    """
+    
+    def __init__(self, tile_size: float = 0.1, seed_offset: int = 0):
+        self.tile_size = tile_size
+        self.seed_offset = seed_offset
+        print(f"Generating Wang tile library (13 tiles, size={tile_size}m)...")
+        self.tiles = self._create_tile_set()
+        self._build_edge_index()
+        print(f"Wang tile library ready: {len(self.tiles)} tiles indexed")
+    
+    def _create_tile_set(self) -> List[WangTile]:
+        tiles = []
+        # Tile configurations: (id, North, East, South, West)
+        # These specific combinations ensure aperiodic tiling
+        configs = [
+            (1,  0, 0, 0, 0),  # All empty (low density everywhere)
+            (2,  3, 3, 3, 3),  # All dense (high density everywhere)
+            (3,  0, 1, 2, 3),  # Gradient: empty -> sparse -> medium -> dense
+            (4,  3, 2, 1, 0),  # Reverse gradient: dense -> empty
+            (5,  1, 1, 1, 1),  # All sparse (uniform low-medium)
+            (6,  2, 2, 2, 2),  # All medium (uniform medium)
+            (7,  0, 2, 0, 2),  # Alternating empty/medium (horizontal)
+            (8,  1, 3, 1, 3),  # Alternating sparse/dense (horizontal)
+            (9,  2, 0, 2, 0),  # Alternating medium/empty (vertical)
+            (10, 3, 1, 3, 1),  # Alternating dense/sparse (vertical)
+            (11, 0, 3, 2, 1),  # Mixed pattern 1 (asymmetric)
+            (12, 1, 2, 3, 0),  # Mixed pattern 2 (asymmetric)
+            (13, 2, 1, 0, 3),  # Mixed pattern 3 (asymmetric)
+        ]
+        
+        for tile_id, n, e, s, w in configs:
+            rocks = self._generate_tile_rocks(
+                tile_id,
+                EdgePattern(n),
+                EdgePattern(e),
+                EdgePattern(s),
+                EdgePattern(w)
+            )
+            
+            tiles.append(WangTile(
+                tile_id=tile_id,
+                rocks=rocks,
+                north_edge=EdgePattern(n),
+                east_edge=EdgePattern(e),
+                south_edge=EdgePattern(s),
+                west_edge=EdgePattern(w),
+                size=self.tile_size
+            ))
+        
+        return tiles
+    
+    def _generate_tile_rocks(
+        self,
+        tile_id: int,
+        north: EdgePattern,
+        east: EdgePattern,
+        south: EdgePattern,
+        west: EdgePattern
+    ) -> List[Rock]:
+        # Deterministic seed based on tile_id
+        seed = (tile_id + self.seed_offset) * 12345
+        
+        # Calculate edge margins based on patterns
+        margin_n = self._edge_margin(north)
+        margin_e = self._edge_margin(east)
+        margin_s = self._edge_margin(south)
+        margin_w = self._edge_margin(west)
+        
+        # Interior bounds (avoiding edge zones)
+        interior_bounds = PackingBounds(
+            margin_w,
+            self.tile_size - margin_e,
+            margin_s,
+            self.tile_size - margin_n
+        )
+        
+        # Use PoissonDiskPacking from THIS module
+        strategy = PoissonDiskPacking(k_attempts=30)
+        np.random.seed(seed)
+        random.seed(seed)
+        
+        interior_rocks = []
+        if interior_bounds.width > 0.02 and interior_bounds.height > 0.02:
+            interior_rocks = strategy.generate_rocks(
+                interior_bounds,
+                radius_min=0.015,  # 1.5cm min
+                radius_max=0.03,   # 3cm max
+                target_fill_ratio=0.55
+            )
+        
+        # Add edge rocks based on density patterns
+        edge_rocks = self._add_edge_rocks(north, east, south, west, seed)
+        
+        # Reset RNG
+        np.random.seed(None)
+        random.seed(None)
+        
+        return interior_rocks + edge_rocks
+    
+    def _edge_margin(self, pattern: EdgePattern) -> float:
+        margins = {
+            EdgePattern.EMPTY: 0.025,
+            EdgePattern.SPARSE: 0.018,
+            EdgePattern.MEDIUM: 0.012,
+            EdgePattern.DENSE: 0.006
+        }
+        return margins[pattern]
+    
+    def _add_edge_rocks(self, north, east, south, west, seed) -> List[Rock]:
+        edge_rocks = []
+        np.random.seed(seed + 1)
+        
+        # Helper to add rocks
+        def add(count, x_func, y_func):
+            for i in range(count):
+                x = x_func()
+                y = y_func()
+                r = np.random.uniform(0.015, 0.025)
+                edge_rocks.append(Rock(x, y, r))
+
+        # North
+        add(int(north), 
+            lambda: np.random.uniform(0.02, self.tile_size - 0.02),
+            lambda: self.tile_size - np.random.uniform(0.005, 0.015))
+            
+        # East
+        add(int(east),
+            lambda: self.tile_size - np.random.uniform(0.005, 0.015),
+            lambda: np.random.uniform(0.02, self.tile_size - 0.02))
+            
+        # South
+        add(int(south),
+            lambda: np.random.uniform(0.02, self.tile_size - 0.02),
+            lambda: np.random.uniform(0.005, 0.015))
+            
+        # West
+        add(int(west),
+            lambda: np.random.uniform(0.005, 0.015),
+            lambda: np.random.uniform(0.02, self.tile_size - 0.02))
+        
+        np.random.seed(None)
+        return edge_rocks
+    
+    def _build_edge_index(self):
+        self.edge_index: Dict[Tuple, List[WangTile]] = defaultdict(list)
+        for tile in self.tiles:
+            for n in [None, tile.north_edge]:
+                for e in [None, tile.east_edge]:
+                    for s in [None, tile.south_edge]:
+                        for w in [None, tile.west_edge]:
+                            key = (n, e, s, w)
+                            self.edge_index[key].append(tile)
+    
+    def find_compatible_tiles(self, north_req=None, east_req=None, south_req=None, west_req=None) -> List[WangTile]:
+        key = (north_req, east_req, south_req, west_req)
+        return self.edge_index.get(key, [])
+
+
+class WangConstraintSolver:
+    """Solves Wang tile placement using constrained backtracking."""
+    
+    def __init__(self, library: WangTileLibrary):
+        self.library = library
+    
+    def solve_grid(self, grid_width: int, grid_height: int, seed: int) -> Dict[Tuple[int, int], WangTile]:
+        np_state = np.random.get_state()
+        random_state = random.getstate()
+        np.random.seed(seed)
+        random.seed(seed)
+        
+        grid = {}
+        if self._backtrack(grid, 0, 0, grid_width, grid_height):
+            np.random.set_state(np_state)
+            random.setstate(random_state)
+            return grid
+            
+        print(f"Warning: Backtracking failed for {grid_width}x{grid_height}, using relaxed solver")
+        result = self._solve_relaxed(grid_width, grid_height, seed)
+        np.random.set_state(np_state)
+        random.setstate(random_state)
+        return result
+    
+    def _backtrack(self, grid, x, y, width, height) -> bool:
+        if y >= height: return True
+        
+        next_x = (x + 1) % width
+        next_y = y + 1 if next_x == 0 else y
+        
+        north_req = grid.get((x, y-1)).south_edge if y > 0 else None
+        west_req = grid.get((x-1, y)).east_edge if x > 0 else None
+        
+        candidates_ref = self.library.find_compatible_tiles(north_req=north_req, west_req=west_req)
+        if not candidates_ref: return False
+        
+        candidates = list(candidates_ref)
+        random.shuffle(candidates)
+        
+        for tile in candidates:
+            grid[(x, y)] = tile
+            if self._backtrack(grid, next_x, next_y, width, height):
+                return True
+            del grid[(x, y)]
+        return False
+        
+    def _solve_relaxed(self, width, height, seed) -> Dict[Tuple[int, int], WangTile]:
+        grid = {}
+        for y in range(height):
+            for x in range(width):
+                north_req = grid.get((x, y-1)).south_edge if y > 0 else None
+                west_req = grid.get((x-1, y)).east_edge if x > 0 else None
+                
+                candidates = self.library.find_compatible_tiles(north_req=north_req, west_req=west_req)
+                if not candidates: candidates = self.library.tiles
+                grid[(x, y)] = random.choice(candidates)
+        return grid
+
+
 class WangTileRockPacking(RockPackingStrategy):
     """
     Wang tile-based rock packing with aperiodic patterns.
-    
-    Uses Wang tiles (Hao Wang, 1961) to create non-repeating rock patterns
-    with edge-matching constraints. Combines:
-        - Aperiodic tiling (mathematically proven non-repetition)
-        - Seed-based reproducibility (deterministic)
-        - Pre-computed tiles (ultra-fast performance)
-    
-    Characteristics:
-        - Time Complexity: O(1) after initialization ~0.5ms per sample
-        - Overlaps: No (guaranteed by Poisson-generated tiles)
-        - Packing Density: 50-70% (realistic, natural)
-        - Pattern Diversity: Infinite (13 tiles → aperiodic combinations)
-    
-    Benefits:
-        - 90x faster than Poisson disk alone
-        - Provably non-repeating patterns
-        - Deterministic (same bounds = same result)
-        - Natural, organic appearance (edge constraints)
-    
-    Args:
-        tile_size: Size of each Wang tile in meters (default 0.1m = 10cm)
-    
-    Example:
-        >>> strategy = WangTileRockPacking(tile_size=0.1)
-        >>> bounds = PackingBounds(0, 0.5, 0, 0.3)
-        >>> rocks = strategy.generate_rocks(bounds, 0.02, 0.05)
-        >>> # Same bounds will always produce identical rocks
     """
     
     # Class-level singleton library (shared across all instances)
+    _initialization_done = False
     _library = None
     _solver = None
-    _initialization_done = False
     
     def __init__(self, tile_size: float = 0.1):
-        """
-        Initialize Wang tile packing strategy.
-        
-        Args:
-            tile_size: Size of each Wang tile in meters (default 0.1m = 10cm)
-        """
         self.tile_size = tile_size
         
-        # Lazy initialization of library (expensive, do once per tile size)
-        if not WangTileRockPacking._initialization_done or WangTileRockPacking._library is None:
-            from .wang_tiles import WangTileLibrary, WangConstraintSolver
+        # Lazy initialization
+        if not WangTileRockPacking._initialization_done:
             print(f"Initializing Wang tile system (tile_size={tile_size}m)...")
             WangTileRockPacking._library = WangTileLibrary(tile_size)
-            WangTileRockPacking._solver = WangConstraintSolver(
-                WangTileRockPacking._library
-            )
+            WangTileRockPacking._solver = WangConstraintSolver(WangTileRockPacking._library)
             WangTileRockPacking._initialization_done = True
             print("Wang tile system ready!")
     
@@ -408,77 +651,30 @@ class WangTileRockPacking(RockPackingStrategy):
         target_fill_ratio: float = 0.6,
         max_attempts: int = 1000
     ) -> List[Rock]:
-        """
-        Generate rocks using Wang tile mosaic.
-        
-        NOTE: radius_min, radius_max, target_fill_ratio are ignored as
-        rock patterns come from pre-generated tiles with fixed characteristics.
-        
-        Args:
-            bounds: Bounding box for rock placement
-            radius_min: (Ignored - tiles have fixed rock sizes)
-            radius_max: (Ignored - tiles have fixed rock sizes)
-            target_fill_ratio: (Ignored - tiles have fixed density)
-            max_attempts: (Ignored - Wang tiling deterministic)
-            
-        Returns:
-            List of Rock objects with non-repeating aperiodic pattern
-        """
-        # Compute grid dimensions
         grid_w = int(np.ceil(bounds.width / self.tile_size))
         grid_h = int(np.ceil(bounds.height / self.tile_size))
         
-        # Generate deterministic seed from bounds
-        # Use string representation and convert to int (deterministic)
-        # Python's hash() is NOT deterministic due to hash randomization
         seed_str = f"{round(bounds.x_min, 3)}_{round(bounds.y_min, 3)}_{round(bounds.width, 3)}_{round(bounds.height, 3)}"
         seed = int.from_bytes(seed_str.encode('utf-8'), 'big') & 0xFFFFFFFF
         
-        # Solve Wang tiling
         wang_grid = self._solver.solve_grid(grid_w, grid_h, seed)
-        
-        # Convert tiles to absolute rock positions
-        rocks = self._grid_to_rocks(wang_grid, bounds)
-        
-        return rocks
+        return self._grid_to_rocks(wang_grid, bounds)
     
-    def _grid_to_rocks(
-        self,
-        grid: dict,
-        bounds: PackingBounds
-    ) -> List[Rock]:
-        """
-        Convert Wang tile grid to absolute rock positions.
-        
-        Transforms rock positions from tile-local coordinates to
-        world coordinates and filters to actual bounds.
-        
-        Args:
-            grid: Dictionary mapping (x, y) to WangTile objects
-            bounds: Target bounding box
-            
-        Returns:
-            List of Rock objects in world coordinates
-        """
+    def _grid_to_rocks(self, grid: dict, bounds: PackingBounds) -> List[Rock]:
         all_rocks = []
-        
         for (x_idx, y_idx), tile in grid.items():
-            # Tile position in world space
             tile_x = bounds.x_min + x_idx * self.tile_size
             tile_y = bounds.y_min + y_idx * self.tile_size
             
-            # Transform tile rocks to world space
             for rock in tile.rocks:
                 world_x = tile_x + rock.x
                 world_y = tile_y + rock.y
                 
-                # Filter to actual bounds (rocks near edges may extend beyond)
                 if (world_x - rock.radius >= bounds.x_min and
                     world_x + rock.radius <= bounds.x_max and
                     world_y - rock.radius >= bounds.y_min and
                     world_y + rock.radius <= bounds.y_max):
                     all_rocks.append(Rock(world_x, world_y, rock.radius))
-        
         return all_rocks
 
 

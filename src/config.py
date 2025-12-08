@@ -77,7 +77,7 @@ class GeneratorConfig:
     
     # Rock Z-Extent (Extrusion)
     rock_z_start: float = 0.0
-    rock_z_end: float = 0.0  # Default to 0 (2D plane)
+    rock_z_end: float = 0.005  # Default to 0 (2D plane)
     
     # Rock Packing Strategy
     rock_packing_algorithm: str = "wang"  # "random", "poisson", "wang"

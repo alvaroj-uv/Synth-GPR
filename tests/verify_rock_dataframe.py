@@ -48,8 +48,8 @@ class TestRockDataFrame(unittest.TestCase):
         # Verify Z coverage (should be 0-0 for default config request)
         print(f"Z range: {df['z_start'].min()} - {df['z_end'].max()}")
         self.assertEqual(df['z_start'].min(), 0.0)
-        # Default rock_z_end is now 0.0, so max should be 0.0
-        self.assertEqual(df['z_end'].max(), 0.0)
+        # Default rock_z_end is now 0.005, so max should be 0.005
+        self.assertEqual(df['z_end'].max(), 0.005)
         
         # 5. Verify COORDINATES (Absolute Y > 0.5)
         min_y = df['y'].min()

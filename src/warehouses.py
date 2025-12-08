@@ -64,6 +64,36 @@ class MaterialWarehouse:
         """Retrieve a material definition by name."""
         # Dynamic handling for moisture-dependent fouling
         if name == "bal_foul_granular" and "moisture" in kwargs:
+            return self.get_fouled_material(kwargs["moisture"])
+            
+        return self._materials.get(name)
+    
+    def get_fouled_material(self, moisture: float) -> MaterialCommand:
+        """
+        Generate fouled ballast material with moisture-dependent properties.
+        
+        Args:
+            moisture: Volumetric water content (0.0 - 1.0)
+            
+        Returns:
+            MaterialCommand for fouled ballast with computed dielectric properties
+        """
+        from .physics import topp_mixing_model
+        
+        # Compute dielectric properties based on moisture
+        foul_eps = topp_mixing_model(moisture)
+        foul_sigma = 0.001 + 0.2 * moisture
+        
+        return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, "bal_foul_granular")
+
+    def mix_material(self, base_name: str, additive_name: str, fraction: float) -> MaterialCommand:
+        """
+        Create a new material by mixing two others (typically CRIM/Topp).
+        
+        Simplified Mixing (Linear Volumetric):
+        e_mix = e_base * (1-f) + e_add * f
+        s_mix = s_base * (1-f) + s_add * f
+        """
         base = self.get_material(base_name)
         add = self.get_material(additive_name)
         
@@ -76,7 +106,6 @@ class MaterialWarehouse:
         new_sigma = base.sigma * (1 - fraction) + add.sigma * fraction
         
         return MaterialCommand(new_eps, new_sigma, 1.0, 0.0, new_name)
-
 
 class ToolWarehouse:
     """
@@ -103,7 +132,7 @@ class ToolWarehouse:
             # Select strategy based on config
             algo = self.config.rock_packing_algorithm
             if algo == "wang":
-                from .wang_tiles import WangTileRockPacking
+                from .rock_packing import WangTileRockPacking
                 return WangTileRockPacking(tile_size=self.config.wang_tile_size)
             elif algo == "poisson":
                 from .rock_packing import PoissonDiskPacking

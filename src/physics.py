@@ -33,9 +33,6 @@ def classify_pvc(pvc_value: float) -> str:
     else:
         return "HF"
 
-# Backward compatibility aliases
-get_fi_class = classify_pvc
-get_pvc_class = classify_pvc
 
 def compute_fouling_index(rock_thickness: float, fouling_thickness: float) -> float:
     """
@@ -46,8 +43,6 @@ def compute_fouling_index(rock_thickness: float, fouling_thickness: float) -> fl
         return 0.0
     return (fouling_thickness / total) * 100.0
 
-# Backward compatibility alias
-compute_fi = compute_fouling_index
 
 def classify_fouling_index(fouling_index: float) -> str:
     """Simply 3-band classification based on FI percentage."""
@@ -57,9 +52,6 @@ def classify_fouling_index(fouling_index: float) -> str:
         return "MF"
     else:
         return "F"
-
-# Backward compatibility alias
-classify_fi = classify_fouling_index
 
 def topp_mixing_model(theta: float) -> float:
     """
