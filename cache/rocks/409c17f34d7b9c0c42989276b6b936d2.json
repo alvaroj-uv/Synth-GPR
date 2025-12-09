@@ -1,0 +1,11 @@
+{
+    "strategy": "FrontChainPacking",
+    "domain_x": 0.5,
+    "start_y": 0.4,
+    "top_y": 0.7964484753385773,
+    "r_min": 0.02,
+    "r_max": 0.032,
+    "target_fill": 0.6,
+    "layers": 3,
+    "seed": "default"
+}

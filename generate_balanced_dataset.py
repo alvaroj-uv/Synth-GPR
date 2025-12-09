@@ -29,6 +29,23 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
     print(f"[Output] {output_dir}")
     
     os.makedirs(output_dir, exist_ok=True)
+
+    # Enable Logging to File
+    log_path = os.path.join(output_dir, "pipeline.log")
+    class TeeLogger:
+        def __init__(self, filename):
+            self.terminal = sys.stdout
+            self.log = open(filename, "w", encoding="utf-8")
+        def write(self, message):
+            self.terminal.write(message)
+            self.log.write(message)
+            self.log.flush()
+        def flush(self):
+            self.terminal.flush()
+            self.log.flush()
+
+    sys.stdout = TeeLogger(log_path)
+    print(f"[LOGGING] Output also redirected to {log_path}")
     
     # Use a base config
     cfg = GeneratorConfig(

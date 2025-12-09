@@ -28,22 +28,30 @@ def create_dataset(input_dir: str):
     
     # Iterate with index to keep track
     for idx, row in tqdm(metadata_df.iterrows(), total=len(metadata_df)):
-        sample_id = int(row['sample_id'])
-        # Construct filename. Assuming standard naming sXXXX.out
-        # Or look for file starting with sXXXX
+        sample_id = str(row['sample_id']) # Treat ID as string
         
-        # Try finding the .out file
-        # ID is integer, filename is s{id:04d}.out usually.
-        # But let's be robust
-        filename = f"s{sample_id:04d}.out"
+        # Construct filename. 
+        # ID is usually sXXXX (e.g. s0000)
+        # Check if ID already has .out extension usually not
+        filename = f"{sample_id}.out"
         file_path = input_path / filename
         
+        if not file_path.exists():
+             # Fallback: maybe ID is just integer 0, need to format s{id:04d}
+             try:
+                 int_id = int(sample_id)
+                 filename = f"s{int_id:04d}.out"
+                 file_path = input_path / filename
+             except ValueError:
+                 pass # ID was alphanumeric string
+                 
         if not file_path.exists():
             # Try finding by pattern if naming differs
             pattern = str(input_path / f"*{sample_id}*.out")
             matches = glob.glob(pattern)
             if matches:
                 file_path = Path(matches[0])
+                filename = file_path.name
             else:
                 print(f"[WARN] Output file for sample {sample_id} not found. Skipping.")
                 continue

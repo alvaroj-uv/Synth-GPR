@@ -30,17 +30,6 @@ class WarehouseKeeper:
     def get_material(self, material_name: str, **kwargs) -> MaterialCommand:
         """
         Request a material from the warehouse.
-        
-        Args:
-            material_name: Name of material (e.g., "subgrade", "bal_rock")
-            **kwargs: Additional parameters for mixed materials (e.g., moisture)
-            
-        Returns:
-            MaterialCommand ready to add to scene
-            
-        Example:
-            mat = keeper.get_material("subgrade")
-            fouled = keeper.get_material("bal_foul_granular", moisture=0.15)
         """
         if material_name == "bal_foul_granular" and "moisture" in kwargs:
             # Dynamic material - keeper handles complexity
@@ -52,11 +41,6 @@ class WarehouseKeeper:
     def get_tool(self, tool_name: str):
         """
         Request a tool from the warehouse.
-        
-        Args:
-            tool_name: Name of tool (e.g., "packing_strategy")
-            
-        Returns:
-            Tool instance
         """
         return self.tools.get_tool(tool_name)
+

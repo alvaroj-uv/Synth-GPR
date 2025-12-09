@@ -56,6 +56,7 @@ class GeneratorConfig:
     rock_layers: int = 3  # Number of vertical layers for rock placement
     rock_packing_target_fill: float = 0.6  # Target density (60% filled)
     rock_packing_max_attempts: int = 1000  # Max attempts for packing algorithm
+    enable_rock_caching: bool = False  # If False, always generate fresh rocks
     
     # Moisture & Fouling Props
     moisture_min: float = 0.0
@@ -76,7 +77,7 @@ class GeneratorConfig:
     rock_z_end: float = 0.005  # Default to 0 (2D plane)
     
     # Rock Packing Strategy
-    rock_packing_algorithm: str = "wang"  # "random", "poisson", "wang"
+    rock_packing_algorithm: str = "front_chain"  # "random", "poisson", "front_chain", "physics", "triangle"
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
     
     # Ballast/subgrade nominal depths
@@ -89,6 +90,14 @@ class GeneratorConfig:
 
     formation_thickness: float = 0.10
     subgrade_thickness: float = 0.20
+
+    # Degradation Parameters (Realistic ballast aging simulation)
+    enable_degradation: bool = False
+    degradation_level: float = 0.0  # 0-100% (0=fresh, 100=heavily degraded)
+    breakage_probability_large: float = 0.15  # 15% of >40mm rocks break
+    breakage_probability_medium: float = 0.05  # 5% of 20-40mm rocks break
+    fines_threshold: float = 0.010  # 10mm - particles below this migrate
+    fines_accumulation_zone: float = 0.3  # Bottom 30% of ballast
 
     # Material ranges
     # Clean ballast
@@ -259,6 +268,7 @@ class GeneratorConfig:
             # Rock Packing
             args['rock_packing_algorithm'] = config.get('Granular', 'rock_packing_algorithm', fallback='wang')
             args['rock_packing_algorithm'] = config.get('Granular', 'rock_packing_algorithm', fallback='wang')
+            args['enable_rock_caching'] = get_bool('Granular', 'enable_rock_caching')
             args['wang_tile_size'] = get_float('Granular', 'wang_tile_size')
             
             # Rock Z

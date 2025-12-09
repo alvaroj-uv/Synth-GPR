@@ -5,7 +5,9 @@ This module contains domain-specific calculations and classification logic
 for GPR simulation properties, separating them from configuration data.
 """
 
-def classify_pvc(pvc_value: float) -> str:
+import math
+
+def classify_pvc(pvc_value: float, porosity: float = 0.4) -> str:
     """
     Classify ballast fouling based on input PVC, converting to FI first.
     
@@ -19,11 +21,12 @@ def classify_pvc(pvc_value: float) -> str:
     
     Args:
         pvc_value: Percentage Void Contamination (0-100)
+        porosity: Void fraction (0-1). Defaults to 0.4.
         
     Returns:
         Class code based on calculated FI.
     """
-    fi_value = convert_pvc_to_fi(pvc_value)
+    fi_value = convert_pvc_to_fi(pvc_value, porosity=porosity)
     return classify_fouling_index(fi_value)
 
 
@@ -155,3 +158,66 @@ def fmt(val: float) -> str:
     if abs(val) < 1e-9:
         return "0.0"
     return f"{val:.5g}"
+
+def log_linear_interpolation(d_x: float, d1: float, p1: float, d2: float, p2: float) -> float:
+    """
+    Log-Linear Interpolation for Particle Size Distribution (PSD).
+    
+    Formula:
+        Px = P1 + (P2 - P1) * (log(dx) - log(d1)) / (log(d2) - log(d1))
+    
+    Args:
+        d_x: Target diameter to interpolate at.
+        d1, p1: Diameter and Percent Passing of first bounding point.
+        d2, p2: Diameter and Percent Passing of second bounding point.
+    
+    Returns:
+        Interpolated Percent Passing (Px).
+    """
+    if d_x <= 0 or d1 <= 0 or d2 <= 0:
+        # Avoid log domain error, fallback to linear or 0
+        return 0.0
+        
+    if abs(d2 - d1) < 1e-9:
+        return p1
+        
+    log_dx = math.log10(d_x)
+    log_d1 = math.log10(d1)
+    log_d2 = math.log10(d2)
+    
+    # Calculate slope in log-log space? No, usually Linear Percent vs Log Diameter.
+    # Semi-log plot: X=Log(Size), Y=Linear(Percent)
+    
+    slope = (p2 - p1) / (log_d2 - log_d1)
+    px = p1 + slope * (log_dx - log_d1)
+    
+    # Clamp to [0, 100] just in case
+    return max(0.0, min(100.0, px))
+
+def get_percent_passing(d_target: float, psd_points: list) -> float:
+    """
+    Get Percent Passing at d_target using Log-Linear Interpolation on a PSD curve.
+    
+    Args:
+        d_target: Diameter to query.
+        psd_points: List of (Diameter, PercentPassing) tuples. 
+                    Must be sorted by diameter descending or ascending.
+    """
+    # 1. Sort points by diameter ascending just to be safe
+    sorted_points = sorted(psd_points, key=lambda x: x[0])
+    
+    # 2. Check bounds
+    if d_target <= sorted_points[0][0]:
+        return sorted_points[0][1] # Smaller than smallest
+    if d_target >= sorted_points[-1][0]:
+        return sorted_points[-1][1] # Larger than largest
+        
+    # 3. Find interval
+    for i in range(len(sorted_points) - 1):
+        d1, p1 = sorted_points[i]
+        d2, p2 = sorted_points[i+1]
+        
+        if d1 <= d_target <= d2:
+            return log_linear_interpolation(d_target, d1, p1, d2, p2)
+            
+    return 0.0

@@ -80,7 +80,7 @@ class DatasetGenerator:
             sample_id = start_id + i
             
             # Sample random parameters
-            params = self._sample_parameters()
+            params = self.sampler.sample()
             
             # Create WorkOrder
             work_order = WorkOrder(
@@ -89,27 +89,36 @@ class DatasetGenerator:
             )
             wos = WorkOrderSystem(work_order)
             
-            # Run production pipeline
+            # Run production pipeline (returns SceneCheckpoint)
             try:
-                files = self.pipeline.run(wos, str(output_dir))
-                generated_files.extend(files)
+                checkpoint = self.pipeline.run(wos)
                 
-                # Calculate FI_class from actual PVC (for metadata CSV)
-                actual_pvc = wos.get('pvc', params['pvc'])
-                if self.config.granular_mode:
-                    FI_class = classify_pvc(actual_pvc)
-                else:
-                    # Get actual ballast composition from workers
-                    actual_ballast = wos.get('ballast_thickness', params['ballast_thickness'])
-                    FI = compute_fouling_index(actual_ballast, 0.0)
-                    FI_class = classify_fouling_index(FI)
+                # Save to file using GPRMaxFileWriter
+                from .file_writer import GPRMaxFileWriter
+                filename = f"{work_order.id}.in"
+                filepath = output_dir / filename
                 
-                # Extract metadata
-                metadata = self._extract_metadata(sample_id, wos, params)
-                metadata['FI_class'] = FI_class  # Use actual FI_class
+                written_path = GPRMaxFileWriter.save_scene_checkpoint(
+                    checkpoint,
+                    output_path=str(filepath),
+                    scenario_type="Sim"
+                )
+                generated_files.append(written_path)
+                
+                # Extract metadata using centralized method
+                metadata = wos.export_metadata()
+                
+                # Add Config Constants that aren't in params or blackboard
+                metadata.update({
+                    'tx_x': self.config.tx_x,
+                    'rx_x': self.config.rx_x,
+                    'tx_rx_y': self.config.tx_rx_y,
+                    'center_freq': self.config.center_freq,
+                })
+                
                 metadata_rows.append(metadata)
                 
-                print(f"[OK] Sample {sample_id}: {len(files)} file(s) generated")
+                print(f"[OK] Sample {sample_id}: 1 file generated")
                 
             except Exception as e:
                 print(f"[ERROR] Sample {sample_id} failed: {e}")
@@ -122,81 +131,7 @@ class DatasetGenerator:
         
         return generated_files, metadata_rows
     
-    def _sample_parameters(self) -> Dict[str, Any]:
-        """
-        Sample random parameters from config ranges.
-        
-        Returns:
-            Dictionary of sampled parameters for WorkOrder
-        """
-        cfg = self.config
-        
-        # Sample ballast thickness
-        ballast_thickness = random.uniform(
-            cfg.min_ballast_thickness,
-            cfg.max_ballast_thickness
-        )
-        
-        # Sample PVC and moisture
-        pvc = random.uniform(cfg.pvc_min, cfg.pvc_max) if cfg.granular_mode else 0.0
-        moisture = random.uniform(cfg.moisture_min, cfg.moisture_max)
-        
-        # Calculate Fouling Index (FI) - critical for ML training
-        if cfg.granular_mode:
-            FI = convert_pvc_to_fi(pvc)
-            FI_class = classify_fouling_index(FI)
-        else:
-            rock_thickness, fouling_thickness = self._sample_heights()
-            FI = compute_fouling_index(rock_thickness, fouling_thickness)
-            FI_class = classify_fouling_index(FI)
-        
-        return {
-            'ballast_thickness': ballast_thickness,
-            'pvc': pvc,
-            'moisture': moisture,
-            'antenna_offset': 0.0,
-            'FI': FI,
-            'FI_class': FI_class
-        }
-    
-    def _sample_heights(self) -> tuple:
-        """Sample rock and fouling thicknesses for non-granular mode."""
-        cfg = self.config
-        total = random.uniform(cfg.min_ballast_thickness, cfg.max_ballast_thickness)
-        foul = random.uniform(cfg.min_foul_thickness, cfg.max_foul_thickness)
-        foul = min(foul, total)
-        rock = total - foul
-        return rock, foul
-    
-    def _extract_metadata(
-        self,
-        sample_id: int,
-        wos: WorkOrderSystem,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Extract metadata from WorkOrderSystem.
-        
-        Args:
-            sample_id: Sample identifier
-            wos: WorkOrderSystem after pipeline execution
-            params: Input parameters
-            
-        Returns:
-            Metadata dictionary
-        """
-        return {
-            'sample_id': sample_id,
-            'FI_class': params['FI_class'],
-            'pvc': params['pvc'],
-            'moisture': params['moisture'],
-            'ballast_thickness': params['ballast_thickness'],
-            'rock_count': wos.get('rock_count', 0),
-            'tx_x': self.config.tx_x,
-            'rx_x': self.config.rx_x,
-            'tx_rx_y': self.config.tx_rx_y,
-            'center_freq': self.config.center_freq,
-        }
+
     
     def _save_metadata(self, metadata_rows: List[Dict], output_dir: Path):
         """

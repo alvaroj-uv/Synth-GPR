@@ -100,8 +100,10 @@ class WorkOrderSystem:
         self._log_audit(worker_name, "SET", key, str(value))
         
     def log(self, message: str, worker_name: str) -> None:
-        """Log a generic message to the audit trail."""
+        """Log a generic message to the audit trail and console."""
         self._log_audit(worker_name, "LOG", None, message)
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] [{worker_name}] {message}")
     
     def log_issue(self, worker: str, issue_type: str, severity: str, description: str, context: Dict = None) -> None:
         """Log a quality issue (Single Source of QC)."""
@@ -116,6 +118,9 @@ class WorkOrderSystem:
         self._issues.append(issue)
         # Also log to audit trail for chronology
         self._log_audit(worker, f"QC_{severity.upper()}", issue_type, description)
+        
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] [{worker}] [QC:{severity.upper()}] {description}")
         
     def _log_audit(self, worker: str, action: str, key: Optional[str], value: Optional[str]) -> None:
         self._audit_log.append(AuditEntry(worker, action, key, value))

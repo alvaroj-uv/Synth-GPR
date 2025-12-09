@@ -175,3 +175,98 @@ class GPRMaxFileWriter:
             else:
                 lines.append(f"{name} = {value}")
         return ("\n".join(lines), comment)
+
+    @staticmethod
+    def write_to_file(
+        scene: SceneDefinition,
+        output_path: str,
+        scenario_type: str = "Sim",
+        extra_headers: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Write a SceneDefinition to a .in file.
+        
+        Encapsulates all file I/O operations for gprMax input files.
+        
+        Args:
+            scene: SceneDefinition to write
+            output_path: Full path to output file (including .in extension)
+            scenario_type: Scenario identifier for header
+            extra_headers: Optional additional metadata for headers
+            
+        Returns:
+            Path to written file
+            
+        Raises:
+            IOError: If file write fails
+        """
+        import os
+        
+        # Generate content
+        content = GPRMaxFileWriter.write_scene(
+            scene,
+            scenario_type=scenario_type,
+            extra_headers=extra_headers or {}
+        )
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir:  # Only create if there's a directory component
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Write to file
+        try:
+            with open(output_path, 'w') as f:
+                f.write(content)
+            return output_path
+        except Exception as e:
+            raise IOError(f"Failed to write file {output_path}: {e}") from e
+
+    @staticmethod
+    def save_scene_checkpoint(
+        checkpoint,  # SceneCheckpoint type (avoiding circular import)
+        output_path: str,
+        scenario_type: str = "Sim",
+        extra_headers: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Save a SceneCheckpoint to a .in file.
+        
+        Handles all conversion from SceneCheckpoint → SceneDefinition → file.
+        The production line doesn't need to know about file formats or paths.
+        
+        Args:
+            checkpoint: SceneCheckpoint to save
+            output_path: Full path to output file (including .in extension)
+            scenario_type: Scenario identifier for header
+            extra_headers: Optional additional metadata for headers
+            
+        Returns:
+            Path to written file
+            
+        Raises:
+            IOError: If file write fails
+        """
+        from .scene_descriptor import SceneDefinition
+        
+        # Convert SceneCheckpoint to SceneDefinition
+        scene_def = SceneDefinition(
+            config=checkpoint.config,
+            domain_commands=[
+                checkpoint.domain_cmd,
+                checkpoint.dx_dy_dz_cmd,
+                checkpoint.time_window_cmd
+            ],
+            material_commands=checkpoint.materials,
+            geometry_commands=checkpoint.geometry,
+            source_commands=checkpoint.sources,
+            metadata=checkpoint.metadata
+        )
+        
+        # Delegate to write_to_file
+        return GPRMaxFileWriter.write_to_file(
+            scene_def,
+            output_path=output_path,
+            scenario_type=scenario_type,
+            extra_headers=extra_headers
+        )

@@ -6,6 +6,8 @@ from .worker import SceneCheckpoint
 from .workers import (
     AntennaWorker, AssemblerWorker
 )
+from .degradation_worker import DegradationWorker
+from .lab_worker import LabWorker
 from .recipes import RecipeBook
 from .file_writer import GPRMaxFileWriter
 from .warehouses import MaterialWarehouse, ToolWarehouse
@@ -46,101 +48,70 @@ class ProductionLine:
         from .warehouse_keeper import WarehouseKeeper
         self.keeper = WarehouseKeeper(self.material_warehouse, self.tool_warehouse)
         
-    def run(self, work_order: WorkOrderSystem, output_dir: str) -> List[str]:
+    def run(self, work_order: WorkOrderSystem) -> SceneCheckpoint:
         """
         Execute the full production line for a given WorkOrder.
+        
+        Returns the finalized SceneCheckpoint. The caller is responsible
+        for persistence (file, database, memory, etc.).
+        
+        Architecture:
+        1. Base Phase: Build layers (Air → Subgrade → Formation → Ballast → Rocks → Degradation → Fouling)
+        2. Checkpoint: Save state for potential variants
+        3. Finalization Phase: Antenna → Assembler → LabWorker
+        4. Return: Finalized scene (caller handles persistence)
+        
+        Returns:
+            Finalized SceneCheckpoint ready for persistence
+            
+        Raises:
+            RuntimeError: If critical errors occur during production
         """
-        generated_files = []
         work_order.log("Production Line Started", "System")
         
-        # 1. Base Sequence
-        # ----------------
+        # ========================================================================
+        # PHASE 1: Base Construction
+        # ========================================================================
         scene = SceneCheckpoint(config=self.config, work_order=work_order)
         
-        # Define Base Recipe (could be injected)
         base_workers = RecipeBook.get_base_recipe("standard")
         
-        # Execute Base Workers
         for worker in base_workers:
             self._execute_worker(worker, scene, self.keeper)
             if self._has_critical_errors(work_order):
                 work_order.log("Aborting due to critical errors in Base Phase", "System")
-                return []
-            
-        # 2. Checkpoint
-        # -------------
+                raise RuntimeError("Production line failed in Base Phase")
+        
+        # ========================================================================
+        # PHASE 2: Checkpoint (for future variant support)
+        # ========================================================================
         checkpoint = scene.clone()
         work_order.log("Base Checkpoint Created", "System")
         
-        # 3. Variant Generation
-        # ---------------------
-        # Single variant for now (can extend later)
-        variants = [{'antenna_offset': 0.0}]
+        # ========================================================================
+        # PHASE 3: Finalization
+        # ========================================================================
+        finalization_workers = RecipeBook.get_finalization_recipe()
         
-        for var_idx, var_params in enumerate(variants):
-             # Clone from checkpoint
-             var_scene = checkpoint.clone()
-             
-             # Apply Variant Params to WorkOrder
-             # Note: This updates the shared blackboard state sequentially.
-             offset = var_params.get('antenna_offset', 0.0)
-             work_order.set('antenna_offset', offset, "System")
-             work_order.log(f"Starting Variant {var_idx} (Offset={offset})", "System")
-             
-             # Run Antenna Worker (Variant Specific)
-             self._execute_worker(AntennaWorker(), var_scene, self.keeper)
-             
-             # Run Assembler (Finalizer)
-             assembler = AssemblerWorker()
-             self._execute_worker(assembler, var_scene, self.keeper)
-             
-             # 4. Write Output
-             # ---------------
-             if var_scene.assembled and not self._has_critical_errors(work_order):
-                 # Generate filename
-                 suffix = f"_var{var_idx}" if len(variants) > 1 else ""
-                 filename = f"{work_order.work_order.id}{suffix}.in"
-                 path = os.path.join(output_dir, filename)
-                 
-                 try:
-                     # Build extra headers
-                     extra_headers = {
-                         "Variant": var_idx,
-                         "Offset": offset
-                     }
-                     
-                     # Create SceneDefinition from SceneCheckpoint
-                     from .scene_descriptor import SceneDefinition
-                     scene_def = SceneDefinition(
-                         config=var_scene.config,
-                         domain_commands=[var_scene.domain_cmd, var_scene.dx_dy_dz_cmd, var_scene.time_window_cmd],
-                         material_commands=var_scene.materials,
-                         geometry_commands=var_scene.geometry,
-                         source_commands=var_scene.sources,
-                         metadata=var_scene.metadata
-                     )
-                     
-                     content = GPRMaxFileWriter.write_scene(
-                         scene_def, 
-                         scenario_type="Sim",
-                         extra_headers=extra_headers
-                     )
-                     
-                     # Ensure output directory exists
-                     os.makedirs(output_dir, exist_ok=True)
-                     
-                     with open(path, 'w') as f:
-                         f.write(content)
-                         
-                     generated_files.append(path)
-                     work_order.log(f"Generated {filename}", "System")
-                     
-                 except Exception as e:
-                     work_order.log_issue("System", "critical", "high", f"Write Failed: {e}")
-             else:
-                 work_order.log_issue("System", "error", "high", f"Variant {var_idx} failed assembly or qc")
-                 
-        return generated_files
+        for worker in finalization_workers:
+            self._execute_worker(worker, checkpoint, self.keeper)
+            if self._has_critical_errors(work_order):
+                work_order.log("Aborting due to critical errors in Finalization Phase", "System")
+                raise RuntimeError("Production line failed in Finalization Phase")
+        
+        # ========================================================================
+        # PHASE 4: Validation
+        # ========================================================================
+        if not checkpoint.assembled:
+            work_order.log_issue("System", "error", "high", "Scene failed assembly")
+            raise RuntimeError("Scene failed assembly validation")
+        
+        if self._has_critical_errors(work_order):
+            work_order.log_issue("System", "error", "high", "Scene has critical errors")
+            raise RuntimeError("Scene has critical quality check errors")
+        
+        work_order.log("Production Line Completed", "System")
+        return checkpoint
 
     def _execute_worker(self, worker, scene, params):
         """Helper to run a worker and handle logs."""

@@ -130,12 +130,22 @@ class ToolWarehouse:
         if name == "rock_packer":
             # Select strategy based on config
             algo = self.config.rock_packing_algorithm
+            
             if algo == "wang":
                 from .rock_packing import WangTileRockPacking
                 return WangTileRockPacking(tile_size=self.config.wang_tile_size)
             elif algo == "poisson":
                 from .rock_packing import PoissonDiskPacking
                 return PoissonDiskPacking()
+            elif algo == "front_chain":
+                from .rock_packing import FrontChainPacking
+                return FrontChainPacking()
+            elif algo == "physics":
+                from .rock_packing import PhysicsPacking
+                return PhysicsPacking()
+            elif algo == "triangle":
+                from .rock_packing import TrianglePacking
+                return TrianglePacking()
             else:
                 from .rock_packing import RandomPacking
                 return RandomPacking()

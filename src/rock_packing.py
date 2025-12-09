@@ -21,52 +21,10 @@ from enum import IntEnum
 import numpy as np
 import random
 
+from .rock_model import Rock, PackingBounds
 
-@dataclass
-class Rock:
-    """
-    Represents a single rock as a 2D circle.
-    
-    Attributes:
-        x: X-coordinate of rock center (meters)
-        y: Y-coordinate of rock center (meters)
-        radius: Rock radius (meters)
-    """
-    x: float
-    y: float
-    radius: float
+# Removed local Rock/PackingBounds definitions
 
-
-@dataclass
-class PackingBounds:
-    """
-    Defines the rectangular bounding box for rock placement.
-    
-    Attributes:
-        x_min: Left boundary (meters)
-        x_max: Right boundary (meters)
-        y_min: Bottom boundary (meters)
-        y_max: Top boundary (meters)
-    """
-    x_min: float
-    x_max: float
-    y_min: float
-    y_max: float
-    
-    @property
-    def width(self) -> float:
-        """Width of the bounding box."""
-        return self.x_max - self.x_min
-    
-    @property
-    def height(self) -> float:
-        """Height of the bounding box."""
-        return self.y_max - self.y_min
-    
-    @property
-    def area(self) -> float:
-        """Total area of the bounding box."""
-        return self.width * self.height
 
 
 class RockPackingStrategy(ABC):
@@ -92,29 +50,47 @@ class RockPackingStrategy(ABC):
         
         Args:
             bounds: Rectangular bounding box for placement
-            radius_min: Minimum rock radius (meters)
-            radius_max: Maximum rock radius (meters)
-            target_fill_ratio: Target packing density, 0-1 (default: 0.6 = 60%)
-            max_attempts: Maximum placement attempts to prevent infinite loops
             
         Returns:
-            List of Rock objects with (x, y, radius) coordinates
+            List of Rock objects
         """
         pass
-    
+
     def _create_rock(self, x: float, y: float, radius: float) -> Rock:
-        """
-        Helper method to create a Rock object.
-        
-        Args:
-            x: X-coordinate
-            y: Y-coordinate
-            radius: Radius
-            
-        Returns:
-            Rock instance
-        """
+        """Helper method to create a Rock object."""
         return Rock(x=x, y=y, radius=radius)
+
+    def fill_voids(self, rocks: List[Rock], bounds: PackingBounds, 
+                   min_void_radius: float = 0.005, attempts: int = 500) -> List[Rock]:
+        """
+        Post-processing step to fill gaps with small rocks.
+        Inspired by ifrozenwhale/non-overlapping-circle.
+        """
+        new_rocks = list(rocks)
+        for _ in range(attempts):
+            x = random.uniform(bounds.x_min, bounds.x_max)
+            y = random.uniform(bounds.y_min, bounds.y_max)
+            
+            min_dist = float('inf')
+            valid_center = True
+            
+            # Bounds check
+            min_dist = min(min_dist, x - bounds.x_min, bounds.x_max - x, 
+                           y - bounds.y_min, bounds.y_max - y)
+            if min_dist < min_void_radius: continue
+                
+            # Rock check
+            for r in new_rocks:
+                d_surf = np.hypot(x - r.x, y - r.y) - r.radius
+                if d_surf < 0:
+                    valid_center = False
+                    break
+                min_dist = min(min_dist, d_surf)
+            
+            if valid_center and min_dist >= min_void_radius:
+                new_rocks.append(self._create_rock(x, y, min_dist - 0.0001))
+                
+        return new_rocks
 
 
 class RandomPacking(RockPackingStrategy):
@@ -723,5 +699,383 @@ class GridPacking(RockPackingStrategy):
                 if x + r <= bounds.x_max and y + r <= bounds.y_max:
                     rocks.append(self._create_rock(x, y, r))
                     
+        return rocks
+
+
+class FrontChainPacking(RockPackingStrategy):
+    """
+    Front-Chain Packing (Advancing Front) for high-density aggregates.
+    
+    Inspired by d3-hierarchy's packSiblings (Wang et al.).
+    Maintains a chain of "front" circles and places new circles in the 
+    interstices (pockets) between neighbors.
+    
+    Characteristics:
+        - Density: High (70-80%+) because it maximizes tangency.
+        - Structure: Clustered, organic "growth" look.
+        - Complexity: O(N log N) roughly.
+    """
+    
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.75, # Higher default for this strategy
+        max_attempts: int = 2000
+    ) -> List[Rock]:
+        rocks = []
+        
+        # 1. Pre-generate a queue of rocks to place (sorted by size usually helps density)
+        # We start with a large batch to ensure we have enough to fill
+        estimated_count = int((bounds.area * target_fill_ratio) / (np.pi * radius_min**2)) * 2
+        
+        # We'll use a simple "gravity" approach: grow from bottom-center
+        start_x = (bounds.x_min + bounds.x_max) / 2
+        start_y = bounds.y_min + radius_max
+        
+        # Initialize front with a single rock
+        first_r = random.uniform(radius_min, radius_max)
+        first_rock = self._create_rock(start_x, start_y, first_r)
+        
+        if not self._is_inside(first_rock, bounds):
+             # If even the first rock doesn't fit (domain too small), abort
+             return []
+             
+        rocks.append(first_rock)
+        
+        # The "Front" is a list of rocks that are candidates for neighbors
+        # For a full implementation like d3, we need a linked list. 
+        # Here we use a simplified "Distance Field" or "Place Near" approach 
+        # for robustness in a bounded box.
+        
+        # SIMPLIFIED ALGORITHM for Bounded Box:
+        # 1. Pick a reference rock from the existing set (close to center/bottom)
+        # 2. Try to place new rock tangent to it at various angles
+        # 3. If valid (no overlap, inside bounds), accept.
+        # 4. Repeat.
+        
+        current_fill = (np.pi * first_r**2) / bounds.area
+        attempts = 0
+        
+        while current_fill < target_fill_ratio and attempts < max_attempts:
+            r = random.uniform(radius_min, radius_max)
+            
+            placed = False
+            
+            # Optimization: Try to place tangent to recent rocks (advancing front)
+            # Scan backwards through placed rocks to find a host
+            candidates = list(range(len(rocks)))
+            random.shuffle(candidates) # Randomize to avoid directional bias
+            candidates = candidates[:50] # Only look at a subset to be fast
+            
+            for idx in candidates:
+                host = rocks[idx]
+                
+                # Try placing in the "nook" between host and its neighbors?
+                # Or just simple tangent placement at random angle
+                
+                # Try k angles around the host
+                for _ in range(8): 
+                    angle = random.uniform(0, 2 * np.pi)
+                    dist = host.radius + r
+                    
+                    x_c = host.x + np.cos(angle) * dist
+                    y_c = host.y + np.sin(angle) * dist
+                    
+                    new_rock = self._create_rock(x_c, y_c, r)
+                    
+                    if self._is_valid(new_rock, rocks, bounds):
+                        rocks.append(new_rock)
+                        current_fill += (np.pi * r**2) / bounds.area
+                        placed = True
+                        break
+                
+                if placed: break
+            
+            if not placed:
+                attempts += 1
+            else:
+                attempts = 0 # Reset attempts on success
+                
+        return rocks
+
+    def _is_inside(self, rock: Rock, bounds: PackingBounds) -> bool:
+        return (rock.x - rock.radius >= bounds.x_min and
+                rock.x + rock.radius <= bounds.x_max and
+                rock.y - rock.radius >= bounds.y_min and
+                rock.y + rock.radius <= bounds.y_max)
+
+    def _is_valid(self, candidate: Rock, others: List[Rock], bounds: PackingBounds) -> bool:
+        if not self._is_inside(candidate, bounds):
+            return False
+            
+        # O(N) overlap check - can be improved with grid but sufficient for N<1000
+        for other in others:
+            # Squared distance check
+            dx = candidate.x - other.x
+            dy = candidate.y - other.y
+            dist_sq = dx*dx + dy*dy
+            min_dist = candidate.radius + other.radius
+            if dist_sq < min_dist * min_dist - 0.000001: # Epsilon for float tolerance
+                return False
+                
+        return True
+
+
+
+class PhysicsPacking(RockPackingStrategy):
+    """
+    Force-Directed Relaxation Packing (Physics Simulation).
+    
+    References / Inspirations:
+    - User provided 'packin_idea.py' (Force-Directed Graph style).
+    - https://github.com/mbedward/packcircles (R package, 'circleRepelLayout').
+    - https://github.com/xnx/circle-packing (Packing into arbitrary shapes).
+    - https://github.com/Rebekah1012/PackingCircles (Numerical Optimization methodology).
+    - https://github.com/ifrozenwhale/non-overlapping-circle (Gap Filling / Random Walk).
+    
+    Method:
+    1. Initialize rocks randomly (allowing overlaps).
+    2. Iteratively apply repulsive forces between overlapping rocks.
+    3. Rocks 'push' each other apart until equilibrium is reached.
+    
+    Refinement (Inertia):
+    - Repulsion is mass-weighted. Small rocks move more than large rocks.
+    - This simulates 'shaking' where small particles settle into gaps.
+    
+    Characteristics:
+        - Density: Very High (can exceed 80% if compressed).
+        - Quality: Organic, realistic "settled" look.
+        - Performance: Slower than Poisson/FrontChain due to iterative loop.
+    """
+    
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.70, 
+        max_attempts: int = 200 
+    ) -> List[Rock]:
+        """
+        Generates rocks using physics relaxation.
+        
+        Args:
+            max_attempts: HERE, used as MAX_ITERATIONS for the physics loop.
+        """
+        # 1. Initialize Rocks
+        estimated_count = int((bounds.area * target_fill_ratio) / (np.pi * radius_min**2))
+        
+        # Internal class for simulation state
+        class SimRock:
+            def __init__(self, x, y, r):
+                self.x = x
+                self.y = y
+                self.r = r
+                self.vx = 0.0
+                self.vy = 0.0
+                # Mass proportional to area (2D) or volume (3D). Let's use Area.
+                self.mass = r * r 
+        
+        sim_rocks = []
+        for _ in range(estimated_count):
+            r = random.uniform(radius_min, radius_max)
+            x = random.uniform(bounds.x_min + r, bounds.x_max - r)
+            y = random.uniform(bounds.y_min + r, bounds.y_max - r)
+            sim_rocks.append(SimRock(x, y, r))
+            
+        # 2. Physics Loop
+        iterations = max_attempts 
+        damping = 0.5 
+        
+        for _ in range(iterations):
+            max_move = 0.0
+            
+            # We can do immediate updates (Gauss-Seidel style) for faster convergence
+            # instead of waiting for all forces (Jacobi).
+            # This is often more stable for packing.
+            
+            random.shuffle(sim_rocks) # Avoid bias
+            
+            for i in range(len(sim_rocks)):
+                r1 = sim_rocks[i]
+                fx, fy = 0.0, 0.0
+                
+                # --- Wall Repulsion ---
+                # Walls have infinite mass -> rock moves 100% of the overlap
+                if r1.x - r1.r < bounds.x_min: 
+                    r1.x = bounds.x_min + r1.r + 0.0001 # Hard clamp + epsilon
+                if r1.x + r1.r > bounds.x_max: 
+                    r1.x = bounds.x_max - r1.r - 0.0001
+                if r1.y - r1.r < bounds.y_min: 
+                    r1.y = bounds.y_min + r1.r + 0.0001
+                if r1.y + r1.r > bounds.y_max: 
+                    r1.y = bounds.y_max - r1.r - 0.0001
+
+                # --- Neighbor Repulsion ---
+                for j in range(len(sim_rocks)):
+                    if i == j: continue
+                    r2 = sim_rocks[j]
+                    
+                    dx = r1.x - r2.x
+                    dy = r1.y - r2.y
+                    dist_sq = dx*dx + dy*dy
+                    min_dist = r1.r + r2.r
+                    
+                    if dist_sq < min_dist*min_dist:
+                        dist = np.sqrt(dist_sq)
+                        if dist == 0:
+                            # Exact overlap
+                            nx, ny = random.uniform(-1, 1), random.uniform(-1, 1)
+                            overlap = min_dist
+                        else:
+                            overlap = min_dist - dist
+                            nx, ny = dx/dist, dy/dist
+                        
+                        # Mass-Weighted Displacement
+                        # Total overlap needs to be resolved.
+                        # r1 moves proportional to r2's mass (relative to total mass)
+                        # if r2 is huge, r1 moves a lot.
+                        # if r2 is tiny, r1 moves a little.
+                        
+                        total_mass = r1.mass + r2.mass
+                        factor1 = r2.mass / total_mass # Share for r1
+                        
+                        # Apply immediate displacement (position based dynamics)
+                        # Instead of force/velocity which needs tuning, just move them apart!
+                        # This is much more robust for packing.
+                        
+                        displace = overlap * factor1 * 0.5 # Relax factor 0.5 for stability
+                        
+                        r1.x += nx * displace
+                        r1.y += ny * displace
+                        
+                        # We don't move r2 here, we wait for its turn (or move it now?)
+                        # Gauss-Seidel: move r1 now, r2 will react to new r1 later.
+                        # Symmetry: Let's move both now? No, simple sequential is fine.
+            
+            # Check limits again after neighborhood moves
+            # (Simplified for speed)
+        
+        # 3. Finalize
+        final_rocks = []
+        for sr in sim_rocks:
+             # Final loose check
+             if (sr.x - sr.r >= bounds.x_min - 0.001 and sr.x + sr.r <= bounds.x_max + 0.001 and
+                 sr.y - sr.r >= bounds.y_min - 0.001 and sr.y + sr.r <= bounds.y_max + 0.001):
+                 final_rocks.append(self._create_rock(sr.x, sr.y, sr.r))
+                 
+        return final_rocks
+
+
+class TrianglePacking(RockPackingStrategy):
+    """
+    "Tangent Triangle" Packing (Mesh-based Incircles).
+    
+    Logic Inversion:
+    Instead of placing circles into shapes, we generate a mesh of triangles
+    where every circle is the "incircle" of a triangle.
+    
+    The sides of the triangles are perfectly tangent to the borders of the
+    circles contained within them.
+    
+    Method:
+    1. Generate random points within the bounds.
+    2. Perform Delaunay Triangulation (`scipy.spatial`) to create a mesh.
+    3. Calculate the inscribed circle (incircle) for each triangle.
+    
+    Characteristics:
+        - Density: Moderate (~40-60%).
+        - Structure: Geometric, crystalline.
+        - Overlaps: No (strictly disjoint by definition).
+    """
+    
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.6,
+        max_attempts: int = 1000
+    ) -> List[Rock]:
+        try:
+            from scipy.spatial import Delaunay
+        except ImportError:
+            print("TrianglePacking requires scipy. Falling back to RandomPacking.")
+            return RandomPacking().generate_rocks(bounds, radius_min, radius_max, target_fill_ratio, max_attempts)
+
+        rocks = []
+        
+        # 1. Generate Points for Mesh
+        # More points = smaller triangles = smaller rocks
+        # Heuristic: Area / (pi * mean_r^2) to guess count
+        mean_r = (radius_min + radius_max) / 2
+        estimated_points = int(bounds.area / (np.pi * mean_r**2))
+        
+        points = []
+        # Add corners to ensure convex hull covers bounds
+        points.append([bounds.x_min, bounds.y_min])
+        points.append([bounds.x_max, bounds.y_min])
+        points.append([bounds.x_max, bounds.y_max])
+        points.append([bounds.x_min, bounds.y_max])
+        
+        for _ in range(estimated_points):
+            points.append([
+                random.uniform(bounds.x_min, bounds.x_max),
+                random.uniform(bounds.y_min, bounds.y_max)
+            ])
+            
+        points = np.array(points)
+        
+        # 2. Triangulate
+        try:
+            tri = Delaunay(points)
+        except Exception:
+            return []
+            
+        # 3. Incircles
+        for simplex in tri.simplices:
+            # Get vertices of the triangle
+            pts = points[simplex]
+            A, B, C = pts[0], pts[1], pts[2]
+            
+            # Side lengths
+            a = np.linalg.norm(B - C)
+            b = np.linalg.norm(A - C)
+            c = np.linalg.norm(A - B)
+            
+            # Semiperimeter and Area (Heron's)
+            s = (a + b + c) / 2
+            area = np.sqrt(s * (s - a) * (s - b) * (s - c)) if s > max(a,b,c) else 0
+            
+            if area < 1e-9: continue
+            
+            # Inradius
+            r = area / s
+            
+            # Filter by constraints
+            if r < radius_min:
+                # Too small
+                continue
+            
+            # Bounds check (Triangle center definitely inside? Delaunay covers convex hull)
+            # We strictly clip to our rect bounds
+            
+            # Incenter coordinates
+            # Cartesian = (a*Ax + b*Bx + c*Cx) / perimeter
+            perimeter = a + b + c
+            ix = (a*A[0] + b*B[0] + c*C[0]) / perimeter
+            iy = (a*A[1] + b*B[1] + c*C[1]) / perimeter
+            
+            # Clip Radius to max
+            if r > radius_max:
+                r = radius_max # This creates gaps but respects max size
+            
+            # Is it inside bounds?
+            if (ix - r >= bounds.x_min and ix + r <= bounds.x_max and
+                iy - r >= bounds.y_min and iy + r <= bounds.y_max):
+                rocks.append(self._create_rock(ix, iy, r))
+                
         return rocks
 
