@@ -146,6 +146,9 @@ class ToolWarehouse:
             elif algo == "triangle":
                 from .rock_packing import TrianglePacking
                 return TrianglePacking()
+            elif algo == "shang_chu":
+                from .rock_packing import ShangChuPacking
+                return ShangChuPacking()
             else:
                 from .rock_packing import RandomPacking
                 return RandomPacking()

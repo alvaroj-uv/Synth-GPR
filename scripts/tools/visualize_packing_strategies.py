@@ -7,9 +7,10 @@ import time
 import numpy as np
 
 # Add src to path
+# Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from rock_packing import PoissonDiskPacking, FrontChainPacking, PhysicsPacking, TrianglePacking, PackingBounds
+from rock_packing import PoissonDiskPacking, FrontChainPacking, PhysicsPacking, TrianglePacking, ShangChuPacking, PackingBounds
 
 def visualize_strategy(ax, strategy, name, bounds, r_min, r_max):
     print(f"Running {name}...")
@@ -60,14 +61,16 @@ def main():
     r_max = 0.04
     
     # Increased to 4 subplots
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    # Increased to 2x3 grid for 5 strategies
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     axes = axes.flatten()
     
     strategies = [
         (PoissonDiskPacking(), "Poisson Disk"),
-        (FrontChainPacking(), "Front-Chain"),
+        (FrontChainPacking(), "Front-Chain (Advancing Front)"),
         (PhysicsPacking(), "Physics (Relaxation)"),
-        (TrianglePacking(), "Triangle (Mesh)")
+        (TrianglePacking(), "Triangle (Mesh)"),
+        (ShangChuPacking(), "Shang-Chu (Random Search)")
     ]
     
     for ax, (strat, name) in zip(axes, strategies):

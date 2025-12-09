@@ -1079,3 +1079,225 @@ class TrianglePacking(RockPackingStrategy):
                 
         return rocks
 
+
+@dataclass
+class _SCCircle:
+    """Internal circle representation for the algorithm."""
+    id: int
+    radius: float
+    x: float = 0.0
+    y: float = 0.0
+    # State: 0=Floating/New, 1=Quasi-stable, 2=Stable, 3=Pseudo-stable
+    state: int = 0
+
+
+class ShangChuPacking(RockPackingStrategy):
+    """
+    Random Search Algorithm for Unequal Circle Packing.
+    
+    Based on: Shang, X. & Chu, F. (2013). "A random search algorithm for the 
+    unequal circle packing problem".
+    
+    Logic:
+    1. Minimizes total length L used (or maximizes density in fixed box).
+    2. Uses BS-Area (Bow Shift) local search.
+    3. Uses disturbance strategies (Left-off, Bottom-off) to escape local optima.
+    """
+    
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.78, # Can achieve high density
+        max_attempts: int = 5000
+    ) -> List[Rock]:
+        """
+        Run the Shang-Chu packing algorithm.
+        
+        Note: The original paper packs a specific set of circles. Here we:
+        1. Generate a target set of circles based on fill ratio.
+        2. Pack them using the algorithm.
+        3. Return those that fit.
+        """
+        # 1. Generate target rocks to pack
+        # Sort desc by radius usually helps packing
+        target_area = bounds.area * target_fill_ratio
+        current_area = 0.0
+        circles = []
+        uid = 0
+        
+        # Determine "Length" (L) direction. 
+        # In this codebase, usually Y is 'up' and X is 'width'.
+        # The paper packs into fixed Width W, minimizing Length L.
+        # So W = bounds.width, L = bounds.height (minimized).
+        W = bounds.width
+        # We start with L_current = 0
+        
+        # Pre-generate set of circles
+        while current_area < target_area:
+            r = random.uniform(radius_min, radius_max)
+            circles.append(_SCCircle(uid, r))
+            current_area += np.pi * r**2
+            uid += 1
+            
+        # Sort by radius descending (heuristic)
+        circles.sort(key=lambda c: c.radius, reverse=True)
+        
+        # 2. Initialization: Random placement
+        # Place circles randomly in a large bounding box, ensuring no overlap
+        # Paper says "Randomly place i-th circle... if overlap, retry"
+        L_current = 0.0
+        
+        for c in circles:
+            c.x, c.y = self._find_random_non_overlapping_pos(c, circles, W, bounds.height)
+            L_current = max(L_current, c.y + c.radius)
+
+        # 3. Main Optimization Loop
+        iteration = 0
+        no_improv_count = 0
+        max_no_improv = 100 # Threshold to trigger disturbance
+        
+        # Paper flow: Search -> Disturbance if needed
+        while iteration < max_attempts:
+            improved = False
+            
+            # Sort circles by distance from origin (or "bottom")
+            # Usually bottom-left or just Y coordinate. Paper says "distance from origin".
+            # optimization order matters.
+            search_order = sorted(circles, key=lambda c: c.y) 
+            
+            for c in search_order:
+                # Local Search in BS-Area
+                if self._bs_area_search(c, circles, W):
+                    improved = True
+                    # Re-calc L
+                    L_current = max((k.y + k.radius for k in circles), default=0)
+            
+            if improved:
+                no_improv_count = 0
+            else:
+                no_improv_count += 1
+                
+            # Disturbance
+            if no_improv_count > max_no_improv:
+                # Apply disturbance (Left-off or Bottom-off)
+                # "Left-off": Move quasi-stable circles (those tangent to boundary)
+                # "Bottom-off": Move circles near bottom
+                self._apply_disturbance(circles, W, bounds.height)
+                no_improv_count = 0 # Reset
+                
+            iteration += 1
+            
+        # 4. Convert back to Rock objects
+        # Filter those that are fully inside bounds
+        result_rocks = []
+        for c in circles:
+            # Shift coordinates to absolute bounds
+            abs_x = bounds.x_min + c.x
+            abs_y = bounds.y_min + c.y
+            
+            if (abs_x - c.radius >= bounds.x_min and abs_x + c.radius <= bounds.x_max and
+                abs_y - c.radius >= bounds.y_min and abs_y + c.radius <= bounds.y_max):
+                result_rocks.append(self._create_rock(abs_x, abs_y, c.radius))
+                
+        return result_rocks
+
+    def _find_random_non_overlapping_pos(self, c: _SCCircle, existing: List[_SCCircle], W: float, max_L: float) -> Tuple[float, float]:
+        # Simple rejection sampling
+        for _ in range(100):
+            x = random.uniform(c.radius, W - c.radius)
+            y = random.uniform(c.radius, max_L - c.radius)
+            
+            valid = True
+            for other in existing:
+                if other.id == c.id or other.x == 0: continue # optimized check (unplaced have x=0?)
+                # Wait, existing list includes c, check ID
+                if other.id != c.id:
+                    dist_sq = (x - other.x)**2 + (y - other.y)**2
+                    min_dist = c.radius + other.radius
+                    if dist_sq < min_dist**2 - 1e-6:
+                        valid = False
+                        break
+            if valid:
+                return x, y
+        return 0, 0 # Should not happen if area is sparse enough
+
+    def _bs_area_search(self, c: _SCCircle, circles: List[_SCCircle], W: float) -> bool:
+        """
+        Search for a better position within the "Bow Shift Area".
+        We implement a gradient-like stochastic sampling:
+        Try k positions in a cone 120 deg "below" the current position or 
+        towards a hole. 
+        Goal: Minimize y.
+        """
+        current_y = c.y
+        best_x, best_y = c.x, c.y
+        found_better = False
+        
+        # Sampling parameters
+        attempts = 20
+        # "Bow" shaped search area generally means looking "downwards" for gravity packing
+        # Let's search in a semi-circle or cone below current position
+        step_size = c.radius * 2.0
+        
+        for _ in range(attempts):
+            # Sample angle downwards: -150 to -30 degrees (-90 is straight down)
+            angle = random.uniform(np.radians(-150), np.radians(-30))
+            dist = random.uniform(0, step_size)
+            
+            # Candidate pos
+            nx = c.x + np.cos(angle) * dist
+            ny = c.y + np.sin(angle) * dist
+            
+            # Boundary check
+            if nx - c.radius < 0 or nx + c.radius > W or ny - c.radius < 0:
+                continue
+            
+            # Overlap check (Only with OTHER circles)
+            valid = True
+            for other in circles:
+                if other.id == c.id: continue
+                # We can optimize by simple box check first
+                if abs(other.x - nx) > (c.radius + other.radius): continue
+                if abs(other.y - ny) > (c.radius + other.radius): continue
+                
+                d2 = (nx - other.x)**2 + (ny - other.y)**2
+                min_d = c.radius + other.radius
+                if d2 < min_d**2 - 1e-5:
+                    valid = False
+                    break
+            
+            if valid and ny < best_y:
+                best_x, best_y = nx, ny
+                found_better = True
+        
+        if found_better:
+            c.x, c.y = best_x, best_y
+            return True
+            
+        return False
+        
+    def _apply_disturbance(self, circles: List[_SCCircle], W: float, max_L: float):
+        """Randomly move some circles to shake the container."""
+        strategy = random.choice(["bottom_off", "left_off", "random_move"])
+        
+        targets = []
+        if strategy == "bottom_off":
+            # Pick lowest circles
+            targets = [c for c in circles if c.y < max_L * 0.2]
+        elif strategy == "left_off":
+            # Pick left-side circles
+            targets = [c for c in circles if c.x < W * 0.2]
+        else:
+            targets = random.sample(circles, min(len(circles)//5, 1))
+            
+        # Re-place them randomly above the current pile
+        max_y = max((c.y for c in circles), default=0)
+        for c in targets:
+            # "Put out of rectangle" then re-enter -> Place largely on top
+            c.x = random.uniform(c.radius, W - c.radius)
+            # Place them very high up where it's empty
+            c.y = max_y + c.radius + random.uniform(0, max_L/2)
+
+
