@@ -33,7 +33,7 @@ cfg = GeneratorConfig(
     base_seed=999 # Use a different seed for variety
 )
 gen = DatasetGenerator(cfg)
-files = gen.generate_samples(OUT_DIR, n_samples=1, start_id=0)
+files, metadata = gen.generate_samples(OUT_DIR, n_samples=1, start_id=0)
 
 # Rename to known filename
 if files and os.path.exists(files[0]):
@@ -42,6 +42,7 @@ if files and os.path.exists(files[0]):
              os.rename(files[0], IN_FILE)
     except Exception as e:
         print(f"Rename error: {e}")
+
 
 # 3. RUN SIMULATION
 print("[2/3] Running gprMax Simulation...")

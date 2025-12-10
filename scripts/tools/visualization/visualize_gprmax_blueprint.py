@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
 import numpy as np
-from scipy.signal import hilbert
+from scipy.signal import hilbert, stft, convolve
 import matplotlib.gridspec as gridspec
 
 # Add parent directory to path for imports
@@ -30,37 +30,134 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 try:
     from src.data_loader import read_gprmax_hdf5
     HAS_DATA_LOADER = True
-    print("[OK] Successfully loaded data_loader")
 except ImportError as e:
     HAS_DATA_LOADER = False
-    print(f"[WARN] Warning: Could not import data_loader (Signal plotting disabled): {e}")
 
 
-# Material color mapping for visualization
-# This dictionary maps specific material identifiers found in gprMax input files
-# to hex color codes for Matplotlib visualization.
-MATERIAL_COLORS = {
-    'free_space': '#F5F5F5',       # White Smoke: Neutral background
-    'bal_rock': '#F4A460',         # Sandy Brown: Light, high contrast against dark fouling
-    'bal_foul': '#4B3621',         # Cafe Noir: Very dark brown for fouling matrix
-    'bal_foul_granular': '#4B3621',# Same as above
-    'subgrade': '#2F4F4F',         # Dark Slate Gray: Distinct cool tone for base
-    'formation': '#BDB76B',        # Dark Khaki: Distinct olive/yellowish tone
-    'concrete_sleeper': '#708090', # Slate Gray
-}
+# === CONSTANTS ===
+# Signal processing
+SIGNAL_AMPLITUDE_THRESHOLD = 1e-9  # Minimum amplitude to consider signal non-empty
 
-# Add gradient materials dynamically
-# Generates colors for 'bal_foul_g1' to 'bal_foul_g9' to visualize varying degrees of fouling
-# using the YlOrBr (Yellow-Orange-Brown) colormap.
-for i in range(1, 10):
-    MATERIAL_COLORS[f'bal_foul_g{i}'] = plt.cm.YlOrBr(0.3 + i * 0.07)
+# Figure sizes
+BLUEPRINT_FIGURE_SIZE = (12, 8)  # Width, height in inches for blueprint-only view
+SIGNAL_FIGURE_SIZE = (16, 8)     # Width, height in inches for blueprint + signal view
 
-# Add Granular mode materials (High-Fidelity)
-# Specific colors for granular simulation components
-MATERIAL_COLORS['bal_foul_granular'] = '#5D4037' # Darker brown for the fine matrix between rocks
-MATERIAL_COLORS['bal_rock_L1'] = '#A1887F'       # Lighter brown for Small rocks
-MATERIAL_COLORS['bal_rock_L2'] = '#8D6E63'       # Medium brown for Medium rocks
-MATERIAL_COLORS['bal_rock_L3'] = '#6D4C41'       # Darker brown for Large rocks
+# Visual styling
+DEFAULT_LINE_WIDTH = 0.3    # Line width for geometry edges
+EDGE_COLOR = '#404040'      # Default edge color for geometry objects
+FREE_SPACE_COLOR = '#E8F4F8'  # Color for free_space material
+FREE_SPACE_ALPHA = 0.1      # Alpha transparency for free_space
+
+# Annotation thresholds
+MIN_LAYER_HEIGHT = 0.001    # Minimum height (m) to draw layer boundary line
+MIN_ANNOTATION_HEIGHT = 0.01  # Minimum height (m) to add text annotation
+
+# Plot DPI
+OUTPUT_DPI = 300  # DPI for saved images
+
+
+# === HELPER FUNCTIONS ===
+
+def generate_material_colors():
+    """
+    Generate the complete material colors dictionary for visualization.
+    
+    This dictionary maps specific material identifiers found in gprMax input files
+    to hex color codes or RGBA tuples for Matplotlib visualization.
+    
+    Returns:
+        dict: Mapping of material_name -> color (hex string or RGBA tuple)
+    """
+    colors = {
+        'free_space': '#F5F5F5',       # White Smoke: Neutral background
+        'bal_rock': '#F4A460',         # Sandy Brown: Light, high contrast against dark fouling
+        'bal_foul': '#4B3621',         # Cafe Noir: Very dark brown for fouling matrix
+        'bal_foul_granular': '#4B3621',# Same as above (overwritten below)
+        'subgrade': '#2F4F4F',         # Dark Slate Gray: Distinct cool tone for base
+        'formation': '#BDB76B',        # Dark Khaki: Distinct olive/yellowish tone
+        'concrete_sleeper': '#708090', # Slate Gray
+    }
+    
+    # Add gradient materials dynamically
+    # Generates colors for 'bal_foul_g1' to 'bal_foul_g9' to visualize varying degrees of fouling
+    # using the YlOrBr (Yellow-Orange-Brown) colormap.
+    for i in range(1, 10):
+        colors[f'bal_foul_g{i}'] = plt.cm.YlOrBr(0.3 + i * 0.07)
+    
+    # Add Granular mode materials (High-Fidelity)
+    # Specific colors for granular simulation components
+    colors['bal_foul_granular'] = '#5D4037'  # Darker brown for the fine matrix between rocks
+    colors['bal_rock_L1'] = '#A1887F'        # Lighter brown for Small rocks
+    colors['bal_rock_L2'] = '#8D6E63'        # Medium brown for Medium rocks
+    colors['bal_rock_L3'] = '#6D4C41'        # Darker brown for Large rocks
+    
+    return colors
+
+
+# Initialize module-level material colors using the generator function
+MATERIAL_COLORS = generate_material_colors()
+
+
+def filter_cylinders(objects):
+    """
+    Filter and return only cylinder objects from an objects list.
+    
+    Args:
+        objects (list): List of geometry objects with 'type' key
+        
+    Returns:
+        list: Filtered list containing only cylinder objects
+    """
+    return [obj for obj in objects if obj.get('type') == 'cylinder']
+
+
+def filter_boxes(objects, exclude_material=None):
+    """
+    Filter and return only box objects from an objects list.
+    
+    Args:
+        objects (list): List of geometry objects with 'type' key
+        exclude_material (str, optional): Material name to exclude from results
+        
+    Returns:
+        list: Filtered list containing only box objects (excluding specified material if provided)
+    """
+    boxes = [obj for obj in objects if obj.get('type') == 'box']
+    
+    if exclude_material:
+        boxes = [box for box in boxes if box.get('material') != exclude_material]
+    
+    return boxes
+
+
+def get_material_color_alpha(material, materials_dict, min_eps, max_eps, cmap):
+    """
+    Get the color and alpha value for a given material based on its dielectric constant.
+    
+    Args:
+        material (str): Material name
+        materials_dict (dict): Dictionary mapping material names to properties (eps, sigma)
+        min_eps (float): Minimum epsilon value in the domain
+        max_eps (float): Maximum epsilon value in the domain
+        cmap: Matplotlib colormap to use for color mapping
+        
+    Returns:
+        tuple: (color, alpha) where color is hex string or RGBA and alpha is float 0-1
+    """
+    if material == 'free_space':
+        return FREE_SPACE_COLOR, FREE_SPACE_ALPHA
+    
+    mat_props = materials_dict.get(material, {})
+    eps = mat_props.get('eps', 5.0)
+    
+    if max_eps > min_eps:
+        norm_eps = (eps - min_eps) / (max_eps - min_eps)
+    else:
+        norm_eps = 0.5
+    
+    # Get color from colormap
+    return cmap(0.3 + norm_eps * 0.6), 1.0  # Opaque
+
 
 
 def parse_gprmax_input(filepath):
@@ -198,20 +295,378 @@ def parse_gprmax_input(filepath):
     return data
 
 
+def _load_signal_data(out_file_path):
+    """
+    Load and validate signal data from a gprMax .out HDF5 file.
+    
+    Reads E and H field data, filters out empty signals (below threshold amplitude),
+    and returns only non-empty signal arrays.
+    
+    Args:
+        out_file_path (str or Path): Path to .out HDF5 file
+        
+    Returns:
+        dict: Mapping of signal_name -> numpy array for non-empty signals.
+              Empty dict if file doesn't exist, can't be loaded, or all signals empty.
+    """
+    if not out_file_path or not Path(out_file_path).exists():
+        return {}
+    
+    if not HAS_DATA_LOADER:
+        return {}
+    
+    try:
+        # Load both E and H fields
+        signal_df = read_gprmax_hdf5(out_file_path, fields=['E', 'H'])
+        
+        if signal_df.empty:
+            return {}
+        
+        # Check each numeric column (excluding Time)
+        # Determine if it's "empty" (all zeros or negligible)
+        print(f"[LOG] Signal DataFrame has {len(signal_df)} samples, columns: {signal_df.columns.tolist()}")
+        
+        valid_signals = {}
+        for col in signal_df.columns:
+            if col == 'Time':
+                continue
+            
+            signal_vals = signal_df[col].values
+            amplitude = np.max(np.abs(signal_vals))
+            
+            if amplitude > SIGNAL_AMPLITUDE_THRESHOLD:
+                valid_signals[col] = signal_vals
+                print(f"[LOG]   {col}: max amplitude = {amplitude:.2e}")
+            else:
+                print(f"[LOG]   {col}: EMPTY (max amplitude = {amplitude:.2e})")
+        
+        if valid_signals:
+            print(f"Plotting {len(valid_signals)} non-empty signals: {list(valid_signals.keys())}")
+        
+        return valid_signals
+        
+    except Exception as e:
+        print(f"Warning: Could not load signal from {out_file_path}: {e}")
+        return {}
+
+
+def _plot_analytic_signal_overlay(ax, signal, signal_name):
+    """
+    Plot raw A-scan with instantaneous amplitude (envelope) overlay.
+    
+    Visualization #1: The "Analytic Signal" Overlay
+    - Removes phase confusion
+    - Clearly defines start/end of reflection events
+    - Highlights scattering zones
+    
+    Args:
+        ax: Matplotlib axes
+        signal (np.array): Raw signal data
+        signal_name (str): Signal name for title
+    """
+    # Compute analytic signal and envelope
+    analytic = hilbert(signal)
+    envelope = np.abs(analytic)
+    
+    # Plot raw signal (lighter, dashed)
+    ax.plot(signal, 'b-', linewidth=0.8, alpha=0.5, label='Raw Signal')
+    
+    # Overlay envelope (bold, solid)
+    ax.plot(envelope, 'r-', linewidth=2.0, label='Instantaneous Amplitude (Envelope)')
+    ax.plot(-envelope, 'r-', linewidth=2.0, alpha=0.3)  # Mirror for symmetry
+    
+    ax.set_xlabel('Sample Index (Time)', fontweight='bold')
+    ax.set_ylabel('Amplitude', fontweight='bold')
+    ax.set_title(f'Analytic Signal: {signal_name}', fontweight='bold')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper right', fontsize=8)
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5, alpha=0.3)
+
+
+def _ricker(points, a):
+    """
+    Custom Ricker wavelet implementation since scipy.signal.ricker is missing.
+    Points is the number of points in the wavelet.
+    a is the width parameter.
+    """
+    A = 2 / (np.sqrt(3 * a) * (np.pi ** 0.25))
+    wsq = a ** 2
+    vec = np.arange(0, points) - (points - 1.0) / 2
+    xsq = vec ** 2
+    mod = (1 - xsq / wsq)
+    gauss = np.exp(-xsq / (2 * wsq))
+    total = A * mod * gauss
+    return total
+
+def _cwt(data, wavelet, widths):
+    """
+    Custom Continuous Wavelet Transform implementation.
+    """
+    output = np.zeros([len(widths), len(data)])
+    for ind, width in enumerate(widths):
+        # Generate wavelet with appropriate length (approx 10 * width)
+        points = int(min(10 * width, len(data)))
+        points = max(points, 10) # Minimum points
+        if points % 2 == 0: points += 1 # Odd length
+        
+        wavelet_data = wavelet(points, width)
+        
+        # Convolve
+        # signal.convolve mode='same'
+        output[ind, :] = convolve(data, wavelet_data, mode='same')
+    return output
+
+def _plot_cwt_scalogram(ax, signal, signal_name, fs=1e10, widths=None):
+    """
+    Plot Continuous Wavelet Transform (CWT) scalogram.
+    
+    Visualization #2: Time-Frequency Scalogram
+    - Shows frequency content evolution over time
+    - Reveals attenuation (high freq loss)
+    - Identifies dispersion (frequency downshifting)
+    
+    Args:
+        ax: Matplotlib axes
+        signal (np.array): Signal data
+        signal_name (str): Signal name
+        fs (float): Sampling frequency (Hz)
+        widths (array): Wavelet widths (scales)
+    """
+    if widths is None:
+        # Create scales corresponding to frequencies from 100 MHz to 2000 MHz
+        # Scale = fc / (frequency * dt), where fc is center frequency of wavelet
+        dt = 1 / fs
+        freqs = np.linspace(100e6, 2000e6, 100)  # 100 MHz to 2 GHz
+        # A rough approximation for a ~ 1 width
+        widths = fs / freqs 
+    
+    # Compute CWT using custom Ricker wavelet
+    coefficients = _cwt(signal, _ricker, widths)
+    
+    # Convert to power (dB scale)
+    power = np.abs(coefficients) ** 2
+    power_db = 10 * np.log10(power + 1e-10)
+    
+    # Create time and frequency axes
+    time_axis = np.arange(len(signal)) * (1/fs) * 1e9  # Convert to ns
+    freq_axis = (1.0 / widths) * fs / 1e6  # Convert to MHz
+    
+    # Plot scalogram
+    im = ax.pcolormesh(time_axis, freq_axis, power_db, shading='gouraud', cmap='jet')
+    
+    ax.set_xlabel('Time (ns)', fontweight='bold')
+    ax.set_ylabel('Frequency (MHz)', fontweight='bold')
+    ax.set_title(f'CWT Scalogram: {signal_name}', fontweight='bold')
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Power (dB)', rotation=270, labelpad=15)
+
+
+def _plot_ghost_reference(ax, signal, reference_signal, signal_name, ref_name='Reference'):
+    """
+    Plot target A-scan with ghost reference trace for comparison.
+    
+    Visualization #3: The "Ghost" Reference Trace
+    - Provides context for interpretation
+    - Instantly shows deviations/anomalies
+    - Relative comparison is key
+    
+    Args:
+        ax: Matplotlib axes
+        signal (np.array): Target signal
+        reference_signal (np.array): Reference/ghost signal
+        signal_name (str): Target signal name
+        ref_name (str): Reference description
+    """
+    # Plot ghost reference (faint gray, behind)
+    ax.plot(reference_signal, 'gray', linewidth=1.5, alpha=0.3, 
+            label=f'{ref_name} (Ghost)', zorder=1)
+    
+    # Plot target signal (bold color, front)
+    ax.plot(signal, 'b-', linewidth=2.0, label=signal_name, zorder=2)
+    
+    # Highlight deviations
+    deviation = signal - reference_signal
+    ax.fill_between(range(len(signal)), 0, deviation, 
+                     where=(deviation > 0), color='green', alpha=0.2, label='Above Reference')
+    ax.fill_between(range(len(signal)), 0, deviation,
+                     where=(deviation < 0), color='red', alpha=0.2, label='Below Reference')
+    
+    ax.set_xlabel('Sample Index (Time)', fontweight='bold')
+    ax.set_ylabel('Amplitude', fontweight='bold')
+    ax.set_title(f'Ghost Reference: {signal_name}', fontweight='bold')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper right', fontsize=8)
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5, alpha=0.3)
+
+
+def _plot_hodogram(ax, signal, window_start=None, window_end=None, signal_name='Signal'):
+    """
+    Plot hodogram (phase plot) for analyzing reflection events.
+    
+    Visualization #4: Hodogram (Phase-Plot)
+    - Visualizes phase characteristics
+    - Distinguishes clean reflections from complex scattering
+    - Analyzes specific time windows
+    
+    Args:
+        ax: Matplotlib axes
+        signal (np.array): Signal data
+        window_start (int): Start index of analysis window
+        window_end (int): End index of analysis window
+        signal_name (str): Signal name
+    """
+    # Extract window
+    if window_start is None or window_end is None:
+        # Auto-detect strongest reflection
+        envelope = np.abs(hilbert(signal))
+        peak_idx = np.argmax(envelope)
+        window_size = min(100, len(signal) // 4)
+        window_start = max(0, peak_idx - window_size // 2)
+        window_end = min(len(signal), peak_idx + window_size // 2)
+    
+    windowed_signal = signal[window_start:window_end]
+    
+    # Compute Hilbert transform
+    analytic = hilbert(windowed_signal)
+    real_part = windowed_signal  # Real component
+    imag_part = np.imag(analytic)  # Imaginary component (quadrature)
+    
+    # Create hodogram (phase plot)
+    # Color by time to show evolution
+    colors = np.arange(len(real_part))
+    scatter = ax.scatter(real_part, imag_part, c=colors, cmap='viridis', 
+                        s=20, alpha=0.6, edgecolors='k', linewidth=0.5)
+    
+    # Add trajectory line
+    ax.plot(real_part, imag_part, 'k-', linewidth=0.5, alpha=0.3)
+    
+    # Mark start and end
+    ax.plot(real_part[0], imag_part[0], 'go', markersize=10, label='Start', zorder=10)
+    ax.plot(real_part[-1], imag_part[-1], 'ro', markersize=10, label='End', zorder=10)
+    
+    ax.set_xlabel('Amplitude (Real)', fontweight='bold')
+    ax.set_ylabel('Amplitude (Quadrature)', fontweight='bold')
+    ax.set_title(f'Hodogram: {signal_name} [samples {window_start}-{window_end}]', fontweight='bold')
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper right', fontsize=8)
+    ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5, alpha=0.3)
+    ax.axvline(x=0, color='k', linestyle='-', linewidth=0.5, alpha=0.3)
+    ax.set_aspect('equal', adjustable='box')
+    
+    # Add colorbar for time evolution
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label('Time Evolution', rotation=270, labelpad=15)
+
+
+def _plot_spectrogram(ax, signal, signal_name, fs=1e10, nperseg=256):
+    """
+    Plot spectrogram (STFT) showing frequency vs time analysis.
+    
+    Args:
+        ax: Matplotlib axes to plot on
+        signal (np.array): Signal data
+        signal_name (str): Name of the signal for title
+        fs (float): Sampling frequency in Hz (default: 10 GHz for gprMax)
+        nperseg (int): Length of each segment for STFT
+    """
+    # Compute STFT
+    f, t, Zxx = stft(signal, fs=fs, nperseg=nperseg)
+    
+    # Convert to dB scale for better visualization
+    magnitude = np.abs(Zxx)
+    magnitude_db = 20 * np.log10(magnitude + 1e-10)  # Add small value to avoid log(0)
+    
+    # Plot spectrogram
+    im = ax.pcolormesh(t * 1e9, f / 1e6, magnitude_db, shading='gouraud', cmap='viridis')
+    
+    # Labels and formatting
+    ax.set_ylabel('Frequency (MHz)', fontweight='bold')
+    ax.set_xlabel('Time (ns)', fontweight='bold')
+    ax.set_title(f'Spectrogram: {signal_name}', fontweight='bold')
+    ax.set_ylim([0, fs / 2e6])  # Show up to Nyquist frequency
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Magnitude (dB)', rotation=270, labelpad=15)
+    
+    ax.grid(True, alpha=0.3, linestyle='--')
+
+
+def _create_figure_layout(show_signal):
+    """
+    Create the matplotlib figure layout based on whether signals will be plotted.
+    
+    When signals are available, creates a comprehensive layout with all 6 signal analysis plots:
+    - Row 1: A-scan signals, Analytic signal overlay
+    - Row 2: Hilbert envelope, CWT scalogram
+    - Row 3: Spectrogram, Hodogram
+    
+    Args:
+        show_signal (bool): If True, creates signal plots.
+    
+    Returns:
+        tuple: (fig, axes_dict) where axes_dict contains keys:
+               'main', 'ascan', 'analytic', 'envelope', 'cwt', 'spectrogram', 'hodogram'
+    """
+    axes = {
+        'main': None,
+        'ascan': None,
+        'analytic': None, 
+        'envelope': None,
+        'cwt': None,
+        'spectrogram': None,
+        'hodogram': None
+    }
+    
+    if show_signal:
+        print("[LOG] Creating figure with MERGED signal plots (All 6 visualizations)")
+        fig = plt.figure(figsize=(22, 12))
+        
+        # Create grid: Left column for blueprint, right side 3×2 for signals
+        gs = gridspec.GridSpec(3, 3, width_ratios=[1.2, 1, 1], height_ratios=[1, 1, 1],
+                              hspace=0.3, wspace=0.3)
+        
+        # Left: Blueprint (full height, spanning all 3 rows)
+        axes['main'] = fig.add_subplot(gs[:, 0])
+        
+        # Right side: 3 rows × 2 columns for signal plots
+        # Row 1
+        axes['ascan'] = fig.add_subplot(gs[0, 1])        # Top left: A-scan signals
+        axes['analytic'] = fig.add_subplot(gs[0, 2])     # Top right: Analytic signal
+        
+        # Row 2
+        axes['envelope'] = fig.add_subplot(gs[1, 1])     # Middle left: Hilbert envelope
+        axes['cwt'] = fig.add_subplot(gs[1, 2])          # Middle right: CWT scalogram
+        
+        # Row 3
+        axes['spectrogram'] = fig.add_subplot(gs[2, 1])  # Bottom left: Spectrogram
+        axes['hodogram'] = fig.add_subplot(gs[2, 2])     # Bottom right: Hodogram
+        
+    else:
+        print("[LOG] Creating figure without signal plots (blueprint only)")
+        fig, axes['main'] = plt.subplots(figsize=BLUEPRINT_FIGURE_SIZE)
+    
+    return fig, axes
+
+
+
 def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None, source_filename=None):
     """
     Create a blueprint visualization of the gprMax geometry using Matplotlib.
     
     Generates a 2D cross-section view (X-Y plane) of the simulation domain.
     Draws objects in the order they appear in the file to correctly visualize layers.
-    Also calculates and displays a vertical ruler for layer heights and a rock height annotation.
+    When signal data is available (.out file), displays all 6 signal analysis plots.
     
     Args:
         data (dict): Parsed geometry data returned by parse_gprmax_input.
         output_file (str, optional): Path to save the resulting image file (e.g. .png).
         show_plot (bool): If True, calls plt.show() to display the window.
         out_file_path (str, optional): Path to a corresponding .out HDF5 file. 
-                                       If provided and valid, adds signal plots.
+                                       If provided and valid, adds all 6 signal plots.
+        source_filename (str, optional): Source filename to display in the plot.
                                        
     Variables:
         fig (Figure): Matplotlib figure object.
@@ -220,49 +675,14 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         z_order (int): Drawing order index. Higher values are drawn on top.
         material_patches (list): List of patches for the legend.
     """
-    # Check if .out file exists and can be loaded
-    show_signal = False
-    valid_signals = {} # Map col_name -> data array
+    # Load signal data if .out file is provided
+    valid_signals = _load_signal_data(out_file_path)
+    show_signal = bool(valid_signals)
     
-    if out_file_path and Path(out_file_path).exists() and HAS_DATA_LOADER:
-        try:
-            # Load both E and H fields
-            signal_df = read_gprmax_hdf5(out_file_path, fields=['E', 'H'])
-            
-            if not signal_df.empty:
-                 # Check each numeric column (excluding Time)
-                 # Determine if it's "empty" (all zeros or negligible)
-                 print(f"[LOG] Signal DataFrame has {len(signal_df)} samples, columns: {signal_df.columns.tolist()}")
-                 threshold = 1e-9
-                 for col in signal_df.columns:
-                     if col == 'Time': continue
-                     
-                     signal_vals = signal_df[col].values
-                     amplitude = np.max(np.abs(signal_vals))
-                     if amplitude > threshold:
-                         valid_signals[col] = signal_vals
-                         print(f"[LOG]   {col}: max amplitude = {amplitude:.2e}")
-                     else:
-                         print(f"[LOG]   {col}: EMPTY (max amplitude = {amplitude:.2e})")
-            
-            if valid_signals:
-                show_signal = True
-                print(f"Plotting {len(valid_signals)} non-empty signals: {list(valid_signals.keys())}")
-                
-        except Exception as e:
-            print(f"Warning: Could not load signal from {out_file_path}: {e}")
-    
-    # Create figure with subplots if showing signal
-    if show_signal:
-        print("[LOG] Creating figure with signal plots (3-panel layout)")
-        fig = plt.figure(figsize=(16, 8))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1])
-        ax = fig.add_subplot(gs[:, 0])      # Left: Blueprint (full height)
-        ax_signal = fig.add_subplot(gs[0, 1])  # Top Right: Signal
-        ax_envelope = fig.add_subplot(gs[1, 1])  # Bottom Right: Envelope
-    else:
-        print("[LOG] Creating figure without signal plots (blueprint only)")
-        fig, ax = plt.subplots(figsize=(12, 8))
+    # Create figure layout
+    fig, axes = _create_figure_layout(show_signal)
+    ax = axes['main']
+
     
     domain = data['domain']
     
@@ -285,21 +705,11 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         min_eps, max_eps = 1, 10
         cmap = plt.cm.YlOrBr
     
-    # Helper to get color
+    
+    # Create wrapper for the extracted function with closures
     def get_mat_color_alpha(material):
-        if material == 'free_space':
-            return '#E8F4F8', 0.1 # Very subtle air
-        
-        mat_props = data['materials'].get(material, {})
-        eps = mat_props.get('eps', 5.0)
-        
-        if max_eps > min_eps:
-            norm_eps = (eps - min_eps) / (max_eps - min_eps)
-        else:
-            norm_eps = 0.5
-        
-        # Get color from colormap
-        return cmap(0.3 + norm_eps * 0.6), 1.0 # Opaque
+        return get_material_color_alpha(material, data['materials'], min_eps, max_eps, cmap)
+
 
     # Draw all objects in order
     objects = data.get('objects', [])
@@ -316,15 +726,15 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         z_order = 1 + i
         
         if obj_type == 'box':
-            x0, y0 = obj['x0'], obj['y0']
-            x1, y1 = obj['x1'], obj['y1']
+            x0, y0 = obj['x1'], obj['y1']
+            x1, y1 = obj['x2'], obj['y2']
             width = x1 - x0
             height = y1 - y0
             
             rect = mpatches.Rectangle(
                 (x0, y0), width, height,
-                linewidth=0.3, # Softened
-                edgecolor='#404040',
+                linewidth=DEFAULT_LINE_WIDTH,
+                edgecolor=EDGE_COLOR,
                 facecolor=color,
                 alpha=alpha,
                 zorder=z_order
@@ -337,8 +747,8 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             
             circle = mpatches.Circle(
                 (x, y), r,
-                linewidth=0.3, # Softened
-                edgecolor='#404040',
+                linewidth=DEFAULT_LINE_WIDTH,
+                edgecolor=EDGE_COLOR,
                 facecolor=color,
                 alpha=alpha,
                 zorder=z_order 
@@ -353,11 +763,12 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     layer_boundaries = set()
     for obj in data.get('objects', []):
         if obj['type'] == 'box' and obj['material'] != 'free_space':
-            layer_boundaries.add(obj['y0'])
             layer_boundaries.add(obj['y1'])
+            layer_boundaries.add(obj['y2'])
             
     # Also consider cylinder tops (Granular/Ballast top)
-    cyl_tops = [o['y'] + o['radius'] for o in data.get('objects', []) if o['type'] == 'cylinder']
+    cylinders = filter_cylinders(data.get('objects', []))
+    cyl_tops = [cyl['y'] + cyl['radius'] for cyl in cylinders]
     if cyl_tops:
         layer_boundaries.add(max(cyl_tops))
     
@@ -365,17 +776,17 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     
     # Add horizontal dotted lines crossing the axis for each layer
     for h in layer_boundaries:
-        if h > 0.001: # Skip y=0
+        if h > MIN_LAYER_HEIGHT:
              ax.axhline(y=h, color='gray', linestyle=':', linewidth=1.0, alpha=0.6, zorder=5)
     
     # Add height annotations on the right side
     unique_heights = set()
     for obj in data.get('objects', []):
         if obj['type'] == 'box' and obj['material'] != 'free_space':
-            unique_heights.add(obj['y1'])
+            unique_heights.add(obj['y2'])
     
     for height in sorted(unique_heights):
-        if height > 0.01:  # Skip very small heights
+        if height > MIN_ANNOTATION_HEIGHT:
             ax.plot([domain['x'], domain['x'] + 0.02], [height, height], 
                    'k-', linewidth=1, alpha=0.5)
             ax.text(domain['x'] + 0.025, height, f'{height:.3f} m',
@@ -459,7 +870,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     # --------------------------------------------------------
     # Annotation: Highest Cylinder (Rock Top)
     # --------------------------------------------------------
-    cylinders = [o for o in data.get('objects', []) if o['type'] == 'cylinder']
+    cylinders = filter_cylinders(data.get('objects', []))
     if cylinders:
         # Find the cylinder with the maximum top point (y + r)
         max_y_cyl = -1.0
@@ -476,7 +887,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             formation_top = 0.0
             for o in data.get('objects', []):
                 if o['type'] == 'box' and o['material'] == 'formation':
-                    formation_top = max(formation_top, o['y1'])
+                    formation_top = max(formation_top, o['y2'])
             
             # Add a dashed line across
             ax.axhline(y=max_y_cyl, color='#8B7355', linestyle=':', linewidth=1.5, alpha=0.8, zorder=20)
@@ -504,67 +915,40 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     # Plot Signals
     print(f"[LOG] Rendering {len(data['objects'])} geometry objects...")
     if show_signal and valid_signals:
-        # We need to get Time from the original DF or rebuild it
-        # Since we only extracted arrays into valid_signals, we need to know the length and dt
-        # Or hopefully retrieve "Time" from signal_df if we kept it around.
-        # Let's assume we re-read or kept it. 
-        # Easier fix: pass signal_df to this function or just re-read or assume dt from somewhere.
-        # But wait, create_blueprint doesn't receive signal_df directly anymore in my logic above?
-        # The logic above populated `valid_signals`.
+        # Find strongest signal for single-channel analysis plots
+        strongest_name = max(valid_signals, key=lambda k: np.max(np.abs(valid_signals[k])))
+        strongest_data = valid_signals[strongest_name]
+
+        # --- MERGED MODE: ALL 6 PLOTS ---
         
-        # Let's fix the scope. `signal_df` was local to the try block above.
-        # I should have extracted 'Time' too.
-        
-        # NOTE: I am modifying the chunk in-place.
-        # Let's grab the time axis from the first signal length and config/dt approximation
-        # OR better, relying on the fact that I should have extracted Time in the previous block.
-        # But I didn't store it in `valid_signals`.
-        
-        # Let's approximate:
-        sig_len = len(next(iter(valid_signals.values())))
-        # We can try to guess dt from metadata or just use index
-        # To be safe, let's assume we grabbed 'Time' if it existed.
-        
-        # Hack for cleaner code flow: Re-read time inside the previous block or just assume linear.
-        # Let's use generic index if Time not found, but we want physical units.
-        pass # Placeholder
-        
-        # Actually, let's look at how I can get Time down here.
-        # I'll rely on the `signal_data` var if I modified the top block correctly...
-        # But I replaced `signal_data` with `valid_signals` dict.
-        
-        # Let's just create a time array.
-        # gprMax default dt is usually small.
-        # We need dt.
-        
-        # Let's just create a simple index-based time if we can't find it.
-        time_ns = np.arange(sig_len) # Placeholder
-        
-        # Separate E and H fields
+        # Separate E and H fields for A-scan plot
         e_fields = {k: v for k, v in valid_signals.items() if 'E' in k}
         h_fields = {k: v for k, v in valid_signals.items() if 'H' in k}
         
-        # Setup dual axis if needed
-        ax_E = ax_signal
-        ax_H = ax_signal.twinx() if (e_fields and h_fields) else ax_signal
+        # === ROW 1: A-Scan Signals & Analytic Signal ===
+        
+        # Plot 1: A-Scan Signals (E and H fields)
+        ax_ascan = axes['ascan']
+        ax_E = ax_ascan
+        ax_H = ax_ascan.twinx() if (e_fields and h_fields) else ax_ascan
         
         has_E = False
         has_H = False
         
         # Plot E fields
-        for name, data in e_fields.items():
-            ax_E.plot(data, label=name, linestyle='-')
+        for name, data_arr in e_fields.items():
+            ax_E.plot(data_arr, label=name, linestyle='-')
             has_E = True
             
         # Plot H fields
-        for name, data in h_fields.items():
+        for name, data_arr in h_fields.items():
             if has_E and ax_H != ax_E:
-                ax_H.plot(data, label=name, linestyle='--')
+                ax_H.plot(data_arr, label=name, linestyle='--')
             else:
-                ax_H.plot(data, label=name, linestyle='-')
+                ax_H.plot(data_arr, label=name, linestyle='-')
             has_H = True
             
-        # Labels and Legends
+        # Labels and Legends for A-scan
         ax_E.set_xlabel('Sample Index (Time)', fontsize=10, fontweight='bold')
         ax_E.set_title('A-Scan Signals', fontsize=12, fontweight='bold')
         ax_E.grid(True, alpha=0.3, linestyle='--')
@@ -573,36 +957,53 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         lines_H, labels_H = ax_H.get_legend_handles_labels()
         
         if has_E:
-            ax_E.set_ylabel('E-Field (V/m)', color='blue')
+            ax_E.set_ylabel('E-Field (V/m)', color='blue', fontsize=9)
         if has_H and ax_H != ax_E:
-            ax_H.set_ylabel('H-Field (A/m)', color='green')
-            
-        # Combine legends
-        ax_E.legend(lines_E + lines_H, labels_E + labels_H, loc='upper right', fontsize=8)
+            ax_H.set_ylabel('H-Field (A/m)', color='green', fontsize=9)
         
-        # --- Bottom Right: Hilbert Envelope (Combined or Max?) ---
-        # Plotting envelope of all might be messy. Let's plot envelope of the strongest signal.
-        if valid_signals:
-            # Find strongest signal
-            strongest_name = max(valid_signals, key=lambda k: np.max(np.abs(valid_signals[k])))
-            strongest_data = valid_signals[strongest_name]
-            
-            analytic = hilbert(strongest_data)
-            envelope = np.abs(analytic)
-            
-            ax_envelope.plot(envelope, 'r-', linewidth=1.5, label=f'Env ({strongest_name})')
-            ax_envelope.fill_between(range(len(envelope)), 0, envelope, color='red', alpha=0.2)
-            ax_envelope.set_xlabel('Sample Index', fontsize=10, fontweight='bold')
-            ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
-            ax_envelope.set_title(f'Hilbert Envelope ({strongest_name})', fontsize=12, fontweight='bold')
-            ax_envelope.grid(True, alpha=0.3, linestyle='--')
-            ax_envelope.legend()
+        # Combine legends
+        ax_E.legend(lines_E + lines_H, labels_E + labels_H, loc='upper right', fontsize=7)
+        
+        # Plot 2: Analytic Signal Overlay
+        ax_analytic = axes['analytic']
+        _plot_analytic_signal_overlay(ax_analytic, strongest_data, strongest_name)
+        
+        # === ROW 2: Hilbert Envelope & CWT Scalogram ===
+        
+        # Plot 3: Hilbert Envelope
+        ax_envelope = axes['envelope']
+        analytic = hilbert(strongest_data)
+        envelope = np.abs(analytic)
+        
+        ax_envelope.plot(envelope, 'r-', linewidth=1.5, label=f'Env ({strongest_name})')
+        ax_envelope.fill_between(range(len(envelope)), 0, envelope, color='red', alpha=0.2)
+        ax_envelope.set_xlabel('Sample Index', fontsize=10, fontweight='bold')
+        ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
+        ax_envelope.set_title(f'Hilbert Envelope ({strongest_name})', fontsize=12, fontweight='bold')
+        ax_envelope.grid(True, alpha=0.3, linestyle='--')
+        ax_envelope.legend(fontsize=8)
+        
+        # Plot 4: CWT Scalogram
+        ax_cwt = axes['cwt']
+        _plot_cwt_scalogram(ax_cwt, strongest_data, strongest_name)
+        
+        # === ROW 3: Spectrogram & Hodogram ===
+        
+        # Plot 5: Spectrogram (STFT)
+        ax_spectrogram = axes['spectrogram']
+        _plot_spectrogram(ax_spectrogram, strongest_data, strongest_name)
+        
+        # Plot 6: Hodogram (Phase Plot)
+        ax_hodogram = axes['hodogram']
+        _plot_hodogram(ax_hodogram, strongest_data, signal_name=strongest_name)
+
+
     
     plt.tight_layout()
     
     # Save if output file specified
     if output_file:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.savefig(output_file, dpi=OUTPUT_DPI, bbox_inches='tight')
         print(f"Blueprint saved to: {output_file}")
     
     # Show plot
@@ -665,13 +1066,13 @@ Examples:
     else:
         print(f"Found .out file: {out_file_path}")
     
-    # Create blueprint
+    # Create blueprint with all visualizations
     create_blueprint(
-        data,
-        output_file=args.output,
+        data, 
+        output_file=args.output, 
         show_plot=not args.no_show,
         out_file_path=out_file_path,
-        source_filename=Path(args.input_file).name
+        source_filename=input_path.name
     )
     
     return 0
