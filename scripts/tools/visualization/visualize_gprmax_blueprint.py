@@ -295,6 +295,45 @@ def parse_gprmax_input(filepath):
     return data
 
 
+def extract_particle_sizes(filepath):
+    """
+    Extract particle size distribution from gprMax input file.
+    
+    Parses all #cylinder commands and extracts radii of bal_rock cylinders.
+    
+    Args:
+        filepath (str): Path to the .in file
+        
+    Returns:
+        np.array: Array of rock radii in millimeters, empty if no rocks found
+    """
+    radii_m = []
+    
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            
+            # Parse cylinder commands
+            if line.startswith('#cylinder:'):
+                parts = line.split(':')[1].strip().split()
+                # Format: x1 y1 z1 x2 y2 z2 radius material
+                if len(parts) >= 8:
+                    radius = float(parts[6])
+                    material = parts[7]
+                    
+                    # Only include bal_rock cylinders
+                    if material == 'bal_rock':
+                        radii_m.append(radius)
+    
+    # Convert to mm for better readability
+    radii_mm = np.array(radii_m) * 1000  # meters to millimeters
+    
+    if len(radii_mm) > 0:
+        print(f"[LOG] Found {len(radii_mm)} rocks, sizes: {radii_mm.min():.1f}-{radii_mm.max():.1f}mm")
+    
+    return radii_mm
+
+
 def _load_signal_data(out_file_path):
     """
     Load and validate signal data from a gprMax .out HDF5 file.
@@ -594,21 +633,141 @@ def _plot_spectrogram(ax, signal, signal_name, fs=1e10, nperseg=256):
     ax.grid(True, alpha=0.3, linestyle='--')
 
 
+def _plot_particle_size_distribution(ax, radii_mm):
+    """
+    Plot grain size distribution curve (semi-log) - industry standard.
+    
+    Shows cumulative percentage passing vs particle diameter on log scale,
+    with shaded zones for gravel, sand, and fines classification.
+    
+    Args:
+        ax: Matplotlib axes
+        radii_mm (np.array): Array of rock radii in millimeters
+    """
+    if len(radii_mm) == 0:
+        # No rocks found - show empty message
+        ax.text(0.5, 0.5, 'No rocks found\n(Clean ballast)', 
+                ha='center', va='center', fontsize=14, color='gray',
+                transform=ax.transAxes)
+        ax.set_xlim(0.01, 100)
+        ax.set_ylim(0, 100)
+        ax.set_xlabel('Particle Diameter (mm)', fontweight='bold')
+        ax.set_ylabel('Percent Passing (%)', fontweight='bold')
+        ax.set_title('Grain Size Distribution', fontweight='bold')
+        ax.set_xscale('log')
+        ax.grid(True, alpha=0.3, linestyle='--', which='both')
+        return
+    
+    # Convert radii to diameters
+    diameters_mm = radii_mm * 2
+    
+    # Sort diameters for cumulative calculation
+    sorted_diameters = np.sort(diameters_mm)
+    
+    # Calculate cumulative percentage passing
+    # "Passing" means smaller than the given size
+    n_total = len(sorted_diameters)
+    percent_passing = np.arange(1, n_total + 1) / n_total * 100
+    
+    # Add background shading for soil classification zones
+    # Gravel: > 4.75 mm (Sieve No. 4)
+    # Sand: 4.75 mm to 0.075 mm (Sieve No. 200)
+    # Fines: < 0.075 mm
+    
+    ax.axvspan(4.75, 100, alpha=0.15, color='brown', label='Gravel (>4.75mm)')
+    ax.axvspan(0.075, 4.75, alpha=0.15, color='yellow', label='Sand (0.075-4.75mm)')
+    ax.axvspan(0.001, 0.075, alpha=0.15, color='gray', label='Fines (<0.075mm)')
+    
+    # Add vertical lines for standard sieves
+    ax.axvline(4.75, color='red', linestyle='--', linewidth=1.5, 
+               alpha=0.7, label='Sieve No. 4')
+    ax.axvline(0.075, color='blue', linestyle='--', linewidth=1.5,
+               alpha=0.7, label='Sieve No. 200')
+    
+    # Plot the grain size distribution curve
+    ax.plot(sorted_diameters, percent_passing, 'k-', linewidth=2.5, 
+            label='Distribution Curve', zorder=10)
+    ax.plot(sorted_diameters, percent_passing, 'o', markersize=3, 
+            color='darkblue', alpha=0.5, zorder=11)
+    
+    # Calculate key percentiles (D10, D30, D50, D60)
+    if n_total >= 10:
+        d10_idx = int(n_total * 0.10)
+        d30_idx = int(n_total * 0.30)
+        d50_idx = int(n_total * 0.50)
+        d60_idx = int(n_total * 0.60)
+        
+        d10 = sorted_diameters[d10_idx]
+        d30 = sorted_diameters[d30_idx]
+        d50 = sorted_diameters[d50_idx]
+        d60 = sorted_diameters[d60_idx]
+        
+        # Calculate uniformity coefficient (Cu) and coefficient of curvature (Cc)
+        cu = d60 / d10 if d10 > 0 else 0
+        cc = (d30 ** 2) / (d60 * d10) if (d60 * d10) > 0 else 0
+        
+        # Add statistics text box
+        stats_text = (f'D₁₀: {d10:.1f}mm\n'
+                     f'D₅₀: {d50:.1f}mm\n'
+                     f'D₆₀: {d60:.1f}mm\n'
+                     f'Cᵤ: {cu:.2f}\n'
+                     f'Cᶜ: {cc:.2f}\n'
+                     f'n={n_total}')
+    else:
+        stats_text = f'n={n_total}\n(too few for\ncoefficients)'
+    
+    ax.text(0.02, 0.98, stats_text,
+            transform=ax.transAxes,
+            fontsize=8,
+            verticalalignment='top',
+            horizontalalignment='left',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+            family='monospace')
+    
+    # Labels and title
+    ax.set_xlabel('Particle Diameter (mm)', fontweight='bold', fontsize=10)
+    ax.set_ylabel('Percent Passing (%)', fontweight='bold', fontsize=10)
+    ax.set_title('Grain Size Distribution Curve', fontweight='bold', fontsize=12)
+    
+    # Set log scale for x-axis (standard for grain size)
+    ax.set_xscale('log')
+    
+    # Set axis limits adaptively based on data
+    min_d = np.min(sorted_diameters)
+    max_d = np.max(sorted_diameters)
+    
+    # For ballast (typically 20-60mm), use tighter range
+    # Add 20% margin on each side in log space
+    x_min = max(0.1, min_d * 0.5)   # Don't go below 0.1mm
+    x_max = min(200, max_d * 2.0)   # Don't go above 200mm
+    
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(0, 100)
+    
+    # Grid
+    ax.grid(True, alpha=0.3, linestyle='-', which='major', linewidth=0.8)
+    ax.grid(True, alpha=0.15, linestyle=':', which='minor', linewidth=0.5)
+    
+    # Legend
+    ax.legend(loc='lower right', fontsize=7, ncol=2)
+
+
 def _create_figure_layout(show_signal):
     """
     Create the matplotlib figure layout based on whether signals will be plotted.
     
-    When signals are available, creates a comprehensive layout with all 6 signal analysis plots:
+    When signals are available, creates a comprehensive layout with 5 signal analysis plots + PSD:
     - Row 1: A-scan signals, Analytic signal overlay
     - Row 2: Hilbert envelope, CWT scalogram
-    - Row 3: Spectrogram, Hodogram
+    - Row 3: Spectrogram (full width)
+    - Row 4: Particle Size Distribution (full width)
     
     Args:
         show_signal (bool): If True, creates signal plots.
     
     Returns:
         tuple: (fig, axes_dict) where axes_dict contains keys:
-               'main', 'ascan', 'analytic', 'envelope', 'cwt', 'spectrogram', 'hodogram'
+               'main', 'ascan', 'analytic', 'envelope', 'cwt', 'spectrogram', 'psd'
     """
     axes = {
         'main': None,
@@ -617,21 +776,21 @@ def _create_figure_layout(show_signal):
         'envelope': None,
         'cwt': None,
         'spectrogram': None,
-        'hodogram': None
+        'psd': None
     }
     
     if show_signal:
-        print("[LOG] Creating figure with MERGED signal plots (All 6 visualizations)")
-        fig = plt.figure(figsize=(22, 12))
+        print("[LOG] Creating figure with MERGED signal plots (5 visualizations + PSD)")
+        fig = plt.figure(figsize=(22, 14))  # Increased height for 4 rows
         
-        # Create grid: Left column for blueprint, right side 3×2 for signals
-        gs = gridspec.GridSpec(3, 3, width_ratios=[1.2, 1, 1], height_ratios=[1, 1, 1],
+        # Create grid: Left column for blueprint, right side for signals + PSD
+        gs = gridspec.GridSpec(4, 3, width_ratios=[1.2, 1, 1], height_ratios=[1, 1, 1, 0.8],
                               hspace=0.3, wspace=0.3)
         
-        # Left: Blueprint (full height, spanning all 3 rows)
+        # Left: Blueprint (full height, spanning all 4 rows)
         axes['main'] = fig.add_subplot(gs[:, 0])
         
-        # Right side: 3 rows × 2 columns for signal plots
+        # Right side: signal plots
         # Row 1
         axes['ascan'] = fig.add_subplot(gs[0, 1])        # Top left: A-scan signals
         axes['analytic'] = fig.add_subplot(gs[0, 2])     # Top right: Analytic signal
@@ -641,8 +800,10 @@ def _create_figure_layout(show_signal):
         axes['cwt'] = fig.add_subplot(gs[1, 2])          # Middle right: CWT scalogram
         
         # Row 3
-        axes['spectrogram'] = fig.add_subplot(gs[2, 1])  # Bottom left: Spectrogram
-        axes['hodogram'] = fig.add_subplot(gs[2, 2])     # Bottom right: Hodogram
+        axes['spectrogram'] = fig.add_subplot(gs[2, 1:])  # Spectrogram (full width)
+        
+        # Row 4
+        axes['psd'] = fig.add_subplot(gs[3, 1:])  # PSD histogram (full width)
         
     else:
         print("[LOG] Creating figure without signal plots (blueprint only)")
@@ -987,15 +1148,18 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
         ax_cwt = axes['cwt']
         _plot_cwt_scalogram(ax_cwt, strongest_data, strongest_name)
         
-        # === ROW 3: Spectrogram & Hodogram ===
+        # === ROW 3: Spectrogram ===
         
-        # Plot 5: Spectrogram (STFT)
+        # Plot 5: Spectrogram (STFT) - Full width
         ax_spectrogram = axes['spectrogram']
         _plot_spectrogram(ax_spectrogram, strongest_data, strongest_name)
         
-        # Plot 6: Hodogram (Phase Plot)
-        ax_hodogram = axes['hodogram']
-        _plot_hodogram(ax_hodogram, strongest_data, signal_name=strongest_name)
+        # === ROW 4: Particle Size Distribution ===
+        
+        # Plot 6: PSD Histogram
+        ax_psd = axes['psd']
+        particle_sizes = extract_particle_sizes(source_filename)
+        _plot_particle_size_distribution(ax_psd, particle_sizes)
 
 
     

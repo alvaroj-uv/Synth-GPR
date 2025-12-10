@@ -1,0 +1,1315 @@
+[LOGGING] Output also redirected to output/pipeline_run/20251210_142323/pipeline.log
+
+--- Generating Class C (Target FI: 0.0-1.0%) ---
+[14:23:23] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.602, Porosity: 0.398
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.9653126655593199%, n=0.398)
+[14:23:25] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0438m2, Porosity=0.416
+[LabWorker] Result (H=0.15m): FI=1.6 (P4=1.3%, P200=0.4%) -> Class: CL
+[14:23:25] [System] === Scene Validation ===
+[14:23:25] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:25] [System] === Scene Statistics ===
+[14:23:25] [System]   Materials: 4
+[14:23:25] [System]   Geometry Commands: 74
+[14:23:25] [System]   Rocks: 68
+[14:23:25] [System]   Sources: 1
+[14:23:25] [System]   Receivers: 1
+[14:23:25] [System]   Antennas Configured: True
+[14:23:25] [System]   Domain: 0.50×1.50×0.01m
+[14:23:25] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:25] [System] Production Line Completed
+  → Metadata: PVC=0.97%, FI=0.0, Class=N/A, Rocks=68
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 0: 1 file generated
+[14:23:25] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.582, Porosity: 0.418
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.8854080791114833%, n=0.418)
+[14:23:27] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0431m2, Porosity=0.425
+[LabWorker] Result (H=0.15m): FI=1.6 (P4=1.2%, P200=0.4%) -> Class: CL
+[14:23:27] [System] === Scene Validation ===
+[14:23:27] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:27] [System] === Scene Statistics ===
+[14:23:27] [System]   Materials: 4
+[14:23:27] [System]   Geometry Commands: 71
+[14:23:27] [System]   Rocks: 65
+[14:23:27] [System]   Sources: 1
+[14:23:27] [System]   Receivers: 1
+[14:23:27] [System]   Antennas Configured: True
+[14:23:27] [System]   Domain: 0.50×1.50×0.01m
+[14:23:27] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:27] [System] Production Line Completed
+  → Metadata: PVC=0.89%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 1: 1 file generated
+[14:23:27] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.617, Porosity: 0.383
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.9877296162422836%, n=0.383)
+[14:23:27] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0476m2, Porosity=0.365
+[LabWorker] Result (H=0.15m): FI=1.4 (P4=1.0%, P200=0.3%) -> Class: CL
+[14:23:27] [System] === Scene Validation ===
+[14:23:27] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:27] [System] === Scene Statistics ===
+[14:23:27] [System]   Materials: 4
+[14:23:27] [System]   Geometry Commands: 76
+[14:23:27] [System]   Rocks: 70
+[14:23:27] [System]   Sources: 1
+[14:23:27] [System]   Receivers: 1
+[14:23:27] [System]   Antennas Configured: True
+[14:23:27] [System]   Domain: 0.50×1.50×0.01m
+[14:23:27] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:27] [System] Production Line Completed
+  → Metadata: PVC=0.99%, FI=0.0, Class=N/A, Rocks=70
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 2: 1 file generated
+[14:23:27] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.600, Porosity: 0.400
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.7565902621788374%, n=0.400)
+[14:23:28] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0451m2, Porosity=0.399
+[LabWorker] Result (H=0.15m): FI=1.2 (P4=0.9%, P200=0.3%) -> Class: CL
+[14:23:28] [System] === Scene Validation ===
+[14:23:28] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:28] [System] === Scene Statistics ===
+[14:23:28] [System]   Materials: 4
+[14:23:28] [System]   Geometry Commands: 72
+[14:23:28] [System]   Rocks: 66
+[14:23:28] [System]   Sources: 1
+[14:23:28] [System]   Receivers: 1
+[14:23:28] [System]   Antennas Configured: True
+[14:23:28] [System]   Domain: 0.50×1.50×0.01m
+[14:23:28] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:28] [System] Production Line Completed
+  → Metadata: PVC=0.76%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 3: 1 file generated
+[14:23:28] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.600, Porosity: 0.400
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.3920084591521623%, n=0.400)
+[14:23:29] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0434m2, Porosity=0.422
+[LabWorker] Result (H=0.15m): FI=0.7 (P4=0.5%, P200=0.2%) -> Class: CL
+[14:23:29] [System] === Scene Validation ===
+[14:23:29] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:29] [System] === Scene Statistics ===
+[14:23:29] [System]   Materials: 4
+[14:23:29] [System]   Geometry Commands: 70
+[14:23:29] [System]   Rocks: 66
+[14:23:29] [System]   Sources: 1
+[14:23:29] [System]   Receivers: 1
+[14:23:29] [System]   Antennas Configured: True
+[14:23:29] [System]   Domain: 0.50×1.50×0.01m
+[14:23:29] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:29] [System] Production Line Completed
+  → Metadata: PVC=0.39%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 4: 1 file generated
+[14:23:29] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.611, Porosity: 0.389
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.5303607014941151%, n=0.389)
+[14:23:30] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0440m2, Porosity=0.413
+[LabWorker] Result (H=0.15m): FI=0.9 (P4=0.7%, P200=0.2%) -> Class: CL
+[14:23:30] [System] === Scene Validation ===
+[14:23:30] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:30] [System] === Scene Statistics ===
+[14:23:30] [System]   Materials: 4
+[14:23:30] [System]   Geometry Commands: 72
+[14:23:30] [System]   Rocks: 67
+[14:23:30] [System]   Sources: 1
+[14:23:30] [System]   Receivers: 1
+[14:23:30] [System]   Antennas Configured: True
+[14:23:30] [System]   Domain: 0.50×1.50×0.01m
+[14:23:30] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:30] [System] Production Line Completed
+  → Metadata: PVC=0.53%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 5: 1 file generated
+[14:23:30] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.592, Porosity: 0.408
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=1.5107161494234769%, n=0.408)
+[14:23:32] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0481m2, Porosity=0.358
+[LabWorker] Result (H=0.15m): FI=2.0 (P4=1.6%, P200=0.5%) -> Class: CL
+[14:23:32] [System] === Scene Validation ===
+[14:23:32] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:32] [System] === Scene Statistics ===
+[14:23:32] [System]   Materials: 4
+[14:23:32] [System]   Geometry Commands: 73
+[14:23:32] [System]   Rocks: 65
+[14:23:32] [System]   Sources: 1
+[14:23:32] [System]   Receivers: 1
+[14:23:32] [System]   Antennas Configured: True
+[14:23:32] [System]   Domain: 0.50×1.50×0.01m
+[14:23:32] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:32] [System] Production Line Completed
+  → Metadata: PVC=1.51%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 6: 1 file generated
+[14:23:32] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.584, Porosity: 0.416
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.9665796661787048%, n=0.416)
+[14:23:33] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0440m2, Porosity=0.414
+[LabWorker] Result (H=0.15m): FI=1.6 (P4=1.3%, P200=0.4%) -> Class: CL
+[14:23:33] [System] === Scene Validation ===
+[14:23:33] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:33] [System] === Scene Statistics ===
+[14:23:33] [System]   Materials: 4
+[14:23:33] [System]   Geometry Commands: 67
+[14:23:33] [System]   Rocks: 61
+[14:23:33] [System]   Sources: 1
+[14:23:33] [System]   Receivers: 1
+[14:23:33] [System]   Antennas Configured: True
+[14:23:33] [System]   Domain: 0.50×1.50×0.01m
+[14:23:33] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:33] [System] Production Line Completed
+  → Metadata: PVC=0.97%, FI=0.0, Class=N/A, Rocks=61
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 7: 1 file generated
+[14:23:33] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.588, Porosity: 0.412
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.7727950762126339%, n=0.412)
+[14:23:35] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0470m2, Porosity=0.374
+[LabWorker] Result (H=0.15m): FI=1.1 (P4=0.9%, P200=0.3%) -> Class: CL
+[14:23:35] [System] === Scene Validation ===
+[14:23:35] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:35] [System] === Scene Statistics ===
+[14:23:35] [System]   Materials: 4
+[14:23:35] [System]   Geometry Commands: 70
+[14:23:35] [System]   Rocks: 64
+[14:23:35] [System]   Sources: 1
+[14:23:35] [System]   Receivers: 1
+[14:23:35] [System]   Antennas Configured: True
+[14:23:35] [System]   Domain: 0.50×1.50×0.01m
+[14:23:35] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:35] [System] Production Line Completed
+  → Metadata: PVC=0.77%, FI=0.0, Class=N/A, Rocks=64
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 8: 1 file generated
+[14:23:35] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.582, Porosity: 0.418
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=0.5718686611088291%, n=0.418)
+[14:23:37] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0447m2, Porosity=0.404
+[LabWorker] Result (H=0.15m): FI=0.9 (P4=0.7%, P200=0.2%) -> Class: CL
+[14:23:37] [System] === Scene Validation ===
+[14:23:37] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:37] [System] === Scene Statistics ===
+[14:23:37] [System]   Materials: 4
+[14:23:37] [System]   Geometry Commands: 73
+[14:23:37] [System]   Rocks: 68
+[14:23:37] [System]   Sources: 1
+[14:23:37] [System]   Receivers: 1
+[14:23:37] [System]   Antennas Configured: True
+[14:23:37] [System]   Domain: 0.50×1.50×0.01m
+[14:23:37] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:37] [System] Production Line Completed
+  → Metadata: PVC=0.57%, FI=0.0, Class=N/A, Rocks=68
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 9: 1 file generated
+
+--- Generating Class MC (Target FI: 1.0-10.0%) ---
+[14:23:37] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.580, Porosity: 0.420
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=16.278716000232397%, n=0.420)
+[14:23:39] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0459m2, Porosity=0.388
+[LabWorker] Result (H=0.15m): FI=21.0 (P4=16.1%, P200=4.8%) -> Class: F
+[14:23:39] [System] === Scene Validation ===
+[14:23:39] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:39] [System] === Scene Statistics ===
+[14:23:39] [System]   Materials: 4
+[14:23:39] [System]   Geometry Commands: 105
+[14:23:39] [System]   Rocks: 68
+[14:23:39] [System]   Sources: 1
+[14:23:39] [System]   Receivers: 1
+[14:23:39] [System]   Antennas Configured: True
+[14:23:39] [System]   Domain: 0.50×1.50×0.01m
+[14:23:39] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:39] [System] Production Line Completed
+  → Metadata: PVC=16.28%, FI=0.0, Class=N/A, Rocks=68
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 10: 1 file generated
+[14:23:39] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.589, Porosity: 0.411
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=8.725704606098237%, n=0.411)
+[14:23:41] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0454m2, Porosity=0.395
+[LabWorker] Result (H=0.15m): FI=12.5 (P4=9.6%, P200=2.9%) -> Class: MF
+[14:23:41] [System] === Scene Validation ===
+[14:23:41] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:41] [System] === Scene Statistics ===
+[14:23:41] [System]   Materials: 4
+[14:23:41] [System]   Geometry Commands: 72
+[14:23:41] [System]   Rocks: 62
+[14:23:41] [System]   Sources: 1
+[14:23:41] [System]   Receivers: 1
+[14:23:41] [System]   Antennas Configured: True
+[14:23:41] [System]   Domain: 0.50×1.50×0.01m
+[14:23:41] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:41] [System] Production Line Completed
+  → Metadata: PVC=8.73%, FI=0.0, Class=N/A, Rocks=62
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 11: 1 file generated
+[14:23:41] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.588, Porosity: 0.412
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=2.331449721236225%, n=0.412)
+[14:23:43] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0431m2, Porosity=0.425
+[LabWorker] Result (H=0.15m): FI=4.0 (P4=3.1%, P200=0.9%) -> Class: CL
+[14:23:43] [System] === Scene Validation ===
+[14:23:43] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:43] [System] === Scene Statistics ===
+[14:23:43] [System]   Materials: 4
+[14:23:43] [System]   Geometry Commands: 72
+[14:23:43] [System]   Rocks: 63
+[14:23:43] [System]   Sources: 1
+[14:23:43] [System]   Receivers: 1
+[14:23:43] [System]   Antennas Configured: True
+[14:23:43] [System]   Domain: 0.50×1.50×0.01m
+[14:23:43] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:43] [System] Production Line Completed
+  → Metadata: PVC=2.33%, FI=0.0, Class=N/A, Rocks=63
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 12: 1 file generated
+[14:23:43] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.581, Porosity: 0.419
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=3.938560301379596%, n=0.419)
+[14:23:45] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0423m2, Porosity=0.437
+[LabWorker] Result (H=0.15m): FI=7.0 (P4=5.4%, P200=1.6%) -> Class: CL
+[14:23:45] [System] === Scene Validation ===
+[14:23:45] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:45] [System] === Scene Statistics ===
+[14:23:45] [System]   Materials: 4
+[14:23:45] [System]   Geometry Commands: 76
+[14:23:45] [System]   Rocks: 64
+[14:23:45] [System]   Sources: 1
+[14:23:45] [System]   Receivers: 1
+[14:23:45] [System]   Antennas Configured: True
+[14:23:45] [System]   Domain: 0.50×1.50×0.01m
+[14:23:45] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:45] [System] Production Line Completed
+  → Metadata: PVC=3.94%, FI=0.0, Class=N/A, Rocks=64
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 13: 1 file generated
+[14:23:45] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.597, Porosity: 0.403
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=6.558798923309183%, n=0.403)
+[14:23:46] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0427m2, Porosity=0.431
+[LabWorker] Result (H=0.15m): FI=11.0 (P4=8.5%, P200=2.5%) -> Class: MF
+[14:23:46] [System] === Scene Validation ===
+[14:23:46] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:46] [System] === Scene Statistics ===
+[14:23:46] [System]   Materials: 4
+[14:23:46] [System]   Geometry Commands: 84
+[14:23:46] [System]   Rocks: 66
+[14:23:46] [System]   Sources: 1
+[14:23:46] [System]   Receivers: 1
+[14:23:46] [System]   Antennas Configured: True
+[14:23:46] [System]   Domain: 0.50×1.50×0.01m
+[14:23:46] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:46] [System] Production Line Completed
+  → Metadata: PVC=6.56%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 14: 1 file generated
+[14:23:46] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.576, Porosity: 0.424
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=3.5278483601134307%, n=0.424)
+[14:23:48] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0455m2, Porosity=0.394
+[LabWorker] Result (H=0.15m): FI=5.3 (P4=4.1%, P200=1.2%) -> Class: CL
+[14:23:48] [System] === Scene Validation ===
+[14:23:48] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:48] [System] === Scene Statistics ===
+[14:23:48] [System]   Materials: 4
+[14:23:48] [System]   Geometry Commands: 78
+[14:23:48] [System]   Rocks: 66
+[14:23:48] [System]   Sources: 1
+[14:23:48] [System]   Receivers: 1
+[14:23:48] [System]   Antennas Configured: True
+[14:23:48] [System]   Domain: 0.50×1.50×0.01m
+[14:23:48] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:48] [System] Production Line Completed
+  → Metadata: PVC=3.53%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 15: 1 file generated
+[14:23:48] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.594, Porosity: 0.406
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=4.9896278408875805%, n=0.406)
+[14:23:49] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0435m2, Porosity=0.420
+[LabWorker] Result (H=0.15m): FI=8.2 (P4=6.3%, P200=1.9%) -> Class: CL
+[14:23:49] [System] === Scene Validation ===
+[14:23:49] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:49] [System] === Scene Statistics ===
+[14:23:49] [System]   Materials: 4
+[14:23:49] [System]   Geometry Commands: 79
+[14:23:49] [System]   Rocks: 65
+[14:23:49] [System]   Sources: 1
+[14:23:49] [System]   Receivers: 1
+[14:23:49] [System]   Antennas Configured: True
+[14:23:49] [System]   Domain: 0.50×1.50×0.01m
+[14:23:49] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:49] [System] Production Line Completed
+  → Metadata: PVC=4.99%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 16: 1 file generated
+[14:23:49] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.587, Porosity: 0.413
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=1.953672658871378%, n=0.413)
+[14:23:51] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0434m2, Porosity=0.421
+[LabWorker] Result (H=0.15m): FI=3.4 (P4=2.6%, P200=0.8%) -> Class: CL
+[14:23:51] [System] === Scene Validation ===
+[14:23:51] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:51] [System] === Scene Statistics ===
+[14:23:51] [System]   Materials: 4
+[14:23:51] [System]   Geometry Commands: 78
+[14:23:51] [System]   Rocks: 70
+[14:23:51] [System]   Sources: 1
+[14:23:51] [System]   Receivers: 1
+[14:23:51] [System]   Antennas Configured: True
+[14:23:51] [System]   Domain: 0.50×1.50×0.01m
+[14:23:51] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:51] [System] Production Line Completed
+  → Metadata: PVC=1.95%, FI=0.0, Class=N/A, Rocks=70
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 17: 1 file generated
+[14:23:51] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.567, Porosity: 0.433
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=9.389665204627953%, n=0.433)
+[14:23:54] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0400m2, Porosity=0.466
+[LabWorker] Result (H=0.15m): FI=17.3 (P4=13.3%, P200=4.0%) -> Class: MF
+[14:23:54] [System] === Scene Validation ===
+[14:23:54] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:54] [System] === Scene Statistics ===
+[14:23:54] [System]   Materials: 4
+[14:23:54] [System]   Geometry Commands: 76
+[14:23:54] [System]   Rocks: 65
+[14:23:54] [System]   Sources: 1
+[14:23:54] [System]   Receivers: 1
+[14:23:54] [System]   Antennas Configured: True
+[14:23:54] [System]   Domain: 0.50×1.50×0.01m
+[14:23:54] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:54] [System] Production Line Completed
+  → Metadata: PVC=9.39%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 18: 1 file generated
+[14:23:54] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.591, Porosity: 0.409
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: CL (PVC=7.614251369050748%, n=0.409)
+[14:23:56] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0449m2, Porosity=0.402
+[LabWorker] Result (H=0.15m): FI=11.3 (P4=8.7%, P200=2.6%) -> Class: MF
+[14:23:56] [System] === Scene Validation ===
+[14:23:56] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:56] [System] === Scene Statistics ===
+[14:23:56] [System]   Materials: 4
+[14:23:56] [System]   Geometry Commands: 83
+[14:23:56] [System]   Rocks: 63
+[14:23:56] [System]   Sources: 1
+[14:23:56] [System]   Receivers: 1
+[14:23:56] [System]   Antennas Configured: True
+[14:23:56] [System]   Domain: 0.50×1.50×0.01m
+[14:23:56] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:56] [System] Production Line Completed
+  → Metadata: PVC=7.61%, FI=0.0, Class=N/A, Rocks=63
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 19: 1 file generated
+
+--- Generating Class MF (Target FI: 10.0-20.0%) ---
+[14:23:56] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.589, Porosity: 0.411
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=20.81098018195864%, n=0.411)
+[14:23:58] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0448m2, Porosity=0.403
+[LabWorker] Result (H=0.15m): FI=27.0 (P4=20.8%, P200=6.2%) -> Class: F
+[14:23:58] [System] === Scene Validation ===
+[14:23:58] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:23:58] [System] === Scene Statistics ===
+[14:23:58] [System]   Materials: 4
+[14:23:58] [System]   Geometry Commands: 115
+[14:23:58] [System]   Rocks: 69
+[14:23:58] [System]   Sources: 1
+[14:23:58] [System]   Receivers: 1
+[14:23:58] [System]   Antennas Configured: True
+[14:23:58] [System]   Domain: 0.50×1.50×0.01m
+[14:23:58] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:23:58] [System] Production Line Completed
+  → Metadata: PVC=20.81%, FI=0.0, Class=N/A, Rocks=69
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 20: 1 file generated
+[14:23:58] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.587, Porosity: 0.413
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=27.88986878138411%, n=0.413)
+[14:24:00] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0428m2, Porosity=0.430
+[LabWorker] Result (H=0.15m): FI=36.6 (P4=28.2%, P200=8.4%) -> Class: F
+[14:24:00] [System] === Scene Validation ===
+[14:24:00] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:00] [System] === Scene Statistics ===
+[14:24:00] [System]   Materials: 4
+[14:24:00] [System]   Geometry Commands: 130
+[14:24:00] [System]   Rocks: 70
+[14:24:00] [System]   Sources: 1
+[14:24:00] [System]   Receivers: 1
+[14:24:00] [System]   Antennas Configured: True
+[14:24:00] [System]   Domain: 0.50×1.50×0.01m
+[14:24:00] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:00] [System] Production Line Completed
+  → Metadata: PVC=27.89%, FI=0.0, Class=N/A, Rocks=70
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 21: 1 file generated
+[14:24:00] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.589, Porosity: 0.411
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=24.804629733832286%, n=0.411)
+[14:24:01] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0443m2, Porosity=0.409
+[LabWorker] Result (H=0.15m): FI=31.5 (P4=24.3%, P200=7.3%) -> Class: F
+[14:24:01] [System] === Scene Validation ===
+[14:24:01] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:01] [System] === Scene Statistics ===
+[14:24:01] [System]   Materials: 4
+[14:24:01] [System]   Geometry Commands: 117
+[14:24:01] [System]   Rocks: 63
+[14:24:01] [System]   Sources: 1
+[14:24:01] [System]   Receivers: 1
+[14:24:01] [System]   Antennas Configured: True
+[14:24:01] [System]   Domain: 0.50×1.50×0.01m
+[14:24:01] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:01] [System] Production Line Completed
+  → Metadata: PVC=24.80%, FI=0.0, Class=N/A, Rocks=63
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 22: 1 file generated
+[14:24:01] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.582, Porosity: 0.418
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=28.55995987532297%, n=0.418)
+[14:24:04] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0413m2, Porosity=0.450
+[LabWorker] Result (H=0.15m): FI=39.4 (P4=30.3%, P200=9.1%) -> Class: F
+[14:24:04] [System] === Scene Validation ===
+[14:24:04] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:04] [System] === Scene Statistics ===
+[14:24:04] [System]   Materials: 4
+[14:24:04] [System]   Geometry Commands: 128
+[14:24:04] [System]   Rocks: 66
+[14:24:04] [System]   Sources: 1
+[14:24:04] [System]   Receivers: 1
+[14:24:04] [System]   Antennas Configured: True
+[14:24:04] [System]   Domain: 0.50×1.50×0.01m
+[14:24:04] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:04] [System] Production Line Completed
+  → Metadata: PVC=28.56%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 23: 1 file generated
+[14:24:04] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.615, Porosity: 0.385
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=34.031794552778855%, n=0.385)
+[14:24:04] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0444m2, Porosity=0.409
+[LabWorker] Result (H=0.15m): FI=39.7 (P4=30.5%, P200=9.2%) -> Class: F
+[14:24:04] [System] === Scene Validation ===
+[14:24:04] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:04] [System] === Scene Statistics ===
+[14:24:04] [System]   Materials: 4
+[14:24:04] [System]   Geometry Commands: 141
+[14:24:04] [System]   Rocks: 68
+[14:24:04] [System]   Sources: 1
+[14:24:04] [System]   Receivers: 1
+[14:24:04] [System]   Antennas Configured: True
+[14:24:04] [System]   Domain: 0.50×1.50×0.01m
+[14:24:04] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:04] [System] Production Line Completed
+  → Metadata: PVC=34.03%, FI=0.0, Class=N/A, Rocks=68
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 24: 1 file generated
+[14:24:04] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.587, Porosity: 0.413
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=24.68435929300112%, n=0.413)
+[14:24:05] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0473m2, Porosity=0.370
+[LabWorker] Result (H=0.15m): FI=27.7 (P4=21.3%, P200=6.4%) -> Class: F
+[14:24:05] [System] === Scene Validation ===
+[14:24:05] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:05] [System] === Scene Statistics ===
+[14:24:05] [System]   Materials: 4
+[14:24:05] [System]   Geometry Commands: 116
+[14:24:05] [System]   Rocks: 62
+[14:24:05] [System]   Sources: 1
+[14:24:05] [System]   Receivers: 1
+[14:24:05] [System]   Antennas Configured: True
+[14:24:05] [System]   Domain: 0.50×1.50×0.01m
+[14:24:05] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:05] [System] Production Line Completed
+  → Metadata: PVC=24.68%, FI=0.0, Class=N/A, Rocks=62
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 25: 1 file generated
+[14:24:05] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.602, Porosity: 0.398
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=19.76541292103016%, n=0.398)
+[14:24:06] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0432m2, Porosity=0.423
+[LabWorker] Result (H=0.15m): FI=27.7 (P4=21.3%, P200=6.4%) -> Class: F
+[14:24:06] [System] === Scene Validation ===
+[14:24:06] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:06] [System] === Scene Statistics ===
+[14:24:06] [System]   Materials: 4
+[14:24:06] [System]   Geometry Commands: 113
+[14:24:06] [System]   Rocks: 69
+[14:24:06] [System]   Sources: 1
+[14:24:06] [System]   Receivers: 1
+[14:24:06] [System]   Antennas Configured: True
+[14:24:06] [System]   Domain: 0.50×1.50×0.01m
+[14:24:06] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:06] [System] Production Line Completed
+  → Metadata: PVC=19.77%, FI=0.0, Class=N/A, Rocks=69
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 26: 1 file generated
+[14:24:06] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.597, Porosity: 0.403
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=29.688090041021947%, n=0.403)
+[14:24:07] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0460m2, Porosity=0.386
+[LabWorker] Result (H=0.15m): FI=33.6 (P4=25.8%, P200=7.8%) -> Class: F
+[14:24:07] [System] === Scene Validation ===
+[14:24:07] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:07] [System] === Scene Statistics ===
+[14:24:07] [System]   Materials: 4
+[14:24:07] [System]   Geometry Commands: 131
+[14:24:07] [System]   Rocks: 67
+[14:24:07] [System]   Sources: 1
+[14:24:07] [System]   Receivers: 1
+[14:24:07] [System]   Antennas Configured: True
+[14:24:07] [System]   Domain: 0.50×1.50×0.01m
+[14:24:07] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:07] [System] Production Line Completed
+  → Metadata: PVC=29.69%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 27: 1 file generated
+[14:24:07] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.596, Porosity: 0.404
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=25.23466449373517%, n=0.404)
+[14:24:08] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0453m2, Porosity=0.397
+[LabWorker] Result (H=0.15m): FI=30.7 (P4=23.6%, P200=7.1%) -> Class: F
+[14:24:08] [System] === Scene Validation ===
+[14:24:08] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:08] [System] === Scene Statistics ===
+[14:24:08] [System]   Materials: 4
+[14:24:08] [System]   Geometry Commands: 121
+[14:24:08] [System]   Rocks: 66
+[14:24:08] [System]   Sources: 1
+[14:24:08] [System]   Receivers: 1
+[14:24:08] [System]   Antennas Configured: True
+[14:24:08] [System]   Domain: 0.50×1.50×0.01m
+[14:24:08] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:08] [System] Production Line Completed
+  → Metadata: PVC=25.23%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 28: 1 file generated
+[14:24:08] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.617, Porosity: 0.383
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: MF (PVC=23.499584603627575%, n=0.383)
+[14:24:08] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0460m2, Porosity=0.386
+[LabWorker] Result (H=0.15m): FI=28.1 (P4=21.6%, P200=6.5%) -> Class: F
+[14:24:08] [System] === Scene Validation ===
+[14:24:08] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:08] [System] === Scene Statistics ===
+[14:24:08] [System]   Materials: 4
+[14:24:08] [System]   Geometry Commands: 122
+[14:24:08] [System]   Rocks: 71
+[14:24:08] [System]   Sources: 1
+[14:24:08] [System]   Receivers: 1
+[14:24:08] [System]   Antennas Configured: True
+[14:24:08] [System]   Domain: 0.50×1.50×0.01m
+[14:24:08] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:08] [System] Production Line Completed
+  → Metadata: PVC=23.50%, FI=0.0, Class=N/A, Rocks=71
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 29: 1 file generated
+
+--- Generating Class F (Target FI: 20.0-40.0%) ---
+[14:24:08] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.593, Porosity: 0.407
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=38.381027709958786%, n=0.407)
+[14:24:10] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0446m2, Porosity=0.406
+[LabWorker] Result (H=0.15m): FI=42.7 (P4=32.8%, P200=9.9%) -> Class: HF
+[14:24:10] [System] === Scene Validation ===
+[14:24:10] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:10] [System] === Scene Statistics ===
+[14:24:10] [System]   Materials: 4
+[14:24:10] [System]   Geometry Commands: 148
+[14:24:10] [System]   Rocks: 67
+[14:24:10] [System]   Sources: 1
+[14:24:10] [System]   Receivers: 1
+[14:24:10] [System]   Antennas Configured: True
+[14:24:10] [System]   Domain: 0.50×1.50×0.01m
+[14:24:10] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:10] [System] Production Line Completed
+  → Metadata: PVC=38.38%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 30: 1 file generated
+[14:24:10] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.598, Porosity: 0.402
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=42.875458933804104%, n=0.402)
+[14:24:12] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0439m2, Porosity=0.415
+[LabWorker] Result (H=0.15m): FI=47.0 (P4=36.2%, P200=10.9%) -> Class: HF
+[14:24:12] [System] === Scene Validation ===
+[14:24:12] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:12] [System] === Scene Statistics ===
+[14:24:12] [System]   Materials: 4
+[14:24:12] [System]   Geometry Commands: 157
+[14:24:12] [System]   Rocks: 67
+[14:24:12] [System]   Sources: 1
+[14:24:12] [System]   Receivers: 1
+[14:24:12] [System]   Antennas Configured: True
+[14:24:12] [System]   Domain: 0.50×1.50×0.01m
+[14:24:12] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:12] [System] Production Line Completed
+  → Metadata: PVC=42.88%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 31: 1 file generated
+[14:24:12] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.576, Porosity: 0.424
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=40.13950730544585%, n=0.424)
+[14:24:13] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0481m2, Porosity=0.359
+[LabWorker] Result (H=0.15m): FI=38.4 (P4=29.5%, P200=8.9%) -> Class: F
+[14:24:13] [System] === Scene Validation ===
+[14:24:13] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:13] [System] === Scene Statistics ===
+[14:24:13] [System]   Materials: 4
+[14:24:13] [System]   Geometry Commands: 147
+[14:24:13] [System]   Rocks: 62
+[14:24:13] [System]   Sources: 1
+[14:24:13] [System]   Receivers: 1
+[14:24:13] [System]   Antennas Configured: True
+[14:24:13] [System]   Domain: 0.50×1.50×0.01m
+[14:24:13] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:13] [System] Production Line Completed
+  → Metadata: PVC=40.14%, FI=0.0, Class=N/A, Rocks=62
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 32: 1 file generated
+[14:24:13] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.599, Porosity: 0.401
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=74.5487318928295%, n=0.401)
+[14:24:14] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0443m2, Porosity=0.409
+[LabWorker] Result (H=0.15m): FI=53.1 (P4=40.9%, P200=12.3%) -> Class: HF
+[14:24:14] [System] === Scene Validation ===
+[14:24:14] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:14] [System] === Scene Statistics ===
+[14:24:14] [System]   Materials: 4
+[14:24:14] [System]   Geometry Commands: 219
+[14:24:14] [System]   Rocks: 65
+[14:24:14] [System]   Sources: 1
+[14:24:14] [System]   Receivers: 1
+[14:24:14] [System]   Antennas Configured: True
+[14:24:14] [System]   Domain: 0.50×1.50×0.01m
+[14:24:14] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:14] [System] Production Line Completed
+  → Metadata: PVC=74.55%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 33: 1 file generated
+[14:24:14] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.586, Porosity: 0.414
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=46.56955383249027%, n=0.414)
+[14:24:16] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0424m2, Porosity=0.435
+[LabWorker] Result (H=0.15m): FI=52.1 (P4=40.1%, P200=12.0%) -> Class: HF
+[14:24:16] [System] === Scene Validation ===
+[14:24:16] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:16] [System] === Scene Statistics ===
+[14:24:16] [System]   Materials: 4
+[14:24:16] [System]   Geometry Commands: 160
+[14:24:16] [System]   Rocks: 62
+[14:24:16] [System]   Sources: 1
+[14:24:16] [System]   Receivers: 1
+[14:24:16] [System]   Antennas Configured: True
+[14:24:16] [System]   Domain: 0.50×1.50×0.01m
+[14:24:16] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:16] [System] Production Line Completed
+  → Metadata: PVC=46.57%, FI=0.0, Class=N/A, Rocks=62
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 34: 1 file generated
+[14:24:16] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.577, Porosity: 0.423
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=98.50334483417676%, n=0.423)
+[14:24:18] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0458m2, Porosity=0.389
+[LabWorker] Result (H=0.15m): FI=50.6 (P4=38.9%, P200=11.7%) -> Class: HF
+[14:24:18] [System] === Scene Validation ===
+[14:24:18] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:18] [System] === Scene Statistics ===
+[14:24:18] [System]   Materials: 4
+[14:24:18] [System]   Geometry Commands: 268
+[14:24:18] [System]   Rocks: 66
+[14:24:18] [System]   Sources: 1
+[14:24:18] [System]   Receivers: 1
+[14:24:18] [System]   Antennas Configured: True
+[14:24:18] [System]   Domain: 0.50×1.50×0.01m
+[14:24:18] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:18] [System] Production Line Completed
+  → Metadata: PVC=98.50%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 35: 1 file generated
+[14:24:18] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.594, Porosity: 0.406
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=71.35600480884358%, n=0.406)
+[14:24:20] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0441m2, Porosity=0.412
+[LabWorker] Result (H=0.15m): FI=53.6 (P4=41.2%, P200=12.4%) -> Class: HF
+[14:24:20] [System] === Scene Validation ===
+[14:24:20] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:20] [System] === Scene Statistics ===
+[14:24:20] [System]   Materials: 4
+[14:24:20] [System]   Geometry Commands: 213
+[14:24:20] [System]   Rocks: 66
+[14:24:20] [System]   Sources: 1
+[14:24:20] [System]   Receivers: 1
+[14:24:20] [System]   Antennas Configured: True
+[14:24:20] [System]   Domain: 0.50×1.50×0.01m
+[14:24:20] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:20] [System] Production Line Completed
+  → Metadata: PVC=71.36%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 36: 1 file generated
+[14:24:20] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.606, Porosity: 0.394
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=44.543631785512694%, n=0.394)
+[14:24:20] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0448m2, Porosity=0.403
+[LabWorker] Result (H=0.15m): FI=46.7 (P4=35.9%, P200=10.8%) -> Class: HF
+[14:24:20] [System] === Scene Validation ===
+[14:24:20] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:20] [System] === Scene Statistics ===
+[14:24:20] [System]   Materials: 4
+[14:24:20] [System]   Geometry Commands: 161
+[14:24:20] [System]   Rocks: 67
+[14:24:20] [System]   Sources: 1
+[14:24:20] [System]   Receivers: 1
+[14:24:20] [System]   Antennas Configured: True
+[14:24:20] [System]   Domain: 0.50×1.50×0.01m
+[14:24:20] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:20] [System] Production Line Completed
+  → Metadata: PVC=44.54%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 37: 1 file generated
+[14:24:20] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.599, Porosity: 0.401
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=38.97510538427166%, n=0.401)
+[14:24:21] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0452m2, Porosity=0.397
+[LabWorker] Result (H=0.15m): FI=42.1 (P4=32.4%, P200=9.7%) -> Class: HF
+[14:24:21] [System] === Scene Validation ===
+[14:24:21] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:21] [System] === Scene Statistics ===
+[14:24:21] [System]   Materials: 4
+[14:24:21] [System]   Geometry Commands: 146
+[14:24:21] [System]   Rocks: 64
+[14:24:21] [System]   Sources: 1
+[14:24:21] [System]   Receivers: 1
+[14:24:21] [System]   Antennas Configured: True
+[14:24:21] [System]   Domain: 0.50×1.50×0.01m
+[14:24:21] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:21] [System] Production Line Completed
+  → Metadata: PVC=38.98%, FI=0.0, Class=N/A, Rocks=64
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 38: 1 file generated
+[14:24:21] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.606, Porosity: 0.394
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=45.02083384371833%, n=0.394)
+[14:24:24] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0429m2, Porosity=0.428
+[LabWorker] Result (H=0.15m): FI=50.2 (P4=38.6%, P200=11.6%) -> Class: HF
+[14:24:24] [System] === Scene Validation ===
+[14:24:24] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:24] [System] === Scene Statistics ===
+[14:24:24] [System]   Materials: 4
+[14:24:24] [System]   Geometry Commands: 162
+[14:24:24] [System]   Rocks: 67
+[14:24:24] [System]   Sources: 1
+[14:24:24] [System]   Receivers: 1
+[14:24:24] [System]   Antennas Configured: True
+[14:24:24] [System]   Domain: 0.50×1.50×0.01m
+[14:24:24] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:24] [System] Production Line Completed
+  → Metadata: PVC=45.02%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 39: 1 file generated
+
+--- Generating Class HF (Target FI: 40.0-50.0%) ---
+[14:24:24] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.582, Porosity: 0.418
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.418)
+[14:24:26] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0451m2, Porosity=0.399
+[LabWorker] Result (H=0.15m): FI=51.8 (P4=39.9%, P200=12.0%) -> Class: HF
+[14:24:26] [System] === Scene Validation ===
+[14:24:26] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:26] [System] === Scene Statistics ===
+[14:24:26] [System]   Materials: 4
+[14:24:26] [System]   Geometry Commands: 268
+[14:24:26] [System]   Rocks: 63
+[14:24:26] [System]   Sources: 1
+[14:24:26] [System]   Receivers: 1
+[14:24:26] [System]   Antennas Configured: True
+[14:24:26] [System]   Domain: 0.50×1.50×0.01m
+[14:24:26] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:26] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=63
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 40: 1 file generated
+[14:24:26] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.605, Porosity: 0.395
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=100.0%, n=0.395)
+[14:24:27] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0472m2, Porosity=0.371
+[LabWorker] Result (H=0.15m): FI=48.3 (P4=37.1%, P200=11.1%) -> Class: HF
+[14:24:27] [System] === Scene Validation ===
+[14:24:27] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:27] [System] === Scene Statistics ===
+[14:24:27] [System]   Materials: 4
+[14:24:27] [System]   Geometry Commands: 270
+[14:24:27] [System]   Rocks: 65
+[14:24:27] [System]   Sources: 1
+[14:24:27] [System]   Receivers: 1
+[14:24:27] [System]   Antennas Configured: True
+[14:24:27] [System]   Domain: 0.50×1.50×0.01m
+[14:24:27] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:27] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=65
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 41: 1 file generated
+[14:24:27] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.602, Porosity: 0.398
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=100.0%, n=0.398)
+[14:24:29] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0455m2, Porosity=0.393
+[LabWorker] Result (H=0.15m): FI=51.1 (P4=39.3%, P200=11.8%) -> Class: HF
+[14:24:29] [System] === Scene Validation ===
+[14:24:29] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:29] [System] === Scene Statistics ===
+[14:24:29] [System]   Materials: 4
+[14:24:29] [System]   Geometry Commands: 277
+[14:24:29] [System]   Rocks: 72
+[14:24:29] [System]   Sources: 1
+[14:24:29] [System]   Receivers: 1
+[14:24:29] [System]   Antennas Configured: True
+[14:24:29] [System]   Domain: 0.50×1.50×0.01m
+[14:24:29] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:29] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=72
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 42: 1 file generated
+[14:24:29] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.573, Porosity: 0.427
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.427)
+[14:24:30] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0418m2, Porosity=0.442
+[LabWorker] Result (H=0.15m): FI=57.5 (P4=44.2%, P200=13.3%) -> Class: HF
+[14:24:30] [System] === Scene Validation ===
+[14:24:30] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:30] [System] === Scene Statistics ===
+[14:24:30] [System]   Materials: 4
+[14:24:30] [System]   Geometry Commands: 272
+[14:24:30] [System]   Rocks: 67
+[14:24:30] [System]   Sources: 1
+[14:24:30] [System]   Receivers: 1
+[14:24:30] [System]   Antennas Configured: True
+[14:24:30] [System]   Domain: 0.50×1.50×0.01m
+[14:24:30] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:30] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 43: 1 file generated
+[14:24:30] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.579, Porosity: 0.421
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.421)
+[14:24:33] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0432m2, Porosity=0.424
+[LabWorker] Result (H=0.15m): FI=55.1 (P4=42.4%, P200=12.7%) -> Class: HF
+[14:24:33] [System] === Scene Validation ===
+[14:24:33] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:33] [System] === Scene Statistics ===
+[14:24:33] [System]   Materials: 4
+[14:24:33] [System]   Geometry Commands: 271
+[14:24:33] [System]   Rocks: 66
+[14:24:33] [System]   Sources: 1
+[14:24:33] [System]   Receivers: 1
+[14:24:33] [System]   Antennas Configured: True
+[14:24:33] [System]   Domain: 0.50×1.50×0.01m
+[14:24:33] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:33] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 44: 1 file generated
+[14:24:33] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.575, Porosity: 0.425
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.425)
+[14:24:34] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0455m2, Porosity=0.393
+[LabWorker] Result (H=0.15m): FI=51.1 (P4=39.3%, P200=11.8%) -> Class: HF
+[14:24:34] [System] === Scene Validation ===
+[14:24:34] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:34] [System] === Scene Statistics ===
+[14:24:34] [System]   Materials: 4
+[14:24:34] [System]   Geometry Commands: 269
+[14:24:34] [System]   Rocks: 64
+[14:24:34] [System]   Sources: 1
+[14:24:34] [System]   Receivers: 1
+[14:24:34] [System]   Antennas Configured: True
+[14:24:34] [System]   Domain: 0.50×1.50×0.01m
+[14:24:34] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:34] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=64
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 45: 1 file generated
+[14:24:34] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.584, Porosity: 0.416
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.416)
+[14:24:36] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0448m2, Porosity=0.403
+[LabWorker] Result (H=0.15m): FI=52.4 (P4=40.3%, P200=12.1%) -> Class: HF
+[14:24:36] [System] === Scene Validation ===
+[14:24:36] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:36] [System] === Scene Statistics ===
+[14:24:36] [System]   Materials: 4
+[14:24:36] [System]   Geometry Commands: 267
+[14:24:36] [System]   Rocks: 62
+[14:24:36] [System]   Sources: 1
+[14:24:36] [System]   Receivers: 1
+[14:24:36] [System]   Antennas Configured: True
+[14:24:36] [System]   Domain: 0.50×1.50×0.01m
+[14:24:36] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:36] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=62
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 46: 1 file generated
+[14:24:36] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.599, Porosity: 0.401
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.401)
+[14:24:38] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0465m2, Porosity=0.380
+[LabWorker] Result (H=0.15m): FI=49.3 (P4=38.0%, P200=11.4%) -> Class: HF
+[14:24:38] [System] === Scene Validation ===
+[14:24:38] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:38] [System] === Scene Statistics ===
+[14:24:38] [System]   Materials: 4
+[14:24:38] [System]   Geometry Commands: 271
+[14:24:38] [System]   Rocks: 66
+[14:24:38] [System]   Sources: 1
+[14:24:38] [System]   Receivers: 1
+[14:24:38] [System]   Antennas Configured: True
+[14:24:38] [System]   Domain: 0.50×1.50×0.01m
+[14:24:38] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:38] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=66
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 47: 1 file generated
+[14:24:38] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.610, Porosity: 0.390
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: F (PVC=100.0%, n=0.390)
+[14:24:39] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0435m2, Porosity=0.420
+[LabWorker] Result (H=0.15m): FI=54.7 (P4=42.0%, P200=12.6%) -> Class: HF
+[14:24:39] [System] === Scene Validation ===
+[14:24:39] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:39] [System] === Scene Statistics ===
+[14:24:39] [System]   Materials: 4
+[14:24:39] [System]   Geometry Commands: 272
+[14:24:39] [System]   Rocks: 67
+[14:24:39] [System]   Sources: 1
+[14:24:39] [System]   Receivers: 1
+[14:24:39] [System]   Antennas Configured: True
+[14:24:39] [System]   Domain: 0.50×1.50×0.01m
+[14:24:39] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:39] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 48: 1 file generated
+[14:24:39] [System] Production Line Started
+[RockWorker] Generating fresh rocks (Strategy: FrontChainPacking)
+[RockWorker] Achieved Density: 0.599, Porosity: 0.401
+[DegradationWorker] No degradation (fresh ballast)
+[FoulingWorker] FI Class: HF (PVC=100.0%, n=0.401)
+[14:24:42] [System] Base Checkpoint Created
+[LabWorker] Starting Virtual Sieve Analysis (Horizontal Sampling)...
+[LabWorker] Sampling Layer: Y=[0.500, 0.650] (H=15.0cm)
+[LabWorker] Layer Stats: RockArea=0.0442m2, Porosity=0.411
+[LabWorker] Result (H=0.15m): FI=53.4 (P4=41.1%, P200=12.3%) -> Class: HF
+[14:24:42] [System] === Scene Validation ===
+[14:24:42] [System]   [VALIDATION] Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[14:24:42] [System] === Scene Statistics ===
+[14:24:42] [System]   Materials: 4
+[14:24:42] [System]   Geometry Commands: 272
+[14:24:42] [System]   Rocks: 67
+[14:24:42] [System]   Sources: 1
+[14:24:42] [System]   Receivers: 1
+[14:24:42] [System]   Antennas Configured: True
+[14:24:42] [System]   Domain: 0.50×1.50×0.01m
+[14:24:42] [System]   Resolution: 0.0050×0.0050×0.0050m
+[14:24:42] [System] Production Line Completed
+  → Metadata: PVC=100.00%, FI=0.0, Class=N/A, Rocks=67
+  ⚠ Validation warnings: 1 issue(s)
+    - Discretization (0.005, 0.005, 0.005) too coarse for domain (0.5, 1.5, 0.005)
+[OK] Sample 49: 1 file generated
+[OK] Full Metadata saved to output/pipeline_run/20251210_142323/metadata.csv with 50 rows
+[OK] Created output/pipeline_run/20251210_142323/run_simulations.bat
+[OK] Created output/pipeline_run/20251210_142323/extract_features.bat
+[OK] Created output/pipeline_run/20251210_142323/visualize_blueprints.bat

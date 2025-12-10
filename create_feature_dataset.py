@@ -87,7 +87,7 @@ def create_dataset(input_dir: str):
             
             # Add Labels/Keys ONLY
             # We explicitly exclude simulation parameters (moisture, roughness, etc.) to avoiding leakage.
-            feats_dict['label_FI_class'] = row['FI_class']
+            feats_dict['label_FI_class'] = row['FI_Class']  # Note: metadata has FI_Class (capital C)
             feats_dict['label_pvc'] = row['pvc']
             feats_dict['sample_id'] = sample_id
             
