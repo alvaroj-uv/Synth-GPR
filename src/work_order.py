@@ -6,9 +6,12 @@ Workers read inputs from the WorkOrder and write their outputs (calculations, st
 It includes an audit trail to track which worker modified what data.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from .domain.scene_parameters import SceneParameters
 
 @dataclass
 class AuditEntry:
@@ -27,38 +30,64 @@ class WorkOrder:
     It should NOT be modified by workers.
     """
     id: str
-    params: Dict[str, Any] = field(default_factory=dict)
+    typed_params: 'SceneParameters'  # Type-safe parameters (required)
+    
+    @classmethod
+    def from_sampled_params(cls, sample_id: str, params: dict) -> 'WorkOrder':
+        """
+        Factory method for creating WorkOrder from sampled parameters.
+        
+        Args:
+            sample_id: Unique identifier (e.g., "5000" becomes "s_5000")
+            params: Dictionary with 'pvc', 'moisture', etc. from sampler
+            
+        Returns:
+            WorkOrder with typed parameters
+            
+        Example:
+            >>> params = {'pvc': 25.0, 'moisture': 0.1}
+            >>> wo = WorkOrder.from_sampled_params(5000, params)
+            >>> wo.id
+            's_5000'
+        """
+        from .domain import SceneParameters
+        
+        typed_params = SceneParameters(
+            pvc=params.get('pvc', 0.0),
+            moisture=params.get('moisture', 0.0)
+        )
+        
+        scene_id = f"s_{sample_id:04d}"
+        return cls(id=scene_id, typed_params=typed_params)
     
     def get(self, key: str, default: Any = None) -> Any:
-        return self.params.get(key, default)
+        """
+        Get parameter from typed_params.
+        
+        Example:
+            >>> wo = WorkOrder(id="test", typed_params=SceneParameters(pvc=25.0))
+            >>> wo.get('pvc', 0.0)
+            25.0
+        """
+        if hasattr(self.typed_params, key):
+            return getattr(self.typed_params, key)
+        return default
         
     def validate(self) -> None:
         """
         Enforce physical invariants. Fail fast if configuration is impossible.
+        
+        Note: Most validation now happens in SceneParameters.__post_init__.
+        This method handles cross-parameter validation only.
         """
-        # 1. Dimensions
-        for dim in ['domain_x', 'domain_y', 'domain_z']:
-            val = self.params.get(dim)
-            if val is not None and val <= 0:
-                raise ValueError(f"WorkOrder Error: {dim} must be positive, got {val}")
-                
-        # 2. Percentages (PVC)
-        pvc = self.params.get('pvc')
-        if pvc is not None and not (0 <= pvc <= 100):
-            raise ValueError(f"WorkOrder Error: PVC must be 0-100, got {pvc}")
-            
-        # 3. Fractions (Moisture)
-        moisture = self.params.get('moisture')
-        if moisture is not None and not (0 <= moisture <= 1.0):
-
-            raise ValueError(f"WorkOrder Error: moisture must be 0-1.0, got {moisture}")
-            
-        # 4. Geometry Invariants (Fail Fast)
         # Antenna should never be below ground
-        offset = self.params.get('antenna_offset')
-        if offset is not None:
-             if abs(offset) > self.params.get('domain_x', 0.5) / 2:
-                 raise ValueError(f"WorkOrder Error: antenna_offset {offset} exceeds domain bounds")
+        if self.typed_params.antenna_offset is not None:
+            domain_x = self.typed_params.domain_x or 0.5
+            if abs(self.typed_params.antenna_offset) > domain_x / 2:
+                raise ValueError(
+                    f"WorkOrder Error: antenna_offset {self.typed_params.antenna_offset} "
+                    f"exceeds domain bounds"
+                )
 
 
 class WorkOrderSystem:
@@ -83,7 +112,7 @@ class WorkOrderSystem:
         return self._work_order
         
     def get_input(self, key: str, default: Any = None) -> Any:
-        """Get an input parameter from the invariant key."""
+        """Get an input parameter from the invariant WorkOrder."""
         return self._work_order.get(key, default)
         
     def get(self, key: str, default: Any = None) -> Any:
@@ -142,15 +171,11 @@ class WorkOrderSystem:
         return list(self._issues)
 
     def export_metadata(self) -> Dict[str, Any]:
-        """
-        Extract complete metadata for the scenario.
-        Combines Input Params and Blackboard Output.
-        """
-        # Start with input parameters
-        meta = self._work_order.params.copy()
+        """Export WorkOrder inputs + blackboard state for metadata logging."""
+        # Start with typed params as base
+        meta = self._work_order.typed_params.to_dict()
         
         # Overlay Blackboard outputs (Worker results)
-        # e.g. rock_count, highest_rock_y
         for k, v in self._blackboard.items():
             if isinstance(v, (int, float, str, bool)):
                 meta[k] = v

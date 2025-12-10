@@ -11,6 +11,7 @@ References:
 import numpy as np
 from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
+from .constants import PC
 import math
 
 class LabWorker(Worker):
@@ -31,18 +32,26 @@ class LabWorker(Worker):
         # 1. Define Sampling Layer
         # Default: Bottom 15cm (0.15m) of ballast.
         ballast_bottom = scene.metadata.get('ballast_bottom_y', 0.5) # Default generic
-        layer_height = params.get('sample_height', 0.15) # 15cm default
         
+        #  1. Get Domain and Layer Info
+        # Get domain_x with proper fallback
+        domain_x = scene.config.domain_x
+        if scene.work_order and hasattr(scene.work_order, '_work_order'):
+            typed_params = scene.work_order._work_order.typed_params
+            domain_x = typed_params.domain_x or domain_x
+        elif scene.work_order and hasattr(scene.work_order, 'typed_params'):
+            typed_params = scene.work_order.typed_params
+            domain_x = typed_params.domain_x or domain_x
+        
+        # Get layer height
+        layer_height = PC.STANDARD_LAYER_HEIGHT  # Default 15cm sampling layer
+        if scene.work_order:
+            layer_height = scene.work_order.get('lab_layer_height', layer_height)
+             
         y_min = ballast_bottom
         y_max = ballast_bottom + layer_height
         
-        # Domain Width
-        domain_x = scene.metadata.get('domain_x', 1.0) # Fallback
-        # If not in metadata, try config/workorder
-        if 'domain_x' not in scene.metadata and scene.work_order:
-             domain_x = scene.work_order.get_input('domain_x', 1.0)
-             
-        layer_area_mm2 = (domain_x * 1000.0) * (layer_height * 1000.0)
+        layer_area_mm2 = (domain_x * PC.MM_TO_M) * (layer_height * PC.MM_TO_M)
         
         print(f"[{self.name}] Sampling Layer: Y=[{y_min:.3f}, {y_max:.3f}] (H={layer_height*100:.1f}cm)")
 
@@ -105,8 +114,8 @@ class LabWorker(Worker):
         pvc_fraction = min(max(pvc, 0), 100) / 100.0
         fouling_height_total = ballast_thickness * pvc_fraction
         
-        # Use config for settled fraction, default to 0.7 if not found
-        settled_fraction = getattr(scene.config, 'fouling_settled_fraction', 0.7)
+        # Use config for settled fraction, default from constants
+        settled_fraction = getattr(scene.config, 'fouling_settled_fraction', PC.FOULING_SETTLED_FRACTION)
         settled_h = fouling_height_total * settled_fraction
         
         # We assume Fouling Material fills 100% of VOIDS up to settled_h
@@ -147,29 +156,20 @@ class LabWorker(Worker):
         
         total_fouling_area_mm2 = fouling_area_settled
         
-        # 5. Synthesize Fine Fraction (Silt vs Sand) -> Use Standard PSD Curve
-        # Define Standard Fouling PSD (Moderately Fouled Ballast curve)
-        # Pairs: (Diameter mm, Percent Passing %)
-        # D=4.75mm (No.4): 100% passing (All fouling is <4.75mm by def)
-        # D=2.00mm (No.10): 80%
-        # D=0.425mm (No.40): 50%
-        # D=0.075mm (No.200): 30% (Fines content)
+        # Synthesize Fine Fraction using Standard PSD Curve
         standard_fouling_psd = [
-            (4.75, 100.0),
-            (2.0, 80.0),
-            (0.425, 50.0),
-            (0.075, 30.0), # Matches original assumption
-            (0.002, 5.0)   # Clay fraction
+            (PC.SIEVE_NO4, 100.0),   # 4.75mm
+            (PC.SIEVE_NO10, 80.0),   # 2.00mm
+            (PC.SIEVE_NO40, 50.0),   # 0.425mm
+            (PC.SIEVE_NO200, 30.0),  # 0.075mm (Fines content)
+            (0.002, 5.0)             # Clay fraction
         ]
         
         from src.physics import get_percent_passing
         
         # Calculate Fines Content of the *Fouling Phase* itself
-        # P200_foul = % of Fouling Material passing 0.075mm
-        p200_fraction_foul = get_percent_passing(0.075, standard_fouling_psd) / 100.0
-        
-        # P4_foul = % of Fouling Material passing 4.75mm (Should be 100%)
-        p4_fraction_foul = get_percent_passing(4.75, standard_fouling_psd) / 100.0
+        p200_fraction_foul = get_percent_passing(PC.SIEVE_NO200, standard_fouling_psd) / 100.0
+        p4_fraction_foul = get_percent_passing(PC.SIEVE_NO4, standard_fouling_psd) / 100.0
         
         area_fines = total_fouling_area_mm2 * p200_fraction_foul
         

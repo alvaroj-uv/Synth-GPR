@@ -84,6 +84,7 @@ def parse_gprmax_input(filepath):
             - receiver (dict): Position of the receiver antenna
             - metadata (dict): Custom metadata extracted from comments (e.g. FI, Scenario)
     """
+    print(f"[LOG] Parsing input file: {filepath}")
     data = {
         'title': None,
         'domain': None,
@@ -112,6 +113,7 @@ def parse_gprmax_input(filepath):
                     'y': float(parts[1]),
                     'z': float(parts[2])
                 }
+                print(f"[LOG] Found domain: {data['domain']['x']}m × {data['domain']['y']}m × {data['domain']['z']}m")
             
             # Parse materials
             elif line.startswith('#material:'):
@@ -121,21 +123,23 @@ def parse_gprmax_input(filepath):
                     'eps': float(parts[0]),
                     'sigma': float(parts[1]),
                 }
+                print(f"[LOG] Material '{material_name}': ε_r={parts[0]}, σ={parts[1]}")
             
             # Parse boxes
             elif line.startswith('#box:'):
                 parts = line.split(':')[1].strip().split()
-                # Format: x0 y0 z0 x1 y1 z1 material
+                material_name = parts[6]
+                print(f"[LOG] Box: material='{material_name}', bounds=({parts[0]},{parts[1]},{parts[2]}) to ({parts[3]},{parts[4]},{parts[5]})")
                 data['objects'].append({
                     'type': 'box',
-                    'x0': float(parts[0]),
-                    'y0': float(parts[1]),
-                    'z0': float(parts[2]),
-                    'x1': float(parts[3]),
-                    'y1': float(parts[4]),
-                    'z1': float(parts[5]),
-                    'material': parts[6],
-                    'order': order_counter
+                    'material': material_name,
+                    'order': order_counter,
+                    'x1': float(parts[0]),
+                    'y1': float(parts[1]),
+                    'z1': float(parts[2]),
+                    'x2': float(parts[3]),
+                    'y2': float(parts[4]),
+                    'z2': float(parts[5])
                 })
                 order_counter += 1
 
@@ -155,7 +159,15 @@ def parse_gprmax_input(filepath):
                 })
                 order_counter += 1
             
-            # Parse source
+            # Parse waveforms
+            elif line.startswith('#waveform:'):
+                parts = line.split(':')[1].strip().split()
+                waveform_type = parts[0]
+                waveform_freq = parts[1]
+                waveform_id = parts[2]
+                print(f"[LOG] Waveform '{waveform_id}': type={waveform_type}, freq={waveform_freq}Hz")
+            
+            # Parse source (hertzian dipole)
             elif line.startswith('#hertzian_dipole:'):
                 parts = line.split(':')[1].strip().split()
                 data['source'] = {
@@ -163,6 +175,7 @@ def parse_gprmax_input(filepath):
                     'y': float(parts[2]),
                     'z': float(parts[3])
                 }
+                print(f"[LOG] Source (TX) at ({parts[1]}, {parts[2]}, {parts[3]})")
             
             # Parse receiver
             elif line.startswith('#rx:'):
@@ -172,6 +185,7 @@ def parse_gprmax_input(filepath):
                     'y': float(parts[1]),
                     'z': float(parts[2])
                 }
+                print(f"[LOG] Receiver (RX) at ({parts[0]}, {parts[1]}, {parts[2]})")
             
             # Parse metadata
             elif line.startswith('## FI (%):'):
@@ -218,6 +232,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
             if not signal_df.empty:
                  # Check each numeric column (excluding Time)
                  # Determine if it's "empty" (all zeros or negligible)
+                 print(f"[LOG] Signal DataFrame has {len(signal_df)} samples, columns: {signal_df.columns.tolist()}")
                  threshold = 1e-9
                  for col in signal_df.columns:
                      if col == 'Time': continue
@@ -226,6 +241,9 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
                      amplitude = np.max(np.abs(signal_vals))
                      if amplitude > threshold:
                          valid_signals[col] = signal_vals
+                         print(f"[LOG]   {col}: max amplitude = {amplitude:.2e}")
+                     else:
+                         print(f"[LOG]   {col}: EMPTY (max amplitude = {amplitude:.2e})")
             
             if valid_signals:
                 show_signal = True
@@ -236,12 +254,14 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     
     # Create figure with subplots if showing signal
     if show_signal:
+        print("[LOG] Creating figure with signal plots (3-panel layout)")
         fig = plt.figure(figsize=(16, 8))
         gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1])
         ax = fig.add_subplot(gs[:, 0])      # Left: Blueprint (full height)
         ax_signal = fig.add_subplot(gs[0, 1])  # Top Right: Signal
         ax_envelope = fig.add_subplot(gs[1, 1])  # Bottom Right: Envelope
     else:
+        print("[LOG] Creating figure without signal plots (blueprint only)")
         fig, ax = plt.subplots(figsize=(12, 8))
     
     domain = data['domain']
@@ -482,6 +502,7 @@ def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None,
     # --------------------------------------------------------
     # --------------------------------------------------------
     # Plot Signals
+    print(f"[LOG] Rendering {len(data['objects'])} geometry objects...")
     if show_signal and valid_signals:
         # We need to get Time from the original DF or rebuild it
         # Since we only extracted arrays into valid_signals, we need to know the length and dt
