@@ -1,4 +1,6 @@
 import os
+import sys
+import traceback
 from typing import List
 from .config import GeneratorConfig
 from .work_order import WorkOrderSystem
@@ -123,9 +125,30 @@ class ProductionLine:
                 # We log them.
                 scene.log_issue(worker.name, "error", "high", err)
         except Exception as e:
-            import traceback
+            # Capture full context
+            sample_id = "UNKNOWN"
+            if scene.work_order:
+                sample_id = scene.work_order.work_order.id
+                
             trace = traceback.format_exc()
+            
+            # 1. Log to internal system (if available)
             scene.log_issue(worker.name, "critical", "high", f"Crash: {str(e)}\n{trace}")
+            
+            # 2. Force dump to console/stderr for immediate visibility
+            # Use a distinctive banner
+            msg = (
+                f"\n{'!'*60}\n"
+                f"[CRITICAL WORKER FAILURE]\n"
+                f"Worker: {worker.name}\n"
+                f"Sample ID: {sample_id}\n"
+                f"Error: {str(e)}\n"
+                f"{'-'*60}\n"
+                f"{trace}\n"
+                f"{'!'*60}\n"
+            )
+            sys.stderr.write(msg)
+            sys.stderr.flush()
             
     def _has_critical_errors(self, work_order: WorkOrderSystem) -> bool:
         """Check if any critical issues were logged recently."""

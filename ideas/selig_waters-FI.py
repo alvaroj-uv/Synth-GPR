@@ -52,7 +52,7 @@ class BallastFoulingAnalyzer:
         """
         Calculates P4, P200, and Selig & Waters FI for all samples.
         """
-        results =
+        results = []
         
         for index, row in self.df.iterrows():
             # Extract sieve data for this row
@@ -92,11 +92,11 @@ class BallastFoulingAnalyzer:
 # Define dummy data representing a track section
 data = {
     "SampleID": ["MP_100.1", "MP_100.2", "MP_100.3"],
-    63.0:  ,
-    50.0:  ,
-    25.0:  ,
-    9.5:   ,  # Percentage Fouling approx source
-    2.0:   ,   # Note: 4.75mm is missing, requiring interpolation
+    63.0:  [100, 100, 100],
+    50.0:  [90, 85, 80],
+    25.0:  [50, 40, 30],
+    9.5:   [10, 20, 30],  # Percentage Fouling approx source
+    2.0:   [2, 5, 10],   # Note: 4.75mm is missing, requiring interpolation
     0.063: [0.5, 4, 8]    # Note: 0.075mm is missing, requiring interpolation
 }
 
