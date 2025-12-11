@@ -1,0 +1,12 @@
+#!/bin/bash
+# Quick fix script for run_gprmax.sh
+# This adds conda environment activation
+
+# Add this at the top of your run_gprmax.sh after the shebang:
+
+# Activate conda environment if needed
+if [ -n "$CONDA_EXE" ] && [ "$CONDA_DEFAULT_ENV" != "gprMax" ]; then
+    echo "Activating conda environment: gprMax"
+    eval "$(conda shell.bash hook)"
+    conda activate gprMax
+fi

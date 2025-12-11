@@ -250,6 +250,9 @@ class GPRMaxFileWriter:
         from .scene_descriptor import SceneDefinition
         
         # Convert SceneCheckpoint to SceneDefinition
+        # Combine sources and receivers into one list for the source_commands field
+        all_source_commands = list(checkpoint.sources) + list(checkpoint.receivers)
+        
         scene_def = SceneDefinition(
             config=checkpoint.config,
             domain_commands=[
@@ -259,7 +262,7 @@ class GPRMaxFileWriter:
             ],
             material_commands=checkpoint.materials,
             geometry_commands=checkpoint.geometry,
-            source_commands=checkpoint.sources,
+            source_commands=all_source_commands,
             metadata=checkpoint.metadata
         )
         

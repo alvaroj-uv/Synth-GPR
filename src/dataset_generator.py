@@ -15,11 +15,10 @@ for GPR while enabling efficient large-scale dataset generation.
 """
 import random
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict
 import pandas as pd
 
 from .config import GeneratorConfig
-from .physics import classify_pvc, compute_fouling_index, classify_fouling_index, convert_pvc_to_fi
 from .work_order import WorkOrder, WorkOrderSystem
 from .production_line import ProductionLine
 from .sampling import ParameterSampler
@@ -82,20 +81,35 @@ class DatasetGenerator:
             # Sample random parameters
             params = self.sampler.sample()
             
-            # Create WorkOrder
-            work_order = WorkOrder(
-                id=f"s{sample_id:04d}",
-                params=params
-            )
+            # Create WorkOrder using factory method
+            work_order = WorkOrder.from_sampled_params(sample_id, params)
             wos = WorkOrderSystem(work_order)
             
             # Run production pipeline (returns SceneCheckpoint)
             try:
                 checkpoint = self.pipeline.run(wos)
                 
+                # Export metadata to work_order blackboard for inspection
+                metadata = wos.export_metadata()
+                
+                # Log key metadata for LLM analysis
+                # Note: checkpoint._rock_collection.count is an internal detail,
+                # but useful for debugging/LLM analysis.
+                print(f"  → Metadata: PVC={metadata.get('pvc', 0):.2f}%, "
+                      f"FI={metadata.get('FI', 0):.1f}, "
+                      f"Class={metadata.get('FI_class', 'N/A')}, "
+                      f"Rocks={checkpoint._rock_collection.count}")
+                
+                # Validation check (non-blocking, just informational)
+                validation_errors = checkpoint.validate_all()
+                if validation_errors:
+                    print(f"  ⚠ Validation warnings: {len(validation_errors)} issue(s)")
+                    for err in validation_errors[:3]:  # Show first 3
+                        print(f"    - {err}")
+                
                 # Save to file using GPRMaxFileWriter
                 from .file_writer import GPRMaxFileWriter
-                filename = f"{work_order.id}.in"
+                filename = f"s_{sample_id:04d}.in"
                 filepath = output_dir / filename
                 
                 written_path = GPRMaxFileWriter.save_scene_checkpoint(
@@ -105,9 +119,6 @@ class DatasetGenerator:
                 )
                 generated_files.append(written_path)
                 
-                # Extract metadata using centralized method
-                metadata = wos.export_metadata()
-                
                 # Add Config Constants that aren't in params or blackboard
                 metadata.update({
                     'tx_x': self.config.tx_x,
@@ -116,6 +127,8 @@ class DatasetGenerator:
                     'center_freq': self.config.center_freq,
                 })
                 
+                # Store metadata for CSV export
+                metadata['sample_id'] = wos.work_order.id
                 metadata_rows.append(metadata)
                 
                 print(f"[OK] Sample {sample_id}: 1 file generated")

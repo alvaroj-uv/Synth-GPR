@@ -1,0 +1,4 @@
+id,label,pvc,fi,classification,porosity,rock_count
+s_0000,C,0,0,Clean,0.4,150
+s_0001,F,15,6,Fouled,0.4,140
+s_0002,F,30,12,Fouled,0.4,130

@@ -6,8 +6,20 @@ for GPR simulation properties, separating them from configuration data.
 """
 
 import math
+from typing import Literal
 
-def classify_pvc(pvc_value: float, porosity: float = 0.4) -> str:
+# Classification Thresholds (Selig & Waters, 1994)
+FI_CLEAN_THRESHOLD = 10.0
+FI_MODERATELY_FOULED_THRESHOLD = 20.0
+FI_FOULED_THRESHOLD = 40.0
+
+# Default Material Properties
+DEFAULT_POROSITY = 0.4
+DEFAULT_BALLAST_DENSITY = 2.6  # Gs_b
+DEFAULT_FOULING_DENSITY = 2.6  # Gs_f
+
+
+def classify_pvc(pvc_value: float, porosity: float = DEFAULT_POROSITY) -> str:
     """
     Classify ballast fouling based on input PVC, converting to FI first.
     
@@ -129,15 +141,27 @@ def inverse_convert_fi_to_pvc(target_fi: float, porosity: float = 0.4, Gs_b: flo
     return pvc_fraction * 100.0
 
 
-def classify_fouling_index(fouling_index: float) -> str:
-    """Classify Fouling Index (FI) using 5-band Selig & Waters scale."""
-    if fouling_index < 1.0:
-        return "C"
-    elif fouling_index < 10.0:
-        return "MC"
-    elif fouling_index < 20.0:
+def classify_fouling_index(fi: float) -> Literal["CL", "MF", "F", "HF"]:
+    """
+    Classify fouling based on Fouling Index (FI).
+    
+    Classification (Selig & Waters, 1994):
+        - Clean (CL):              FI < 10%
+        - Moderately Fouled (MF):  10% <= FI < 20%
+        - Fouled (F):              20% <= FI < 40%
+        - Highly Fouled (HF):      FI >= 40%
+    
+    Args:
+        fi: Fouling Index (mass percentage)
+    
+    Returns:
+        Classification code: "CL", "MF", "F", or "HF"
+    """
+    if fi < FI_CLEAN_THRESHOLD:
+        return "CL"
+    elif fi < FI_MODERATELY_FOULED_THRESHOLD:
         return "MF"
-    elif fouling_index < 40.0:
+    elif fi < FI_FOULED_THRESHOLD:
         return "F"
     else:
         return "HF"
