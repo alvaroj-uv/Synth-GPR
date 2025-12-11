@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 from scipy.signal import hilbert, stft
+from scipy.signal import hilbert, stft
 from scipy.stats import skew, kurtosis
+from src.signal_processing import calculate_instantaneous_attributes
 
 def extract_features(df, dt=1e-10):
     """
@@ -65,12 +67,13 @@ def extract_features(df, dt=1e-10):
         
         # --- 2. Hilbert Transform Features ---
         # The Hilbert transform is used to compute the instantaneous amplitude (envelope) of the signal
-        # Use mirroring to reduce edge effects
-        signal_mirror = np.concatenate((signal[::-1], signal))
-        analytic_signal_mirror = hilbert(signal_mirror)
-        # Extract the part corresponding to the original signal (second half)
-        analytic_signal = analytic_signal_mirror[len(signal):]
-        amplitude_envelope = np.abs(analytic_signal)
+        # Use centralized function with mirroring enabled
+        attrs = calculate_instantaneous_attributes(signal, dt, use_mirroring=True)
+        amplitude_envelope = attrs['envelope']
+        
+        # Reconstruct analytic signal for later use (Grid Features)
+        # analytic = envelope * exp(i * phase)
+        analytic_signal = attrs['envelope'] * np.exp(1j * attrs['phase'])
         
         # Statistical features applied to the envelope of the signal
         mean_hilbert = np.mean(amplitude_envelope)

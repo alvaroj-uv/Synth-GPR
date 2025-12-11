@@ -1,3 +1,0 @@
-pvc,moisture,ballast_thickness,formation_thickness,subgrade_thickness,antenna_offset,antenna_clearance,domain_x,domain_y,domain_z,rock_z_start,rock_z_end,porosity,subgrade_top_y,formation_top_y,ballast_bottom_y,ballast_top_y,highest_rock_y,sample_id,tx_x,rx_x,tx_rx_y,center_freq
-3.9151,0.068296,0.45,0.1,0.5,0,0.5,,,,,,0.429,0.3,0.3,0.3,0.75,0.74665,s_5000,0.3,0.35,1.4,1.5e+09
-3.5689,0.10409,0.45,0.1,0.5,0,0.5,,,,,,0.4036,0.3,0.3,0.3,0.75,0.74957,s_5001,0.3,0.35,1.4,1.5e+09

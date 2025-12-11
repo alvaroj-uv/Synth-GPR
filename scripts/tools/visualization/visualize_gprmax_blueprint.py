@@ -19,678 +19,746 @@ import logging
 from pathlib import Path
 
 # Add parent directory to path for imports
-# scripts/tools/visualization/ -> up 4 levels to project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Union
 from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
+import matplotlib.axes
 
+@dataclass
+class ProcessingConfig:
+    enable: bool = True
+    dewow: bool = True
+    gain_type: Optional[str] = None
+    gain_alpha: float = 1.0
+
+@dataclass
+class FilterConfig:
+    components: List[str] = field(default_factory=lambda: ['Ez'])
+    receivers: Optional[List[str]] = None
+
+@dataclass
+class GeometryEntity:
+    material: str
+    order: int
+    
+    
+    def draw(self, ax: matplotlib.axes.Axes, style: MaterialStyle) -> None:
+        """
+        Draws the entity on the given axes.
+        
+        Args:
+            ax: The matplotlib axes to draw on.
+            style: The MaterialStyle (color, hatch) to use.
+        """
+        raise NotImplementedError
+
+@dataclass
+class Box(GeometryEntity):
+    coords: List[float] # x1, y1, z1, x2, y2, z2
+    
+    def draw(self, ax: matplotlib.axes.Axes, style: MaterialStyle) -> None:
+        """Draws a Box on the axes."""
+        c = self.coords
+        x, y = c[0], c[1]
+        w, h = c[3]-c[0], c[4]-c[1]
+        rect = mpatches.Rectangle((x, y), w, h, facecolor=style.color, 
+                                  edgecolor='black', linewidth=0.5, hatch=style.hatch)
+        ax.add_patch(rect)
+
+@dataclass
+class Cylinder(GeometryEntity):
+    center: List[float]
+    radius: float
+    
+    
+    def draw(self, ax: matplotlib.axes.Axes, style: MaterialStyle) -> None:
+        """Draws a Cylinder on the axes."""
+        circ = mpatches.Circle(self.center, self.radius, facecolor=style.color, 
+                               edgecolor='black', linewidth=0.5, hatch=style.hatch)
+        ax.add_patch(circ)
+
+class SignalPlotStrategy:
+    """Strategy for plotting signal traces."""
+    def plot(self, ax: matplotlib.axes.Axes, time: np.ndarray, signal: np.ndarray, 
+             label: str, color: str, linestyle: str = '-') -> None:
+        raise NotImplementedError
+
+class LinePlotStrategy(SignalPlotStrategy):
+    """Standard line plot."""
+    def plot(self, ax: matplotlib.axes.Axes, time: np.ndarray, signal: np.ndarray, 
+             label: str, color: str, linestyle: str = '-') -> None:
+        ax.plot(time, signal, label=label, color=color, linestyle=linestyle, linewidth=1.2)
+
+class WigglePlotStrategy(SignalPlotStrategy):
+    """Seismic-style wiggle trace (Variable Area)."""
+    def plot(self, ax: matplotlib.axes.Axes, time: np.ndarray, signal: np.ndarray, 
+             label: str, color: str, linestyle: str = '-') -> None:
+        # Plot the line
+        ax.plot(time, signal, label=label, color=color, linestyle=linestyle, linewidth=0.8, alpha=0.8)
+        # Fill positive lobes
+        if linestyle == '-': # Only fill primary signals
+            ax.fill_between(time, signal, 0, where=(signal > 0), interpolate=True, color=color, alpha=0.3)
+import matplotlib.colors 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 import numpy as np
-from scipy.signal import hilbert
-import matplotlib.gridspec as gridspec
 
-# Add parent directory to path for imports
-# Now in scripts/tools/, so we need to go up 3 levels to reach project root (if root is above scripts/)
-# Actually root is d:/Codigo/Synth-GPR
-# scripts/tools/visualize.py -> parent = tools -> parent = scripts -> parent = Synth-GPR
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+@dataclass
+class MaterialStyle:
+    color: str
+    hatch: Optional[str] = None
+    label: str = ""
 
-try:
-    from src.data_loader import read_gprmax_hdf5
-    HAS_DATA_LOADER = True
-    print("[OK] Successfully loaded data_loader")
-except ImportError as e:
-    HAS_DATA_LOADER = False
-    print(f"[WARN] Warning: Could not import data_loader (Signal plotting disabled): {e}")
-
-
-# Material color mapping for visualization
-# This dictionary maps specific material identifiers found in gprMax input files
-# to hex color codes for Matplotlib visualization.
-MATERIAL_COLORS = {
-    'free_space': '#F5F5F5',       # White Smoke: Neutral background
-    'bal_rock': '#F4A460',         # Sandy Brown: Light, high contrast against dark fouling
-    'bal_foul': '#4B3621',         # Cafe Noir: Very dark brown for fouling matrix
-    'bal_foul_granular': '#4B3621',# Same as above
-    'subgrade': '#2F4F4F',         # Dark Slate Gray: Distinct cool tone for base
-    'formation': '#BDB76B',        # Dark Khaki: Distinct olive/yellowish tone
-    'concrete_sleeper': '#708090', # Slate Gray
+# Material color/hatch mapping
+STYLES = {
+    'free_space':        MaterialStyle('#F5F5F5', None, 'Free Space'),
+    'bal_rock':          MaterialStyle('#F4A460', '/', 'Ballast (Rock)'), # Hatch: diagonal
+    'bal_foul':          MaterialStyle('#4B3621', '.', 'Ballast (Fouled)'), # Hatch: dots
+    'bal_foul_granular': MaterialStyle('#5D4037', '.', 'Ballast (Granular)'),
+    'subgrade':          MaterialStyle('#2F4F4F', '-', 'Subgrade'),       # Hatch: horizontal
+    'formation':         MaterialStyle('#BDB76B', '+', 'Formation'),      # Hatch: cross
+    'concrete_sleeper':  MaterialStyle('#708090', 'x', 'Sleeper'),        # Hatch: diagonal cross
+    'bal_rock_L1':       MaterialStyle('#A1887F', '/', 'Rock L1'),
+    'bal_rock_L2':       MaterialStyle('#8D6E63', '//', 'Rock L2'),
+    'bal_rock_L3':       MaterialStyle('#6D4C41', '///', 'Rock L3'),
 }
 
-# Add gradient materials dynamically
-# Generates colors for 'bal_foul_g1' to 'bal_foul_g9' to visualize varying degrees of fouling
-# using the YlOrBr (Yellow-Orange-Brown) colormap.
+# Add gradient styles (dynamic)
 for i in range(1, 10):
-    MATERIAL_COLORS[f'bal_foul_g{i}'] = plt.cm.YlOrBr(0.3 + i * 0.07)
+    STYLES[f'bal_foul_g{i}'] = MaterialStyle(
+        matplotlib.colors.to_hex(plt.cm.YlOrBr(0.3 + i * 0.07)), 
+        '.' * ((i % 3) + 1), 
+        f'Foul L{i}'
+    )
 
-# Add Granular mode materials (High-Fidelity)
-# Specific colors for granular simulation components
-MATERIAL_COLORS['bal_foul_granular'] = '#5D4037' # Darker brown for the fine matrix between rocks
-MATERIAL_COLORS['bal_rock_L1'] = '#A1887F'       # Lighter brown for Small rocks
-MATERIAL_COLORS['bal_rock_L2'] = '#8D6E63'       # Medium brown for Medium rocks
-MATERIAL_COLORS['bal_rock_L3'] = '#6D4C41'       # Darker brown for Large rocks
+# Try importing project modules
+try:
+    import pandas as pd
+    from src.data_loader import read_gprmax_hdf5
+    from src.signal_processing import preprocess_signal, compute_spectrum, calculate_instantaneous_attributes, compute_spectrogram
+    from src.feature_extraction import extract_features
+    HAS_DATA_LOADER = True
+except ImportError as e:
+    HAS_DATA_LOADER = False
+    logging.warning(f"Could not import project modules: {e}. Signal plotting disabled.")
 
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger("Visualizer")
 
-def parse_gprmax_input(filepath):
+class GPRResultVisualizer:
     """
-    Parse a gprMax input file and extract geometry information.
+    Class to visualize gprMax simulation inputs and results.
     
-    Reads lines sequentially and extracts commands like #domain, #material, #box, #cylinder.
-    Stores objects in a list to preserve the "painter's algorithm" drawing order.
+    Encapsulates the logic for parsing geometry, loading signal data,
+    processing signals, and generating the dashboard plot.
+    """
     
-    Args:
-        filepath (str): Path to the .in file to parse.
+    # Material color mapping
+    # Material color mapping (Moved to global STYLES)
+
+    # Constants
+    DEFAULT_DT = 1e-10
+    SIGNAL_THRESHOLD = 1e-9
+    MAX_FEATURES = 3
+    PRE_TIME_ZERO_SAMPLES = 5
+    SIGNAL_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+
+    def __init__(self, input_file: str, output_file: Optional[str] = None, show_plot: bool = True, 
+                 process_config: Optional[ProcessingConfig] = None, filter_config: Optional[FilterConfig] = None):
+        """
+        Initialize the visualizer.
         
-    Returns:
-        dict: A dictionary containing:
-            - title (str): Simulation title from #title
-            - domain (dict): {'x': float, 'y': float, 'z': float}
-            - materials (dict): Map of material_name -> {'eps': float, 'sigma': float}
-            - objects (list): List of dicts, each representing a drawn shape (box/cylinder)
-                              with keys: type, material, order, coordinates...
-            - source (dict): Position of the source antenna
-            - receiver (dict): Position of the receiver antenna
-            - metadata (dict): Custom metadata extracted from comments (e.g. FI, Scenario)
-    """
-    data = {
-        'title': None,
-        'domain': None,
-        'materials': {},
-        'objects': [], # Combined list with order
-        'source': None,
-        'receiver': None,
-        'metadata': {}
-    }
-    
-    order_counter = 0
-
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            
-            # Parse title
-            if line.startswith('#title:'):
-                data['title'] = line.split(':', 1)[1].strip()
-            
-            # Parse domain
-            elif line.startswith('#domain:'):
-                parts = line.split(':')[1].strip().split()
-                data['domain'] = {
-                    'x': float(parts[0]),
-                    'y': float(parts[1]),
-                    'z': float(parts[2])
-                }
-            
-            # Parse materials
-            elif line.startswith('#material:'):
-                parts = line.split(':')[1].strip().split()
-                material_name = parts[-1]  # Last part is the name
-                data['materials'][material_name] = {
-                    'eps': float(parts[0]),
-                    'sigma': float(parts[1]),
-                }
-            
-            # Parse boxes
-            elif line.startswith('#box:'):
-                parts = line.split(':')[1].strip().split()
-                # Format: x0 y0 z0 x1 y1 z1 material
-                data['objects'].append({
-                    'type': 'box',
-                    'x0': float(parts[0]),
-                    'y0': float(parts[1]),
-                    'z0': float(parts[2]),
-                    'x1': float(parts[3]),
-                    'y1': float(parts[4]),
-                    'z1': float(parts[5]),
-                    'material': parts[6],
-                    'order': order_counter
-                })
-                order_counter += 1
-
-            # Parse cylinders
-            elif line.startswith('#cylinder:'):
-                parts = line.split(':')[1].strip().split()
-                # Format: x1 y1 z1 x2 y2 z2 radius material
-                data['objects'].append({
-                    'type': 'cylinder',
-                    'x': float(parts[0]),
-                    'y': float(parts[1]),
-                    'z': float(parts[2]),
-                    'radius': float(parts[6]),
-                    'length': abs(float(parts[5]) - float(parts[2])),
-                    'material': parts[7],
-                    'order': order_counter
-                })
-                order_counter += 1
-            
-            # Parse source
-            elif line.startswith('#hertzian_dipole:'):
-                parts = line.split(':')[1].strip().split()
-                data['source'] = {
-                    'x': float(parts[1]),
-                    'y': float(parts[2]),
-                    'z': float(parts[3])
-                }
-            
-            # Parse receiver
-            elif line.startswith('#rx:'):
-                parts = line.split(':')[1].strip().split()
-                data['receiver'] = {
-                    'x': float(parts[0]),
-                    'y': float(parts[1]),
-                    'z': float(parts[2])
-                }
-            
-            # Parse metadata
-            elif line.startswith('## FI (%):'):
-                data['metadata']['FI'] = line.split(':')[1].strip()
-            elif line.startswith('## FI_class:'):
-                data['metadata']['FI_class'] = line.split(':')[1].strip()
-            elif line.startswith('## Scenario:'):
-                data['metadata']['scenario'] = line.split(':')[1].strip()
-    
-    return data
-
-
-def create_blueprint(data, output_file=None, show_plot=True, out_file_path=None, source_filename=None):
-    """
-    Create a blueprint visualization of the gprMax geometry using Matplotlib.
-    
-    Generates a 2D cross-section view (X-Y plane) of the simulation domain.
-    Draws objects in the order they appear in the file to correctly visualize layers.
-    Also calculates and displays a vertical ruler for layer heights and a rock height annotation.
-    
-    Args:
-        data (dict): Parsed geometry data returned by parse_gprmax_input.
-        output_file (str, optional): Path to save the resulting image file (e.g. .png).
-        show_plot (bool): If True, calls plt.show() to display the window.
-        out_file_path (str, optional): Path to a corresponding .out HDF5 file. 
-                                       If provided and valid, adds signal plots.
-                                       
-    Variables:
-        fig (Figure): Matplotlib figure object.
-        ax (Axes): Main axes for the geometry blueprint.
-        objects (list): List of geometry objects (boxes, cylinders) to draw.
-        z_order (int): Drawing order index. Higher values are drawn on top.
-        material_patches (list): List of patches for the legend.
-    """
-    # Check if .out file exists and can be loaded
-    show_signal = False
-    valid_signals = {} # Map col_name -> data array
-    
-    if out_file_path and Path(out_file_path).exists() and HAS_DATA_LOADER:
-        try:
-            # Load both E and H fields
-            signal_df = read_gprmax_hdf5(out_file_path, fields=['E', 'H'])
-            
-            if not signal_df.empty:
-                 # Check each numeric column (excluding Time)
-                 # Determine if it's "empty" (all zeros or negligible)
-                 threshold = 1e-9
-                 for col in signal_df.columns:
-                     if col == 'Time': continue
-                     
-                     signal_vals = signal_df[col].values
-                     amplitude = np.max(np.abs(signal_vals))
-                     if amplitude > threshold:
-                         valid_signals[col] = signal_vals
-            
-            if valid_signals:
-                show_signal = True
-                print(f"Plotting {len(valid_signals)} non-empty signals: {list(valid_signals.keys())}")
-                
-        except Exception as e:
-            print(f"Warning: Could not load signal from {out_file_path}: {e}")
-    
-    # Create figure with subplots if showing signal
-    if show_signal:
-        fig = plt.figure(figsize=(16, 8))
-        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1])
-        ax = fig.add_subplot(gs[:, 0])      # Left: Blueprint (full height)
-        ax_signal = fig.add_subplot(gs[0, 1])  # Top Right: Signal
-        ax_envelope = fig.add_subplot(gs[1, 1])  # Bottom Right: Envelope
-    else:
-        fig, ax = plt.subplots(figsize=(12, 8))
-    
-    domain = data['domain']
-    
-    
-    # Create color mapping based on dielectric values
-    # Get all dielectric constants for color scale
-    eps_values = []
-    
-    # Collect materials from defined materials list
-    for mat, props in data['materials'].items():
-        if 'eps' in props:
-            eps_values.append(props['eps'])
-    
-    if eps_values:
-        min_eps = min(eps_values)
-        max_eps = max(eps_values)
-        # Use a colormap - YlOrBr (Yellow-Orange-Brown) for earth materials
-        cmap = plt.cm.YlOrBr
-    else:
-        min_eps, max_eps = 1, 10
-        cmap = plt.cm.YlOrBr
-    
-    # Helper to get color
-    def get_mat_color_alpha(material):
-        if material == 'free_space':
-            return '#E8F4F8', 0.1 # Very subtle air
+        Args:
+            input_file: Path to the .in file.
+            output_file: Optional path to save the plot image.
+            show_plot: Whether to display the plot window.
+            process_config: Processing configuration object.
+            filter_config: Filtering configuration object.
+        """
+        self.input_file = Path(input_file)
+        self.output_file = output_file
+        self.show_plot = show_plot
+        self.process_config = process_config or ProcessingConfig()
+        self.filter_config = filter_config or FilterConfig()
         
-        mat_props = data['materials'].get(material, {})
-        eps = mat_props.get('eps', 5.0)
+        # Select Strategy (could be Configured)
+        self.plot_strategy = WigglePlotStrategy() # Default to Wiggle for "Best Practice" look
         
-        if max_eps > min_eps:
-            norm_eps = (eps - min_eps) / (max_eps - min_eps)
+        self.data = self._parse_input(self.input_file)
+        self.signals = {}
+        self.dt = self.DEFAULT_DT
+        
+        # Check for output file
+        self.out_file = self.input_file.with_suffix('.out')
+        if not self.out_file.exists():
+            # Try looking in 'outputs' dir relative to input
+             possible = self.input_file.parent / 'outputs' / self.out_file.name
+             if possible.exists():
+                 self.out_file = possible
+
+
+
+    def run(self) -> None:
+        """Main execution method."""
+        logger.info(f"Visualizing: {self.input_file.name}")
+        
+        # Load signals if available
+        if self.out_file.exists() and HAS_DATA_LOADER:
+            self._load_signals()
         else:
-            norm_eps = 0.5
-        
-        # Get color from colormap
-        return cmap(0.3 + norm_eps * 0.6), 1.0 # Opaque
+            logger.info("No .out file found or dependencies missing. Skipping signal plotting.")
+            
+        self._create_plot()
 
-    # Draw all objects in order
-    objects = data.get('objects', [])
-    # Sort by order just in case, though they should be appended in order
-    objects.sort(key=lambda x: x['order'])
+    def _parse_input(self, filepath: Path) -> Dict[str, Any]:
+        """Parses the gprMax input file."""
+        logger.info(f"Parsing {filepath}...")
+        data = {
+            'title': 'gprMax Simulation',
+            'domain': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+            'materials': {},
+            'objects': [],
+            'source': None,
+            'receiver': None,
+            'metadata': {}
+        }
+        
+        try:
+            with open(filepath, 'r') as f:
+                lines = f.readlines()
+                
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line or line.startswith('#python'): continue
+                
+                parts = line.split()
+                cmd = parts[0].lower() if parts else ''
+                
+                if cmd == '#domain:':
+                    data['domain'] = {'x': float(parts[1]), 'y': float(parts[2]), 'z': float(parts[3])}
+                elif cmd == '#material:':
+                    # #material: f_r f_i sigma_r sigma_i ID
+                    mat_id = parts[5] if len(parts) >= 6 else 'unknown'
+                    data['materials'][mat_id] = {'eps': float(parts[1]), 'sigma': float(parts[3])}
+                elif cmd == '#box:':
+                    # #box: x1 y1 z1 x2 y2 z2 ID
+                    coords = [float(p) for p in parts[1:7]]
+                    mat = parts[7]
+                    data['objects'].append(Box(material=mat, order=i, coords=coords))
+                elif cmd == '#cylinder:':
+                    # #cylinder: x y z radius length ID
+                    data['objects'].append(Cylinder(
+                        material=parts[8],
+                        order=i,
+                        center=[float(parts[1]), float(parts[2])],
+                        radius=float(parts[7])
+                    ))
+                elif cmd == '#hertzian_dipole:':
+                    data['source'] = {'x': float(parts[2]), 'y': float(parts[3]), 'z': float(parts[4])}
+                elif cmd == '#rx:':
+                    data['receiver'] = {'x': float(parts[1]), 'y': float(parts[2]), 'z': float(parts[3])}
+                elif cmd == '#title:':
+                    data['title'] = ' '.join(parts[1:])
+                # Metadata
+                elif line.startswith('## FI (%):'):
+                    data['metadata']['FI'] = line.split(':')[1].strip()
+                elif line.startswith('## FI_class:'):
+                    data['metadata']['FI_class'] = line.split(':')[1].strip()
+                elif line.startswith('## Scenario:'):
+                    data['metadata']['scenario'] = line.split(':')[1].strip()
+                    
+            return data
+        except Exception as e:
+            logger.error(f"Error parsing input file: {e}", exc_info=True)
+            return data
 
-    for i, obj in enumerate(objects):
-        obj_type = obj['type']
-        material = obj['material']
-        color, alpha = get_mat_color_alpha(material)
+    def _load_signals(self) -> None:
+        """Loads and filters signals from HDF5."""
+        logger.info(f"Loading signals from {self.out_file}...")
+        try:
+            df = read_gprmax_hdf5(str(self.out_file), fields=['E', 'H'])
+            if df.empty:
+                logger.warning("Loaded DataFrame is empty.")
+                return
+
+            if 'Time' in df.columns:
+                self.time_vector = df['Time'].values
+                # Estimate dt
+                if len(self.time_vector) > 1:
+                    self.dt = (self.time_vector[1] - self.time_vector[0])
+            
+            # Filter Logic
+            valid_signals = {}
+            threshold = self.SIGNAL_THRESHOLD
+            
+            # Apply filters
+            target_comps = self.filter_config.components
+            if target_comps and 'all' in target_comps: target_comps = None
+            
+            target_rxs = self.filter_config.receivers
+            
+            for col in df.columns:
+                if col == 'Time': continue
+                
+                # Check amplitude
+                vals = df[col].values
+                if np.max(np.abs(vals)) < threshold: continue
+                
+                # Parse Name
+                parts = col.split('_')
+                if len(parts) >= 2:
+                    rx_name = parts[0]
+                    comp_name = parts[1]
+                    
+                    if target_comps and comp_name not in target_comps: continue
+                    if target_rxs and rx_name not in target_rxs: continue
+                
+                valid_signals[col] = vals
+                
+            self.signals = valid_signals
+            logger.info(f"Signals loaded: {list(self.signals.keys())}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load signals: {e}", exc_info=True)
+
+    def _get_feature_text(self, signal_map: Dict[str, np.ndarray]) -> str:
+        """Calculates features for overlay."""
+        if not signal_map: return ""
         
-        # Determine zorder based on file order (plus offset for base elements)
-        # Background is 0. Objects start at 1.
-        z_order = 1 + i
+        txt_output = "Features:\n"
+        count = 0
+        max_show = self.MAX_FEATURES
         
-        if obj_type == 'box':
-            x0, y0 = obj['x0'], obj['y0']
-            x1, y1 = obj['x1'], obj['y1']
-            width = x1 - x0
-            height = y1 - y0
+        for name, sig in signal_map.items():
+            if count >= max_show:
+                txt_output += "..."
+                break
+            try:
+                # Create minimal DF
+                df_tmp = pd.DataFrame({'Time': np.arange(len(sig))*self.dt, 'Signal': sig})
+                # Dummy metadata
+                for c in ['gprMax', 'Title', 'Iterations', 'nx_ny_nz', 'dx_dy_dz', 'dt', 'srcsteps', 'rxsteps', 'nsrc', 'nrx']:
+                    df_tmp[c] = 0
+                    
+                df_feats = extract_features(df_tmp, dt=self.dt)
+                if not df_feats.empty:
+                    # Extract
+                    dom_freq = df_feats.iloc[0]['dominant_frequency'] / 1e6
+                    entropy = df_feats.iloc[0]['spectral_entropy']
+                    rms = df_feats.iloc[0]['root_mean_square']
+                    
+                    txt_output += (f"[{name}]\n"
+                                   f" Freq: {dom_freq:.0f}M | Ent: {entropy:.2f} | RMS: {rms:.1e}\n")
+                    count += 1
+            except Exception as e:
+                logger.warning(f"Feature extraction error for {name}: {e}")
+                
+        return txt_output.strip()
+
+    def _plot_signal_column(self, ax_time: matplotlib.axes.Axes, ax_env: matplotlib.axes.Axes, 
+                            ax_freq: matplotlib.axes.Axes, signals: Dict[str, np.ndarray], 
+                            title_prefix: str, info_text: str = "", feature_text: str = "") -> None:
+        """Plots a column of signal analysis (Time, Envelope, Freq)."""
+        if not signals:
+            return
             
-            rect = mpatches.Rectangle(
-                (x0, y0), width, height,
-                linewidth=0.3, # Softened
-                edgecolor='#404040',
-                facecolor=color,
-                alpha=alpha,
-                zorder=z_order
-            )
-            ax.add_patch(rect)
-            
-        elif obj_type == 'cylinder':
-            x, y = obj['x'], obj['y']
-            r = obj['radius']
-            
-            circle = mpatches.Circle(
-                (x, y), r,
-                linewidth=0.3, # Softened
-                edgecolor='#404040',
-                facecolor=color,
-                alpha=alpha,
-                zorder=z_order 
-            )
-            ax.add_patch(circle)
+        time_ns = self.time_vector * 1e9 if self.time_vector is not None else np.arange(len(next(iter(signals.values())))) * self.dt * 1e9
         
-    # Labels removed - information shown in legend instead
-    
-    
-    # Add vertical ruler on the left side showing layer heights
-    # Identify distinct horizontal layers (excluding free_space)
-    layer_boundaries = set()
-    for obj in data.get('objects', []):
-        if obj['type'] == 'box' and obj['material'] != 'free_space':
-            layer_boundaries.add(obj['y0'])
-            layer_boundaries.add(obj['y1'])
+        
+        # 1. Time Plot (A-Scan)
+        colors = self.SIGNAL_COLORS
+        ax_h_twin = ax_time.twinx() if any('H' in k for k in signals) and any('E' in k for k in signals) else ax_time
+        
+        strongest_sig = None
+        max_amp = -1
+        
+        for i, (name, sig) in enumerate(signals.items()):
+            c = colors[i % len(colors)]
+            if 'E' in name:
+                self.plot_strategy.plot(ax_time, time_ns, sig, label=name, color=c)
+            elif 'H' in name:
+                target_ax = ax_h_twin if ax_h_twin != ax_time else ax_time
+                self.plot_strategy.plot(target_ax, time_ns, sig, label=name, color=c, linestyle='--')
+                
+            amp = np.max(np.abs(sig))
+            if amp > max_amp:
+                max_amp = amp
+                strongest_sig = sig
+                
+        # Decoration
+        ax_time.set_title(f"{title_prefix} Signal")
+        ax_time.set_xlabel(f"Time [ns]\n[{info_text}]", fontsize=8)
+        ax_time.grid(True, alpha=0.3)
+        ax_time.legend(loc='upper right', fontsize='small')
+        
+        # Overlay Box
+        if feature_text:
+            props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
+            ax_time.text(0.02, 0.98, feature_text, transform=ax_time.transAxes, fontsize=7,
+                         verticalalignment='top', bbox=props, zorder=100)
+                         
+        # Time Zero Visuals
+        ax_time.axvline(0, color='black', linestyle=':', linewidth=1, alpha=0.6)
+        if len(time_ns) > 1:
+            dt_ns = time_ns[1] - time_ns[0]
+            ax_time.set_xlim(left=-self.PRE_TIME_ZERO_SAMPLES * dt_ns)
+
+        # 2. Envelope & Inst Attributes
+        if strongest_sig is not None:
+            attrs = calculate_instantaneous_attributes(strongest_sig, self.dt)
+            env = attrs['envelope']
+            cos_phase = attrs['cosine_phase']
             
-    # Also consider cylinder tops (Granular/Ballast top)
-    cyl_tops = [o['y'] + o['radius'] for o in data.get('objects', []) if o['type'] == 'cylinder']
-    if cyl_tops:
-        layer_boundaries.add(max(cyl_tops))
-    
-    layer_boundaries = sorted([h for h in layer_boundaries if h >= 0])
-    
-    # Add horizontal dotted lines crossing the axis for each layer
-    for h in layer_boundaries:
-        if h > 0.001: # Skip y=0
-             ax.axhline(y=h, color='gray', linestyle=':', linewidth=1.0, alpha=0.6, zorder=5)
-    
-    # Add height annotations on the right side
-    unique_heights = set()
-    for obj in data.get('objects', []):
-        if obj['type'] == 'box' and obj['material'] != 'free_space':
-            unique_heights.add(obj['y1'])
-    
-    for height in sorted(unique_heights):
-        if height > 0.01:  # Skip very small heights
-            ax.plot([domain['x'], domain['x'] + 0.02], [height, height], 
-                   'k-', linewidth=1, alpha=0.5)
-            ax.text(domain['x'] + 0.025, height, f'{height:.3f} m',
-                   va='center', fontsize=8, style='italic')
-    
-    # Add source and receiver if present
-    if data['source']:
-        src = data['source']
-        ax.plot(src['x'], src['y'], 'r^', markersize=12, 
-               label='TX (Source)', zorder=10)
-        ax.text(src['x'], src['y'] + 0.03, 'TX',
-               ha='center', fontsize=10, fontweight='bold', color='red')
-    
-    if data['receiver']:
-        rx = data['receiver']
-        ax.plot(rx['x'], rx['y'], 'bv', markersize=12,
-               label='RX (Receiver)', zorder=10)
-        ax.text(rx['x'], rx['y'] + 0.03, 'RX',
-               ha='center', fontsize=10, fontweight='bold', color='blue')
-    
-    # Set limits and labels (adjust left margin for ruler)
-    ax.set_xlim(-0.02, domain['x'] + 0.15)
-    ax.set_ylim(-0.05, domain['y'] + 0.05)
-    ax.set_xlabel('X (meters)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Y (meters)', fontsize=12, fontweight='bold')
-    
-    # Title with metadata
-    title_parts = []
-    if data['title']:
-        title_parts.append(f"Class: {data['title']}")
-    if 'FI_class' in data['metadata']:
-        title_parts.append(f"Class: {data['metadata']['FI_class']}")
-    if 'scenario' in data['metadata']:
-        title_parts.append(f"Scenario: {data['metadata']['scenario']}")
-    if 'FI' in data['metadata']:
-        title_parts.append(f"FI: {data['metadata']['FI']}%")
-    
-    title = ' | '.join(title_parts) if title_parts else 'gprMax Geometry Blueprint'
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=25)
-    
-    if source_filename:
-        ax.text(0.5, 1.02, f"File: {source_filename}", 
-               transform=ax.transAxes,
-               ha='center', va='bottom', fontsize=10, 
-               color='#555555', family='monospace')
-    ax.grid(True, alpha=0.3, linestyle='--')
-    ax.set_aspect('equal')
-    
-    # Legend for materials with dielectric values
-    material_patches = []
-    seen_materials = set()
-    
-    # Collect materials from both boxes and cylinders
-    all_objects = data.get('objects', [])
-    
-    # Sort objects to try to keep some order (e.g. by y0 or y) although distinct types make it hard
-    # We'll just process them in order of appearance in the file/list
-    
-    for obj in reversed(all_objects):
-        material = obj['material']
-        if material not in seen_materials:
-            seen_materials.add(material)
+            # Twin axis for Phase
+            ax_phase = ax_env.twinx()
+            ax_phase.fill_between(time_ns, cos_phase, color='gray', alpha=0.15, label='CosPhase')
+            ax_phase.set_ylim(-1.5, 1.5)
+            ax_phase.set_yticks([])
             
-            # Get color based on dielectric (same logic as drawing)
-            color, alpha = get_mat_color_alpha(material)
+            # Envelope
+            ax_env.plot(time_ns, env, color='orange', label='Envelope', linewidth=1.5)
+            
+            ax_env.set_title(f"{title_prefix} Env/Phase")
+            ax_env.set_xlabel("Time [ns]")
+            ax_env.grid(True, alpha=0.3)
+            
+            # Legend
+            l1, lab1 = ax_env.get_legend_handles_labels()
+            l2, lab2 = ax_phase.get_legend_handles_labels()
+            ax_env.legend(l1+l2, lab1+lab2, loc='upper right', fontsize='small')
+
+        # 3. Spectrum
+        # 3. Spectrogram (Time-Frequency)
+        if strongest_sig is not None:
+            # Spectrogram Parameters
+            fs = 1.0 / self.dt
+            nperseg = 128  # Window size (adjust for resolution balance)
+            noverlap = 96  # High overlap for smooth image
+            
+            f, t_spec, Sxx = compute_spectrogram(strongest_sig, fs=fs, nperseg=nperseg, noverlap=noverlap)
+            
+            # Convert Time to ns and Freq to MHz
+            t_spec_ns = t_spec * 1e9
+            f_mhz = f / 1e6
+            
+            # Plot
+            # Use Gouraud shading for smoothing
+            # Use 'plasma' or 'inferno' for perceptual quality
+            im = ax_freq.pcolormesh(t_spec_ns, f_mhz, 10 * np.log10(Sxx + 1e-12), cmap='inferno', shading='gouraud')
+            
+            # Colorbar (optional, might crowd the layout)
+            # plt.colorbar(im, ax=ax_freq, label='dB') 
+            
+            ax_freq.set_title("Time-Frequency Spectrogram")
+            ax_freq.set_xlabel("Time [ns]")
+            ax_freq.set_ylabel("Frequency [MHz]")
+            ax_freq.set_ylim(0, 1200) # GPR Bandwidth
+            ax_freq.grid(True, alpha=0.3, linestyle=':')
+
+    def _plot_blueprint(self, ax: matplotlib.axes.Axes) -> None:
+        """Draws the geometry blueprint."""
+        logger.info("Starting _plot_blueprint...")
+        
+        # Draw Objects
+        data = self.data
+        if not data['objects']:
+             logger.warning("No objects found in data['objects']!")
              
-            # Create legend label with dielectric value
-            mat_props = data['materials'].get(material, {})
-            eps = mat_props.get('eps', 5.0)
+        sorted_objs = sorted(data['objects'], key=lambda x: x.order)
+        logger.info(f"Drawing {len(sorted_objs)} geometry objects.")
+        
+        # Draw Objects
+        for obj in sorted_objs:
+            mat = obj.material
+            style = STYLES.get(mat, MaterialStyle('#CCCCCC', None, mat))
+            obj.draw(ax, style)
+                
+        # Draw Source/Rx
+        if data['source']:
+            ax.plot(data['source']['x'], data['source']['y'], 'r^', markersize=12, label='Tx', markeredgecolor='white')
+        if data['receiver']:
+            rx_x, rx_y = data['receiver']['x'], data['receiver']['y']
+            ax.plot(rx_x, rx_y, 'bv', markersize=10, label='Rx', markeredgecolor='white')
             
-            label = f"{material} (ε={eps:.1f})"
-            patch = mpatches.Patch(color=color, label=label, alpha=0.8)
-            material_patches.append(patch)
-    
-    if material_patches:
-        # Legend placed to the left of the Y-axis (outside)
-        ax.legend(handles=material_patches, 
-                 bbox_to_anchor=(-0.02, 1.0), loc='upper right',
-                 fontsize=8, framealpha=0.9)
+            # --- SPARKLINE ---
+            # If signals exist, draw the strongest one near the Rx
+            if self.signals:
+                strongest_sig = None
+                max_amp = -1
+                for sig in self.signals.values():
+                    if np.max(np.abs(sig)) > max_amp:
+                        max_amp = np.max(np.abs(sig))
+                        strongest_sig = sig
+                
+                if strongest_sig is not None:
+                    if self.process_config.enable:
+                         strongest_sig, _ = preprocess_signal(strongest_sig, self.dt, 
+                                                            use_dewow=self.process_config.dewow)
+                                                            
+                    self._draw_sparkline(ax, rx_x + 0.15, rx_y, strongest_sig, self.dt, height=0.4)
+        
+        # --- AXIS BREAKS ---
+        self._draw_axis_break(ax, 'top')
+        self._draw_axis_break(ax, 'bottom')
+        
+        # Meta info title
+        title_txt = f"{data['title']}"
+        if 'scenario' in data['metadata']:
+            title_txt += f"\nScenario: {data['metadata']['scenario']}"
+        if 'FI_class' in data['metadata']:
+             title_txt += f" | FI: {data['metadata'].get('FI_class', '?')}"
+             
+        ax.set_title(title_txt, fontweight='bold')
+        ax.set_xlabel("X Position [m]")
+        ax.set_ylabel("Y Position [m]")
+        ax.axis('scaled')
+        
+        # Grid lines
+        ax.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5, color='gray')
+        ax.minorticks_on()
+        ax.grid(True, which='minor', axis='y', linestyle=':', linewidth=0.3, alpha=0.3, color='gray')
+        ax.grid(True, which='minor', axis='x', linestyle=':', linewidth=0.3, alpha=0.3, color='gray')
+        
+        # Draw Domain Limits
+        dom = data.get('domain')
+        if dom:
+             rect = mpatches.Rectangle((0, 0), dom['x'], dom['y'], 
+                                       fill=False, edgecolor='black', linewidth=1.5, linestyle='-')
+             ax.add_patch(rect)
+             
+        # --- OVERLAY LEGEND ---
+        # --- OVERLAY LEGEND ---
+        handles = []
+        labels = []
+        
+        # 1. Source/Rx
+        if data['source']:
+            # Use Line2D as specific proxy artists
+            h = plt.Line2D([0], [0], marker='^', color='w', label='Tx', 
+                          markerfacecolor='r', markersize=10, markeredgecolor='white')
+            handles.append(h)
+        if data['receiver']:
+            h = plt.Line2D([0], [0], marker='v', color='w', label='Rx', 
+                          markerfacecolor='b', markersize=10, markeredgecolor='white')
+            handles.append(h)
+            
+        # 2. Materials
+        seen_mats = set(o.material for o in data['objects'])
+        for m in sorted(list(seen_mats)):
+            style = STYLES.get(m, MaterialStyle('#999999', None, m))
+            patch = mpatches.Patch(facecolor=style.color, edgecolor='black', 
+                                   hatch=style.hatch, label=style.label or m)
+            handles.append(patch)
+            
+        if handles:
+            print(f"DEBUG: Creating legend with {len(handles)} info items: {[h.get_label() for h in handles]}")
+            logger.info(f"Creating legend with {len(handles)} info items: {[h.get_label() for h in handles]}")
+            leg = ax.legend(handles=handles, loc='upper right', frameon=True, fontsize='small', title="Legend")
+            leg.set_zorder(1000) # Force on top
+            leg.get_frame().set_facecolor('white')
+            leg.get_frame().set_alpha(1.0)
+        else:
+            print("DEBUG: No handles found for legend!")
+            logger.warning("No handles found for legend!")
 
-    # --------------------------------------------------------
-    # Annotation: Highest Cylinder (Rock Top)
-    # --------------------------------------------------------
-    cylinders = [o for o in data.get('objects', []) if o['type'] == 'cylinder']
-    if cylinders:
-        # Find the cylinder with the maximum top point (y + r)
-        max_y_cyl = -1.0
-        top_cyl = None
-        
-        for cyl in cylinders:
-            y_top = cyl['y'] + cyl['radius']
-            if y_top > max_y_cyl:
-                max_y_cyl = y_top
-                top_cyl = cyl
-        
-        if top_cyl:
-            # Find Formation Height for reference
-            formation_top = 0.0
-            for o in data.get('objects', []):
-                if o['type'] == 'box' and o['material'] == 'formation':
-                    formation_top = max(formation_top, o['y1'])
-            
-            ax.axhline(y=max_y_cyl, color='#8B7355', linestyle=':', linewidth=1.5, alpha=0.8, zorder=20)
-            
-            label_text = f'Max Rock Height: {max_y_cyl:.3f} m'
-            if formation_top > 0:
-                relative_height = max_y_cyl - formation_top
-                label_text += f'\n(From Formation: {relative_height*100:.1f} cm)'
-            
-            # Add text annotation
-            ax.text(domain['x'] + 0.08, max_y_cyl, 
-                   label_text,
-                   color='#4A3310',
-                   ha='left', va='center', fontsize=8,
-                   fontweight='bold', style='italic',
-                   bbox=dict(boxstyle='round,pad=0.2', 
-                            facecolor='#FFF8DC', alpha=0.8, 
-                            edgecolor='#8B7355', linewidth=0.5))
-                            
-            # Highlight this specific point
-            ax.plot(top_cyl['x'], max_y_cyl, 'kx', markersize=5, zorder=21)
 
-    # --------------------------------------------------------
-    # --------------------------------------------------------
-    # Plot Signals
-    if show_signal and valid_signals:
-        # We need to get Time from the original DF or rebuild it
-        # Since we only extracted arrays into valid_signals, we need to know the length and dt
-        # Or hopefully retrieve "Time" from signal_df if we kept it around.
-        # Let's assume we re-read or kept it. 
-        # Easier fix: pass signal_df to this function or just re-read or assume dt from somewhere.
-        # But wait, create_blueprint doesn't receive signal_df directly anymore in my logic above?
-        # The logic above populated `valid_signals`.
+    def _create_plot(self) -> None:
+        """Generates the full dashboard."""
+        logger.info("Generating plot dashboard...")
         
-        # Let's fix the scope. `signal_df` was local to the try block above.
-        # I should have extracted 'Time' too.
+        # Figure Setup
+        # Back to standard width since we removed the extra column
+        fig = plt.figure(figsize=(18, 10)) 
         
-        # NOTE: I am modifying the chunk in-place.
-        # Let's grab the time axis from the first signal length and config/dt approximation
-        # OR better, relying on the fact that I should have extracted Time in the previous block.
-        # But I didn't store it in `valid_signals`.
+        # 3 Columns:
+        # 0: Raw Signals
+        # 1: Blueprint (Main) - with Overlay Legend
+        # 2: Processed Signals
+        gs = gridspec.GridSpec(3, 3, width_ratios=[1, 2, 1])
         
-        # Let's approximate:
-        sig_len = len(next(iter(valid_signals.values())))
-        # We can try to guess dt from metadata or just use index
-        # To be safe, let's assume we grabbed 'Time' if it existed.
+        # --- Column 1: Blueprint ---
+        ax_main = fig.add_subplot(gs[:, 1])
+        self._plot_blueprint(ax_main)
         
-        # Hack for cleaner code flow: Re-read time inside the previous block or just assume linear.
-        # Let's use generic index if Time not found, but we want physical units.
-        pass # Placeholder
+        # --- Column 0: Raw Signals ---
+        ax_raw_time = fig.add_subplot(gs[0, 0])
+        ax_raw_env = fig.add_subplot(gs[1, 0])
+        ax_raw_freq = fig.add_subplot(gs[2, 0])
         
-        # Actually, let's look at how I can get Time down here.
-        # I'll rely on the `signal_data` var if I modified the top block correctly...
-        # But I replaced `signal_data` with `valid_signals` dict.
+        # --- Column 2: Processed Signals ---
+        ax_proc_time = fig.add_subplot(gs[0, 2])
+        ax_proc_env = fig.add_subplot(gs[1, 2])
+        ax_proc_freq = fig.add_subplot(gs[2, 2])
         
-        # Let's just create a time array.
-        # gprMax default dt is usually small.
-        # We need dt.
-        
-        # Let's just create a simple index-based time if we can't find it.
-        time_ns = np.arange(sig_len) # Placeholder
-        
-        # Separate E and H fields
-        e_fields = {k: v for k, v in valid_signals.items() if 'E' in k}
-        h_fields = {k: v for k, v in valid_signals.items() if 'H' in k}
-        
-        # Setup dual axis if needed
-        ax_E = ax_signal
-        ax_H = ax_signal.twinx() if (e_fields and h_fields) else ax_signal
-        
-        has_E = False
-        has_H = False
-        
-        # Plot E fields
-        for name, data in e_fields.items():
-            ax_E.plot(data, label=name, linestyle='-')
-            has_E = True
+        # Signals content
+        if self.signals:
+            # 1. Raw
+            raw_feats = self._get_feature_text(self.signals)
+            self._plot_signal_column(ax_raw_time, ax_raw_env, ax_raw_freq, self.signals, 
+                                     "Raw", "Raw Data", raw_feats)
             
-        # Plot H fields
-        for name, data in h_fields.items():
-            if has_E and ax_H != ax_E:
-                ax_H.plot(data, label=name, linestyle='--')
+            # 2. Processed
+            proc_signals = {}
+            info_parts = ["TimeZero"] # Always default
+            
+            cfg = self.process_config
+            if cfg.enable:
+                if cfg.dewow: info_parts.append("Dewow")
+                if cfg.gain_type:
+                    info_parts.append(f"Gain:{cfg.gain_type}")
             else:
-                ax_H.plot(data, label=name, linestyle='-')
-            has_H = True
+                info_parts = ["None"]
+
+            if cfg.enable:
+                for name, sig in self.signals.items():
+                    psig, _ = preprocess_signal(
+                        sig, self.dt,
+                        use_dewow=cfg.dewow,
+                        use_gain=bool(cfg.gain_type),
+                        gain_params={'type': cfg.gain_type, 'alpha': cfg.gain_alpha},
+                        use_time_zero=True
+                    )
+                    proc_signals[name] = psig
+            else:
+                proc_signals = self.signals # Fallback/None
+                
+            proc_feats = self._get_feature_text(proc_signals)
+            self._plot_signal_column(ax_proc_time, ax_proc_env, ax_proc_freq, proc_signals,
+                                     "Processed", ", ".join(info_parts), proc_feats)
             
-        # Labels and Legends
-        ax_E.set_xlabel('Sample Index (Time)', fontsize=10, fontweight='bold')
-        ax_E.set_title('A-Scan Signals', fontsize=12, fontweight='bold')
-        ax_E.grid(True, alpha=0.3, linestyle='--')
+        plt.tight_layout()
+        if self.output_file:
+            plt.savefig(self.output_file, dpi=150)
+            logger.info(f"Saved to {self.output_file}")
+            
+        if self.show_plot:
+            plt.show()
+
+    def _draw_sparkline(self, ax: matplotlib.axes.Axes, x_start: float, y_start: float,
+                        signal: np.ndarray, dt: float, height: float = 0.3, width: float = 0.1, 
+                        color: str = 'red') -> None:
+        """
+        Draws a miniature signal trace (sparkline) at the specified location.
         
-        lines_E, labels_E = ax_E.get_legend_handles_labels()
-        lines_H, labels_H = ax_H.get_legend_handles_labels()
+        Args:
+            ax: Axes to draw on.
+            x_start, y_start: Origin (top-left) of the sparkline box.
+            signal: 1D signal array.
+            dt: Time step.
+            height: Physical height of the sparkline box in meters.
+            width: Physical width of the sparkline box (amplitude excursion).
+        """
+        # Normalize signal to [-1, 1]
+        max_val = np.max(np.abs(signal))
+        if max_val == 0: return
+        norm_sig = signal / max_val
         
-        if has_E:
-            ax_E.set_ylabel('E-Field (V/m)', color='blue')
-        if has_H and ax_H != ax_E:
-            ax_H.set_ylabel('H-Field (A/m)', color='green')
-            
-        # Combine legends
-        ax_E.legend(lines_E + lines_H, labels_E + labels_H, loc='upper right', fontsize=8)
+        # Map Time to Y (Depth) -> Downwards
+        # Map Amplitude to X -> Centered around x_start
         
-        # --- Bottom Right: Hilbert Envelope (Combined or Max?) ---
-        # Plotting envelope of all might be messy. Let's plot envelope of the strongest signal.
-        if valid_signals:
-            # Find strongest signal
-            strongest_name = max(valid_signals, key=lambda k: np.max(np.abs(valid_signals[k])))
-            strongest_data = valid_signals[strongest_name]
-            
-            analytic = hilbert(strongest_data)
-            envelope = np.abs(analytic)
-            
-            ax_envelope.plot(envelope, 'r-', linewidth=1.5, label=f'Env ({strongest_name})')
-            ax_envelope.fill_between(range(len(envelope)), 0, envelope, color='red', alpha=0.2)
-            ax_envelope.set_xlabel('Sample Index', fontsize=10, fontweight='bold')
-            ax_envelope.set_ylabel('Magnitude', fontsize=10, fontweight='bold')
-            ax_envelope.set_title(f'Hilbert Envelope ({strongest_name})', fontsize=12, fontweight='bold')
-            ax_envelope.grid(True, alpha=0.3, linestyle='--')
-            ax_envelope.legend()
-    
-    plt.tight_layout()
-    
-    # Save if output file specified
-    if output_file:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
-        print(f"Blueprint saved to: {output_file}")
-    
-    # Show plot
-    if show_plot:
-        plt.show()
-    
-    return fig, ax
+        n_samples = len(signal)
+        # y goes from y_start down to y_start - height
+        y_coords = np.linspace(y_start, y_start - height, n_samples)
+        
+        # x goes from x_start - width/2 to x_start + width/2
+        x_coords = x_start + (norm_sig * (width / 2))
+        
+        # Draw Line
+        ax.plot(x_coords, y_coords, color=color, linewidth=0.8, alpha=0.9)
+        
+        # Draw Wiggle Fill (Positive Lobes)
+        ax.fill_betweenx(y_coords, x_start, x_coords, where=(x_coords > x_start), 
+                         color=color, alpha=0.4)
+                         
+        # Draw Box Frame
+        rect = mpatches.Rectangle((x_start - width/2, y_start - height), width, height, 
+                                  fill=False, edgecolor='gray', linestyle=':', linewidth=0.5, alpha=0.5)
+        ax.add_patch(rect)
+        
+        # Axis Line
+        ax.plot([x_start, x_start], [y_start, y_start - height], color='gray', linewidth=0.5, alpha=0.5)
+
+    def _draw_axis_break(self, ax: matplotlib.axes.Axes, location: str = 'bottom', size: float = 0.015) -> None:
+        """
+        Draws a double-slash break symbol on the vertical axis spines.
+        
+        Args:
+            ax: The axes to draw on.
+            location: 'top' or 'bottom'.
+            size: Relative size of the slashes.
+        """
+        d = size
+        # Vertical offset between the two slashes
+        gap = d 
+        
+        kwargs = dict(transform=ax.transAxes, color='black', clip_on=False, linewidth=1)
+        
+        # Y-position: 0 for bottom, 1 for top
+        y_base = 0 if location == 'bottom' else 1
+        
+        # Direction of slant: / (plus x, plus y)
+        # We draw cuts on the left spine (x=0) and right spine (x=1)
+        
+        # Left Spine (x=0)
+        # Cut 1
+        ax.plot((-d, d), (y_base - d - gap/2, y_base + d - gap/2), **kwargs)
+        # Cut 2
+        ax.plot((-d, d), (y_base - d + gap/2, y_base + d + gap/2), **kwargs)
+        
+        # Right Spine (x=1)
+        # Cut 1
+        ax.plot((1 - d, 1 + d), (y_base - d - gap/2, y_base + d - gap/2), **kwargs)
+        # Cut 2
+        ax.plot((1 - d, 1 + d), (y_base - d + gap/2, y_base + d + gap/2), **kwargs)
+
 
 
 def main():
-    """
-    Main entry point for the blueprint visualization script.
-    """
-    parser = argparse.ArgumentParser(
-        description='Create a blueprint visualization of gprMax input files',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s input/templates/sample.in
-  %(prog)s synthetic_inputs/s0000_unif.in -o blueprint.png
-  %(prog)s synthetic_inputs/s0000_unif.in --no-show --dpi 600
-        """
-    )
-
-    parser.add_argument('input_file', help='gprMax input file (.in) to visualize')
-    parser.add_argument('-o', '--output', help='Output image file (png, pdf, svg, etc.)')
-    parser.add_argument('--no-show', action='store_true', help='Do not display the plot')
-    parser.add_argument('--dpi', type=int, default=300, help='DPI for output image (default: 300)')
-    parser.add_argument('--scale', type=float, default=1.0, help='Scale factor for geometry (default: 1.0)')
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser = argparse.ArgumentParser(description="Visualize gprMax input geometry and results.")
+    parser.add_argument("input_file", help="Path to the .in input file")
+    parser.add_argument("-o", "--output", help="Path to save the output image")
+    parser.add_argument("--no-show", action="store_true", help="Do not display the window")
+    
+    # Process Defaults: ON by default
+    parser.add_argument("--no-process", action="store_true", help="Disable signal processing")
+    parser.add_argument("--no-dewow", action="store_true", help="Disable dewow")
+    parser.add_argument("--gain", type=str, choices=['power', 'exp', 'agc'], help="Apply gain")
+    parser.add_argument("--alpha", type=float, default=1.0, help="Gain exponent/alpha")
+    
+    # Filters
+    parser.add_argument("--components", nargs='+', default=['Ez'], help="Components to show (Ez, Hx..)")
+    parser.add_argument("--rx", nargs='+', help="Receivers to show (rx1, rx2..)")
 
     args = parser.parse_args()
-
-    # 1. Setup Logging
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=log_level, format='%(name)s - %(levelname)s - %(message)s')
-
-    if not Path(args.input_file).exists():
-        logging.error(f"Input file not found: {args.input_file}")
-        sys.exit(1)
-
-    # 2. Parse Input
-    input_parser = GprMaxInputParser(args.input_file)
-    parsed_data = input_parser.parse()
-
-    # Apply Scaling if requested
-    if args.scale != 1.0:
-        logging.info(f"Applying scale factor: {args.scale}")
-        scaler = GeometryScaler(args.scale)
-        
-        # Scale Objects
-        for obj in parsed_data.objects:
-            obj.accept(scaler)
-        
-        # Scale Domain
-        if parsed_data.domain:
-            parsed_data.domain.size.x *= args.scale
-            parsed_data.domain.size.y *= args.scale
-            parsed_data.domain.size.z *= args.scale
-            
-        # Scale Source/Receiver
-        if parsed_data.source:
-            parsed_data.source.position.x *= args.scale
-            parsed_data.source.position.y *= args.scale
-            parsed_data.source.position.z *= args.scale
-            
-        if parsed_data.receiver:
-            parsed_data.receiver.position.x *= args.scale
-            parsed_data.receiver.position.y *= args.scale
-            parsed_data.receiver.position.z *= args.scale
-
-    # 3. Configure
-    config = VisualizationConfig(dpi=args.dpi)
-
-    # 4. Visualize
-    visualizer = GprMaxBlueprintVisualizer(parsed_data, config)
-
-    # Try to find corresponding .out file
-    input_path = Path(args.input_file)
-    out_file_path = input_path.with_suffix('.out')
-
-    if not out_file_path.exists():
-        out_file_path = None
-        logging.warning(f"No .out file found (expected at {input_path.with_suffix('.out')})")
-    else:
-        print(f"Found .out file: {out_file_path}")
     
-    # Create blueprint
-    create_blueprint(
-        data,
-        output_file=args.output,
-        show_plot=not args.no_show,
-        out_file_path=out_file_path,
-        source_filename=Path(args.input_file).name
+    # Setup Configs
+    process_cfg = ProcessingConfig(
+        enable=not args.no_process,
+        dewow=not args.no_dewow,
+        gain_type=args.gain,
+        gain_alpha=args.alpha
+    )
+    
+    filter_cfg = FilterConfig(
+        components=args.components,
+        receivers=args.rx
     )
 
-    return 0
-
+    viz = GPRResultVisualizer(
+        args.input_file, 
+        output_file=args.output, 
+        show_plot=not args.no_show,
+        process_config=process_cfg,
+        filter_config=filter_cfg
+    )
+    viz.run()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

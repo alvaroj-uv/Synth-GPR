@@ -1,6 +1,38 @@
+# Python
 src/__pycache__/*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# GPR files
 *.in
 *.out
-*.png
+
+# Data files
 *.csv
-*.pyc
+
+# Images (keep output/test_images tracked)
+test_*.png
+*.png
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.ruff_cache/
+cache/
+
+# Reports
+pylint_report.txt
+
+# Old test directories (now in output/tests/)
+test_pipeline_output/
+test_run_mac/

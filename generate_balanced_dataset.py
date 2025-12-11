@@ -168,7 +168,7 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
         f.write("echo [BATCH] Visualizing Blueprints...\n")
         f.write('for %%f in (*.in) do (\n')
         f.write('    echo   Processing: %%~nxf\n')
-        f.write('    %PYTHON_EXE% %SCRIPT% "%%f" -o "%%~nf_blueprint.png" --no-show\n')
+        f.write('    %PYTHON_EXE% %SCRIPT% "%%f" -o "%%~nf_blueprint.png" --no-show --gain power\n')
         f.write(')\n')
         f.write("echo [BATCH] Visualization Complete.\n")
     print(f"[OK] Created {viz_bat_path}")
