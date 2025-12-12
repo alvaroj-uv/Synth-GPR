@@ -25,6 +25,8 @@ def run_single_simulation(args):
         return True
     except subprocess.CalledProcessError as e:
         print(f"  [Error] {f.name}: {e}")
+        if e.stderr:
+            print(f"  [Stderr] {e.stderr.decode('utf-8', errors='replace')}")
         return False
 
 def run_batch_simulations(input_folder, n_gpu=-1, n_jobs=4):
