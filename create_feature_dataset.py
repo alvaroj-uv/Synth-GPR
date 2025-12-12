@@ -88,7 +88,7 @@ def create_dataset(input_dir: str):
 
             # Add Labels/Keys ONLY
             # We explicitly exclude simulation parameters (moisture, roughness, etc.) to avoiding leakage.
-            feats_dict['label_FI_class'] = row['FI_Class']  # Note: metadata has FI_Class (capital C)
+            feats_dict['label_FI_class'] = row['FI_class']  # Note: metadata has FI_class (lowercase c)
             feats_dict['label_pvc'] = row['pvc']
             feats_dict['sample_id'] = sample_id
 
@@ -121,7 +121,7 @@ def create_dataset(input_dir: str):
     # Save
     output_csv = input_path / "features.csv"
     final_df.to_csv(output_csv, index=False)
-    print(f"\\n[SUCCESS] Feature dataset saved to: {output_csv}")
+    print(f"\n[SUCCESS] Feature dataset saved to: {output_csv}")
     print(f"Total samples: {len(final_df)}")
     print(f"Total features per sample: {len(final_df.columns)}")
 
