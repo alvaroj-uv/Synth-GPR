@@ -98,7 +98,7 @@ if [ ! -f "$INPUT_DIR/metadata.csv" ]; then
 fi
 
 # Run feature extraction
-python create_feature_dataset.py "$INPUT_DIR"
+python scripts/main/create_feature_dataset.py "$INPUT_DIR"
 
 if [ $? -eq 0 ]; then
     if [ -f "$OUTPUT_FILE" ]; then

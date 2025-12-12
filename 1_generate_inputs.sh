@@ -63,7 +63,7 @@ echo "  Output directory:  $OUTPUT_DIR"
 echo ""
 
 # Run generator
-python generate_balanced_dataset.py \
+python scripts/main/generate_balanced_dataset.py \
     --count "$NUM_SAMPLES" \
     --output "$OUTPUT_DIR"
 

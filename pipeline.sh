@@ -116,7 +116,7 @@ echo ""
 # ============================================================================
 print_header "Step 1/4: Generating .in files"
 
-python generate_balanced_dataset.py \
+python scripts/main/generate_balanced_dataset.py \
     --count "$NUM_SAMPLES" \
     --output "$OUTPUT_DIR"
 
@@ -182,7 +182,7 @@ fi
 # ============================================================================
 print_header "Step 3/4: Extracting features"
 
-python create_feature_dataset.py "$RUN_DIR"
+python scripts/main/create_feature_dataset.py "$RUN_DIR"
 
 if [ $? -eq 0 ]; then
     if [ -f "$RUN_DIR/features.csv" ]; then
