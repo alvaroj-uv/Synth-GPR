@@ -5,27 +5,23 @@ This module contains domain-specific calculations and classification logic
 for GPR simulation properties, separating them from configuration data.
 """
 
+# Standard library imports
 import math
 from typing import Literal
 
-# Classification Thresholds (Selig & Waters, 1994)
-FI_CLEAN_THRESHOLD = 10.0
-FI_MODERATELY_FOULED_THRESHOLD = 20.0
-FI_FOULED_THRESHOLD = 40.0
-
-# Default Material Properties
-DEFAULT_POROSITY = 0.4
-DEFAULT_BALLAST_DENSITY = 2.6  # Gs_b
-DEFAULT_FOULING_DENSITY = 2.6  # Gs_f
+# Local imports
+from .constants import PHC
 
 
-def classify_pvc(pvc_value: float, porosity: float = DEFAULT_POROSITY) -> str:
+def classify_pvc(pvc_value: float, porosity: float = PHC.DEFAULT_POROSITY) -> str:
     """
     Classify ballast fouling based on input PVC, converting to FI first.
     
-    STRICT PHYSICS MODE:
-    1. Converts PVC (Volume %) to FI (Mass %) using `convert_pvc_to_fi`.
-    2. Classifies the resulting FI using Selig & Waters thresholds.
+    WHY TWO-STEP CONVERSION:
+    PVC (Percentage Void Contamination) is what we *measure* in simulations
+    (volume of voids filled), but FI (Fouling Index) is the *standard* used 
+    in civil engineering literature (Selig & Waters, 1994). We convert to FI
+    to align with industry classification thresholds.
     
     Note:
         To achieve 'HF' (FI >= 40), you typically need PVC > 85% 
@@ -45,16 +41,32 @@ def classify_pvc(pvc_value: float, porosity: float = DEFAULT_POROSITY) -> str:
 def compute_fouling_index(rock_thickness: float, fouling_thickness: float) -> float:
     """
     Compute Fouling Index (FI) as percentage of fouling in total ballast depth.
+    
+    WHY THIS APPROACH:
+    This is a simplified geometric approximation used when we have explicit
+    layer thicknesses. Less accurate than mass-based FI but computationally
+    cheaper for quick estimates.
     """
     total = rock_thickness + fouling_thickness
-    if total <= 0:
+    if total <= PHC.ZERO_EPSILON:
         return 0.0
     return (fouling_thickness / total) * 100.0
 
 
-def convert_pvc_to_fi(pvc: float, porosity: float = 0.4, Gs_b: float = 2.6, Gs_f: float = 2.6) -> float:
+def convert_pvc_to_fi(
+    pvc: float, 
+    porosity: float = PHC.DEFAULT_POROSITY, 
+    Gs_b: float = PHC.DEFAULT_BALLAST_DENSITY, 
+    Gs_f: float = PHC.DEFAULT_FOULING_DENSITY
+) -> float:
     """
     Convert Percentage Void Contamination (PVC) to Fouling Index (FI).
+    
+    WHY THIS CONVERSION MATTERS:
+    PVC is volumetric (easy to measure in CT scans or simulations), but
+    FI is mass-based (the civil engineering standard). Since ballast and
+    fouling have different densities, a 10% volume increase doesn't mean
+    10% mass increase. This formula accounts for specific gravities.
     
     Physics:
         PVC is Volumetric % of Voids filled.
@@ -81,29 +93,35 @@ def convert_pvc_to_fi(pvc: float, porosity: float = 0.4, Gs_b: float = 2.6, Gs_f
     if pvc <= 0:
         return 0.0
         
-    # Volumetric fractions (relative to total volume 1.0)
     v_foul = (pvc / 100.0) * porosity
     v_rock = 1.0 - porosity
     
-    # Mass parts (density * volume)
-    # rho_water cancels out in the ratio
+    # Note: Water density cancels out in the mass ratio calculation
     m_foul = v_foul * Gs_f
     m_rock = v_rock * Gs_b
     
     total_mass = m_foul + m_rock
-    if total_mass <= 0:
+    if total_mass <= PHC.ZERO_EPSILON:
         return 0.0
         
     fi = (m_foul / total_mass) * 100.0
     return fi
 
 
-def inverse_convert_fi_to_pvc(target_fi: float, porosity: float = 0.4, Gs_b: float = 2.6, Gs_f: float = 2.6) -> float:
+def inverse_convert_fi_to_pvc(
+    target_fi: float, 
+    porosity: float = PHC.DEFAULT_POROSITY, 
+    Gs_b: float = PHC.DEFAULT_BALLAST_DENSITY, 
+    Gs_f: float = PHC.DEFAULT_FOULING_DENSITY
+) -> float:
     """
     Calculate required PVC (Volume %) to achieve a target FI (Mass %).
     
-    Inverse of `convert_pvc_to_fi`.
-    Useful for generating datasets with specific fouling labels.
+    WHY INVERSE CONVERSION:
+    ML dataset generation requires target-driven generation. Given a desired
+    label (e.g., "Heavily Fouled" = FI 40%), we need to know what PVC to
+    use in the simulation. This is the mathematical inverse of the forward
+    conversion.
     
     Formula derived from solving FI = Mf / (Mf + Mb):
         PVC = ((1-phi)/phi) * (Gs_b/Gs_f) * (FI / (100-FI)) * 100
@@ -113,37 +131,38 @@ def inverse_convert_fi_to_pvc(target_fi: float, porosity: float = 0.4, Gs_b: flo
         porosity, Gs_b, Gs_f: Material properties (must match forward transform)
         
     Returns:
-        Required PVC percentage (0-100). Returns >100 if target is physically impossible with given porosity.
+        Required PVC percentage (0-100). Returns >100 if target is physically 
+        impossible with given porosity.
     """
     if target_fi <= 0:
         return 0.0
     if target_fi >= 100:
-        return 999.0 # Impossible (would mean 0% rock)
+        # Impossible: means 0% rock
+        return 999.0
         
-    R = target_fi / 100.0
+    fi_ratio = target_fi / 100.0
     
-    # Ratio of Fouling Mass to Rock Mass needed
-    # M_f / M_b = R / (1 - R)
-    mass_ratio = R / (1.0 - R)
+    mass_ratio = fi_ratio / (1.0 - fi_ratio)
     
-    # Volume Ratio needed
-    # V_f / V_r = (M_f/Gs_f) / (M_b/Gs_b) = mass_ratio * (Gs_b / Gs_f)
-    vol_ratio = mass_ratio * (Gs_b / Gs_f)
+    # Convert mass ratio to volume ratio using specific gravities
+    volume_ratio = mass_ratio * (Gs_b / Gs_f)
     
-    # Solve for PVC using V_f = (PVC/100)*phi and V_r = 1-phi
-    # (PVC/100)*phi / (1-phi) = vol_ratio
-    # PVC/100 = vol_ratio * (1-phi)/phi
-    
-    if porosity <= 0: 
+    if porosity <= PHC.ZERO_EPSILON: 
         return 0.0
         
-    pvc_fraction = vol_ratio * (1.0 - porosity) / porosity
+    pvc_fraction = volume_ratio * (1.0 - porosity) / porosity
     return pvc_fraction * 100.0
 
 
 def classify_fouling_index(fi: float) -> Literal["CL", "MF", "F", "HF"]:
     """
     Classify fouling based on Fouling Index (FI).
+    
+    WHY THESE THRESHOLDS:
+    These are industry-standard categories from Selig & Waters (1994),
+    derived from empirical studies correlating ballast contamination to
+    track performance degradation. They're not arbitrary—they represent
+    critical points where drainage and load-bearing capacity change.
     
     Classification (Selig & Waters, 1994):
         - Clean (CL):              FI < 10%
@@ -157,66 +176,98 @@ def classify_fouling_index(fi: float) -> Literal["CL", "MF", "F", "HF"]:
     Returns:
         Classification code: "CL", "MF", "F", or "HF"
     """
-    if fi < FI_CLEAN_THRESHOLD:
+    if fi < PHC.FI_CLEAN_THRESHOLD:
         return "CL"
-    elif fi < FI_MODERATELY_FOULED_THRESHOLD:
+    elif fi < PHC.FI_MODERATELY_FOULED_THRESHOLD:
         return "MF"
-    elif fi < FI_FOULED_THRESHOLD:
+    elif fi < PHC.FI_FOULED_THRESHOLD:
         return "F"
     else:
         return "HF"
 
+
 def topp_mixing_model(theta: float) -> float:
     """
-    Topp's equation for soil dielectric constant based on volumetric water content.
-    Ref: Topp et al (1980).
-    theta: Volumetric water content (0.0 - 1.0)
+    Topp's empirical equation for soil dielectric based on water content.
+    
+    WHY TOPP'S MODEL:
+    GPR signal propagation depends on dielectric constant, which changes
+    with moisture. Topp's polynomial (1980) is the geophysics standard for
+    mineral soils, derived from lab measurements across soil types.
+    
+    Ref: Topp et al (1980). "Electromagnetic determination of soil water content"
+    
+    Args:
+        theta: Volumetric water content (0.0 - 1.0)
+        
+    Returns:
+        Relative dielectric constant (epsilon_r)
     """
-    # Clamp theta to realistic range
+    # Clamp to realistic soil moisture range
     theta = max(0.0, min(theta, 1.0))
-    e_r = 3.03 + 9.3 * theta + 146.0 * theta**2 - 76.7 * theta**3
+    
+    # Topp's empirical polynomial
+    e_r = (PHC.TOPP_C0 
+           + PHC.TOPP_C1 * theta 
+           + PHC.TOPP_C2 * theta**2 
+           + PHC.TOPP_C3 * theta**3)
     return e_r
 
+
 def fmt(val: float) -> str:
-    """Format float to 5 significant figures."""
-    if abs(val) < 1e-9:
+    """
+    Format float to 5 significant figures for file output.
+    
+    WHY 5 SIGNIFICANT FIGURES:
+    gprMax input files don't need full precision (noisy anyway), but we need
+    enough digits to avoid truncation errors in material properties that
+    affect wave speed calculations.
+    """
+    if abs(val) < PHC.ZERO_EPSILON:
         return "0.0"
     return f"{val:.5g}"
 
-def log_linear_interpolation(d_x: float, d1: float, p1: float, d2: float, p2: float) -> float:
+
+def _log_linear_interpolate(
+    target_diameter: float, 
+    diameter_lower: float, percent_passing_lower: float, 
+    diameter_upper: float, percent_passing_upper: float
+) -> float:
     """
     Log-Linear Interpolation for Particle Size Distribution (PSD).
+    
+    WHY LOG-LINEAR:
+    Particle size data spans orders of magnitude (clay = 0.001mm, gravel = 10mm).
+    Linear interpolation would be terrible. Semi-log (log particle size,
+    linear % passing) is the geotechnical standard and matches how soil
+    gradation curves behave physically.
     
     Formula:
         Px = P1 + (P2 - P1) * (log(dx) - log(d1)) / (log(d2) - log(d1))
     
     Args:
-        d_x: Target diameter to interpolate at.
-        d1, p1: Diameter and Percent Passing of first bounding point.
-        d2, p2: Diameter and Percent Passing of second bounding point.
+        target_diameter: Target diameter to interpolate at.
+        diameter_lower, percent_passing_lower: First bounding point (diameter, % passing).
+        diameter_upper, percent_passing_upper: Second bounding point (diameter, % passing).
     
     Returns:
         Interpolated Percent Passing (Px).
     """
-    if d_x <= 0 or d1 <= 0 or d2 <= 0:
-        # Avoid log domain error, fallback to linear or 0
+    if target_diameter <= 0 or diameter_lower <= 0 or diameter_upper <= 0:
         return 0.0
         
-    if abs(d2 - d1) < 1e-9:
-        return p1
+    if abs(diameter_upper - diameter_lower) < PHC.ZERO_EPSILON:
+        return percent_passing_lower
         
-    log_dx = math.log10(d_x)
-    log_d1 = math.log10(d1)
-    log_d2 = math.log10(d2)
+    log_target = math.log10(target_diameter)
+    log_lower = math.log10(diameter_lower)
+    log_upper = math.log10(diameter_upper)
     
-    # Calculate slope in log-log space? No, usually Linear Percent vs Log Diameter.
-    # Semi-log plot: X=Log(Size), Y=Linear(Percent)
+    slope = (percent_passing_upper - percent_passing_lower) / (log_upper - log_lower)
+    interpolated_percent = percent_passing_lower + slope * (log_target - log_lower)
     
-    slope = (p2 - p1) / (log_d2 - log_d1)
-    px = p1 + slope * (log_dx - log_d1)
-    
-    # Clamp to [0, 100] just in case
-    return max(0.0, min(100.0, px))
+    return max(0.0, min(100.0, interpolated_percent))
+
 
 def get_percent_passing(d_target: float, psd_points: list) -> float:
     """
@@ -225,23 +276,27 @@ def get_percent_passing(d_target: float, psd_points: list) -> float:
     Args:
         d_target: Diameter to query.
         psd_points: List of (Diameter, PercentPassing) tuples. 
-                    Must be sorted by diameter descending or ascending.
+                    Will be sorted internally if needed.
     """
-    # 1. Sort points by diameter ascending just to be safe
+    # Sort points by diameter ascending for consistent interpolation
     sorted_points = sorted(psd_points, key=lambda x: x[0])
     
-    # 2. Check bounds
+    # Handle bounds
     if d_target <= sorted_points[0][0]:
-        return sorted_points[0][1] # Smaller than smallest
+        return sorted_points[0][1]
     if d_target >= sorted_points[-1][0]:
-        return sorted_points[-1][1] # Larger than largest
+        return sorted_points[-1][1]
         
-    # 3. Find interval
+    # Find bracketing interval and interpolate
     for i in range(len(sorted_points) - 1):
-        d1, p1 = sorted_points[i]
-        d2, p2 = sorted_points[i+1]
+        diameter_lower, percent_lower = sorted_points[i]
+        diameter_upper, percent_upper = sorted_points[i+1]
         
-        if d1 <= d_target <= d2:
-            return log_linear_interpolation(d_target, d1, p1, d2, p2)
+        if diameter_lower <= d_target <= diameter_upper:
+            return _log_linear_interpolate(
+                d_target, 
+                diameter_lower, percent_lower,
+                diameter_upper, percent_upper
+            )
             
     return 0.0

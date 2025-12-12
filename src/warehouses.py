@@ -6,6 +6,7 @@ needed by workers, ensuring consistency and centralizing configuration.
 """
 from typing import Dict, Any, Optional
 from .gpr_commands import MaterialCommand
+from .constants import MC, PC
 
 class MaterialWarehouse:
     """
@@ -25,29 +26,31 @@ class MaterialWarehouse:
     def _initialize_base_materials(self):
         """Register default materials from config."""
         # Universal Constants
-        self._materials['free_space'] = MaterialCommand(1.0, 0.0, 1.0, 0.0, "free_space")
+        self._materials[MC.AIR] = MaterialCommand(*MC.AIR_PROPS, 1.0, 0.0, MC.AIR)
         
         # Subgrade
         # TODO: Get from Config if available, else standard
-        self._materials['subgrade'] = MaterialCommand(
-            self.config.bal_foul_eps_max, # Approximation
-            0.02, # Approximation
+        sub_eps = self.config.bal_foul_eps_max if hasattr(self.config, 'bal_foul_eps_max') else MC.SUBGRADE_PROPS[0]
+        
+        self._materials[MC.SUBGRADE] = MaterialCommand(
+            sub_eps, 
+            MC.SUBGRADE_PROPS[1],
             1.0, 0.0,
-            "subgrade" 
+            MC.SUBGRADE
         )
         
         # Formation
-        self._materials['formation'] = MaterialCommand(
-            10.0, 0.03, 1.0, 0.0,
-            "formation"
+        self._materials[MC.FORMATION] = MaterialCommand(
+            *MC.FORMATION_PROPS, 1.0, 0.0,
+            MC.FORMATION
         )
         
         # Clean Ballast Rock
-        self._materials['bal_rock'] = MaterialCommand(
+        self._materials[MC.BALLAST_ROCK] = MaterialCommand(
             self.config.bal_rock_eps,
             self.config.bal_rock_sigma,
             1.0, 0.0,
-            "bal_rock"
+            MC.BALLAST_ROCK
         )
         
         # Fouling (Clay/Soil) - Base
@@ -62,7 +65,7 @@ class MaterialWarehouse:
     def get_material(self, name: str, **kwargs) -> Optional[MaterialCommand]:
         """Retrieve a material definition by name."""
         # Dynamic handling for moisture-dependent fouling
-        if name == "bal_foul_granular" and "moisture" in kwargs:
+        if name == MC.FOULING and "moisture" in kwargs:
             return self.get_fouled_material(kwargs["moisture"])
             
         return self._materials.get(name)
@@ -83,7 +86,7 @@ class MaterialWarehouse:
         foul_eps = topp_mixing_model(moisture)
         foul_sigma = 0.001 + 0.2 * moisture
         
-        return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, "bal_foul_granular")
+        return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, MC.FOULING)
 
     def mix_material(self, base_name: str, additive_name: str, fraction: float) -> MaterialCommand:
         """

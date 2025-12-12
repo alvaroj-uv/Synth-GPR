@@ -13,15 +13,20 @@ Example:
     >>> rocks = strategy.generate_rocks(bounds, 0.02, 0.05, target_fill_ratio=0.6)
 """
 
-from abc import ABC, abstractmethod
-from typing import List, Tuple, Dict
-from dataclasses import dataclass
-from collections import defaultdict
-from enum import IntEnum
-import numpy as np
+# Standard library imports
 import random
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass
+from enum import IntEnum
+from typing import Dict, List, Tuple
 
-from .rock_model import Rock, PackingBounds
+# Third-party imports
+import numpy as np
+
+# Local imports
+from .constants import PAC
+from .rock_model import PackingBounds, Rock
 
 # Removed local Rock/PackingBounds definitions
 
@@ -42,8 +47,8 @@ class RockPackingStrategy(ABC):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         """
         Generate rocks within the given bounds.
@@ -114,8 +119,8 @@ class RandomPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         """Generate rocks randomly without overlap checking."""
         rocks = []
@@ -166,7 +171,7 @@ class PoissonDiskPacking(RockPackingStrategy):
                    Higher values increase density but slower (default: 30)
     """
     
-    def __init__(self, k_attempts: int = 30):
+    def __init__(self, k_attempts: int = PAC.POISSON_K_ATTEMPTS):
         """
         Initialize Poisson disk packer.
         
@@ -180,8 +185,8 @@ class PoissonDiskPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         """Generate non-overlapping rocks using Poisson disk sampling."""
         rocks = []
@@ -304,8 +309,8 @@ class SimulatedAnnealingPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         """
         Generate rocks using simulated annealing.
@@ -360,7 +365,7 @@ class WangTile:
     east_edge: EdgePattern
     south_edge: EdgePattern
     west_edge: EdgePattern
-    size: float = 0.1
+    size: float = PAC.TILE_SIZE
     
     def __hash__(self):
         """Make hashable for use in sets/dicts."""
@@ -383,7 +388,7 @@ class WangTileLibrary:
     minimal aperiodic set.
     """
     
-    def __init__(self, tile_size: float = 0.1, seed_offset: int = 0):
+    def __init__(self, tile_size: float = PAC.TILE_SIZE, seed_offset: int = 0):
         self.tile_size = tile_size
         self.seed_offset = seed_offset
         print(f"Generating Wang tile library (13 tiles, size={tile_size}m)...")
@@ -441,7 +446,7 @@ class WangTileLibrary:
         west: EdgePattern
     ) -> List[Rock]:
         # Deterministic seed based on tile_id
-        seed = (tile_id + self.seed_offset) * 12345
+        seed = (tile_id + self.seed_offset) * PAC.WANG_SEED_MULTIPLIER
         
         # Calculate edge margins based on patterns
         margin_n = self._edge_margin(north)
@@ -482,10 +487,10 @@ class WangTileLibrary:
     
     def _edge_margin(self, pattern: EdgePattern) -> float:
         margins = {
-            EdgePattern.EMPTY: 0.025,
-            EdgePattern.SPARSE: 0.018,
-            EdgePattern.MEDIUM: 0.012,
-            EdgePattern.DENSE: 0.006
+            EdgePattern.EMPTY: PAC.MARGIN_EMPTY,
+            EdgePattern.SPARSE: PAC.MARGIN_SPARSE,
+            EdgePattern.MEDIUM: PAC.MARGIN_MEDIUM,
+            EdgePattern.DENSE: PAC.MARGIN_DENSE
         }
         return margins[pattern]
     
@@ -608,7 +613,7 @@ class WangTileRockPacking(RockPackingStrategy):
     _library = None
     _solver = None
     
-    def __init__(self, tile_size: float = 0.1):
+    def __init__(self, tile_size: float = PAC.TILE_SIZE):
         self.tile_size = tile_size
         
         # Lazy initialization
@@ -624,19 +629,20 @@ class WangTileRockPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         grid_w = int(np.ceil(bounds.width / self.tile_size))
         grid_h = int(np.ceil(bounds.height / self.tile_size))
         
-        seed_str = f"{round(bounds.x_min, 3)}_{round(bounds.y_min, 3)}_{round(bounds.width, 3)}_{round(bounds.height, 3)}"
+        seed_str = (f"{round(bounds.x_min, 3)}_{round(bounds.y_min, 3)}_"
+                    f"{round(bounds.width, 3)}_{round(bounds.height, 3)}")
         seed = int.from_bytes(seed_str.encode('utf-8'), 'big') & 0xFFFFFFFF
         
         wang_grid = self._solver.solve_grid(grid_w, grid_h, seed)
         return self._grid_to_rocks(wang_grid, bounds)
     
-    def _grid_to_rocks(self, grid: dict, bounds: PackingBounds) -> List[Rock]:
+    def _grid_to_rocks(self, grid: Dict[Tuple[int, int], WangTile], bounds: PackingBounds) -> List[Rock]:
         all_rocks = []
         for (x_idx, y_idx), tile in grid.items():
             tile_x = bounds.x_min + x_idx * self.tile_size
@@ -674,8 +680,8 @@ class GridPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         """Generate rocks in a simple grid."""
         rocks = []
@@ -817,7 +823,7 @@ class FrontChainPacking(RockPackingStrategy):
             dy = candidate.y - other.y
             dist_sq = dx*dx + dy*dy
             min_dist = candidate.radius + other.radius
-            if dist_sq < min_dist * min_dist - 0.000001: # Epsilon for float tolerance
+            if dist_sq < min_dist * min_dist - 0.000001:  # Epsilon for float tolerance
                 return False
                 
         return True
@@ -855,8 +861,8 @@ class PhysicsPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.70, 
-        max_attempts: int = 200 
+        target_fill_ratio: float = 0.70,
+        max_attempts: int = PAC.PHYSICS_ITERATIONS 
     ) -> List[Rock]:
         """
         Generates rocks using physics relaxation.
@@ -887,7 +893,7 @@ class PhysicsPacking(RockPackingStrategy):
             
         # 2. Physics Loop
         iterations = max_attempts 
-        damping = 0.5 
+        damping = PAC.PHYSICS_DAMPING 
         
         for _ in range(iterations):
             max_move = 0.0
@@ -996,8 +1002,8 @@ class TrianglePacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.6,
-        max_attempts: int = 1000
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
     ) -> List[Rock]:
         try:
             from scipy.spatial import Delaunay
@@ -1131,7 +1137,7 @@ class ShangChuPacking(RockPackingStrategy):
         # In this codebase, usually Y is 'up' and X is 'width'.
         # The paper packs into fixed Width W, minimizing Length L.
         # So W = bounds.width, L = bounds.height (minimized).
-        W = bounds.width
+        domain_width = bounds.width
         # We start with L_current = 0
         
         # Pre-generate set of circles
@@ -1150,7 +1156,7 @@ class ShangChuPacking(RockPackingStrategy):
         L_current = 0.0
         
         for c in circles:
-            c.x, c.y = self._find_random_non_overlapping_pos(c, circles, W, bounds.height)
+            c.x, c.y = self._find_random_non_overlapping_pos(c, circles, domain_width, bounds.height)
             L_current = max(L_current, c.y + c.radius)
 
         # 3. Main Optimization Loop
@@ -1169,7 +1175,7 @@ class ShangChuPacking(RockPackingStrategy):
             
             for c in search_order:
                 # Local Search in BS-Area
-                if self._bs_area_search(c, circles, W):
+                if self._bs_area_search(c, circles, domain_width):
                     improved = True
                     # Re-calc L
                     L_current = max((k.y + k.radius for k in circles), default=0)
@@ -1184,7 +1190,7 @@ class ShangChuPacking(RockPackingStrategy):
                 # Apply disturbance (Left-off or Bottom-off)
                 # "Left-off": Move quasi-stable circles (those tangent to boundary)
                 # "Bottom-off": Move circles near bottom
-                self._apply_disturbance(circles, W, bounds.height)
+                self._apply_disturbance(circles, domain_width, bounds.height)
                 no_improv_count = 0 # Reset
                 
             iteration += 1
@@ -1203,10 +1209,10 @@ class ShangChuPacking(RockPackingStrategy):
                 
         return result_rocks
 
-    def _find_random_non_overlapping_pos(self, c: _SCCircle, existing: List[_SCCircle], W: float, max_L: float) -> Tuple[float, float]:
+    def _find_random_non_overlapping_pos(self, c: _SCCircle, existing: List[_SCCircle], domain_width: float, max_L: float) -> Tuple[float, float]:
         # Simple rejection sampling
         for _ in range(100):
-            x = random.uniform(c.radius, W - c.radius)
+            x = random.uniform(c.radius, domain_width - c.radius)
             y = random.uniform(c.radius, max_L - c.radius)
             
             valid = True
@@ -1223,7 +1229,7 @@ class ShangChuPacking(RockPackingStrategy):
                 return x, y
         return 0, 0 # Should not happen if area is sparse enough
 
-    def _bs_area_search(self, c: _SCCircle, circles: List[_SCCircle], W: float) -> bool:
+    def _bs_area_search(self, c: _SCCircle, circles: List[_SCCircle], domain_width: float) -> bool:
         """
         Search for a better position within the "Bow Shift Area".
         We implement a gradient-like stochastic sampling:
@@ -1251,7 +1257,7 @@ class ShangChuPacking(RockPackingStrategy):
             ny = c.y + np.sin(angle) * dist
             
             # Boundary check
-            if nx - c.radius < 0 or nx + c.radius > W or ny - c.radius < 0:
+            if nx - c.radius < 0 or nx + c.radius > domain_width or ny - c.radius < 0:
                 continue
             
             # Overlap check (Only with OTHER circles)
@@ -1278,7 +1284,7 @@ class ShangChuPacking(RockPackingStrategy):
             
         return False
         
-    def _apply_disturbance(self, circles: List[_SCCircle], W: float, max_L: float):
+    def _apply_disturbance(self, circles: List[_SCCircle], domain_width: float, max_L: float):
         """Randomly move some circles to shake the container."""
         strategy = random.choice(["bottom_off", "left_off", "random_move"])
         
@@ -1288,7 +1294,7 @@ class ShangChuPacking(RockPackingStrategy):
             targets = [c for c in circles if c.y < max_L * 0.2]
         elif strategy == "left_off":
             # Pick left-side circles
-            targets = [c for c in circles if c.x < W * 0.2]
+            targets = [c for c in circles if c.x < domain_width * 0.2]
         else:
             targets = random.sample(circles, min(len(circles)//5, 1))
             
@@ -1296,7 +1302,7 @@ class ShangChuPacking(RockPackingStrategy):
         max_y = max((c.y for c in circles), default=0)
         for c in targets:
             # "Put out of rectangle" then re-enter -> Place largely on top
-            c.x = random.uniform(c.radius, W - c.radius)
+            c.x = random.uniform(c.radius, domain_width - c.radius)
             # Place them very high up where it's empty
             c.y = max_y + c.radius + random.uniform(0, max_L/2)
 

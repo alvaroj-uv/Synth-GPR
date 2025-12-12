@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import hilbert
 from src.signal_processing import preprocess_signal
+from .constants import PC
 
 def read_gprmax_hdf5(filename, fields=['E', 'H']):
     """
@@ -23,7 +24,7 @@ def read_gprmax_hdf5(filename, fields=['E', 'H']):
     # Extract Time
     # Usually 'rxs/rx1/Ez' has attributes 'dt'
     # Or root attributes
-    dt = f.attrs.get('dt', 1e-10)
+    dt = f.attrs.get('dt', PC.DEFAULT_DT)
     iterations = f.attrs.get('Iterations', 0)
     
     # Create Time Array
@@ -71,7 +72,7 @@ def load_batch_dataset(input_dir, field='Ez'):
     analytical_signals = []
     fourier_spectra = []
     
-    dt = 1e-10 # Default
+    dt = PC.DEFAULT_DT # Default
     common_time = None
     common_freqs = None
     

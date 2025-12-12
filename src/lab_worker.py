@@ -70,16 +70,16 @@ class LabWorker(Worker):
         
         for rock in scene.rock_positions:
             # Circle Center (rx, ry), Radius r
-            rx, ry = rock.x, rock.y
-            r = rock.radius
+            rock_center_x, rock_center_y = rock.x, rock.y
+            radius = rock.radius
             
             # Quick Bounding Box Check
-            if (ry + r) < y_min or (ry - r) > y_max:
+            if (rock_center_y + radius) < y_min or (rock_center_y - radius) > y_max:
                 continue # Completely outside
                 
             # It intersects or is inside.
             # Calculate intersection area with strip [y_min, y_max]
-            area = self._circle_strip_intersection(rx, ry, r, y_min, y_max)
+            area = self._circle_strip_intersection(rock_center_x, rock_center_y, radius, y_min, y_max)
             total_rock_area_mm2 += (area * 1e6) # m2 -> mm2
 
         # 3. Calculate Local Porosity
@@ -202,38 +202,31 @@ class LabWorker(Worker):
         
         print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) -> Class: {fi_class}")
 
-    def _circle_strip_intersection(self, cx: float, cy: float, r: float, y_min: float, y_max: float) -> float:
+    def _circle_strip_intersection(self, center_x: float, center_y: float, radius: float, y_min: float, y_max: float) -> float:
         """
-        Calculate the area of a circle (cx, cy, r) intersection with a horizontal strip y_min <= y <= y_max.
+        Calculate the area of a circle (center_x, center_y, radius) intersection with a horizontal strip y_min <= y <= y_max.
         """
         # Area = Area_below(y_max) - Area_below(y_min)
-        return self._circular_segment_area_below(cx, cy, r, y_max) - \
-               self._circular_segment_area_below(cx, cy, r, y_min)
+        return self._circular_segment_area_below(center_x, center_y, radius, y_max) - \
+               self._circular_segment_area_below(center_x, center_y, radius, y_min)
 
-    def _circular_segment_area_below(self, cx: float, cy: float, r: float, h_line: float) -> float:
+    def _circular_segment_area_below(self, center_x: float, center_y: float, radius: float, horizontal_line_y: float) -> float:
         """
-        Area of circle below horizontal line y = h_line.
+        Area of circle below horizontal line y = horizontal_line_y.
         """
         # Relative height from center
-        d = h_line - cy
+        vertical_distance = horizontal_line_y - center_y
         
-        if d >= r:
-            return math.pi * r**2 # All of it
-        if d <= -r:
+        if vertical_distance >= radius:
+            return math.pi * radius**2 # All of it
+        if vertical_distance <= -radius:
             return 0.0 # None of it
             
         # Area = r^2 * (pi/2 + arcsin(d/r)) + d * sqrt(r^2 - d^2)
-        # Check: d=0 -> r^2 * pi/2. Correct (Half circle).
-        # d=r -> r^2 * (pi/2 + pi/2) = pi*r^2. Correct.
-        # d=-r -> r^2 * (pi/2 - pi/2) = 0. Correct.
         
-        # Note: numpy usage
-        # Use simple scalar math if single call, else np is fine.
-        # Since loop is explicit, scalar math `math` is faster/safer inside loop than np broadcasting overhead for 1 item.
-        
-        msg_val = math.pi/2 + math.asin(d/r)
-        term2 = d * math.sqrt(r**2 - d**2)
-        return (r**2) * msg_val + term2
+        angle_term = math.pi/2 + math.asin(vertical_distance/radius)
+        linear_term = vertical_distance * math.sqrt(radius**2 - vertical_distance**2)
+        return (radius**2) * angle_term + linear_term
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []

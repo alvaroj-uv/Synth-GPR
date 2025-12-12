@@ -1,29 +1,18 @@
+# Third-party imports
 import numpy as np
 import pandas as pd
-from scipy.signal import hilbert, stft
-from scipy.signal import hilbert, stft
+from scipy.signal import hilbert, stft, resample
 from scipy.stats import skew, kurtosis
+
+# Local imports
+from src.constants import PC, SC
 from src.signal_processing import calculate_instantaneous_attributes
 
-def extract_features(df, dt=1e-10):
+def extract_features(df, dt=PC.DEFAULT_DT):
     """
     Extracts advanced time-domain, frequency-domain, and time-frequency features from GPR traces.
     
-    This function computes over 200 features per signal, including:
-    - Statistical moments (mean, rms, skewness, kurtosis).
-    - Hilbert Transform attributes (instantaneous amplitude/envelope).
-    - Frequency domain metrics (FFT spectrum, bandwidth, spectral entropy).
-    - Grid-based features (resampled low-res image of the trace).
-    - Slice-based statistics (local variance).
-
-    Args:
-        df (pd.DataFrame): Input DataFrame containing GPR traces.
-                           Columns: 'Time', 'Signal1', 'Signal2', ... and metadata.
-        dt (float): Time step in seconds. Default 1e-10.
-
-    Returns:
-        pd.DataFrame: A DataFrame where each row corresponds to a signal column from the input.
-                      Columns are the extracted features.
+    Refactored for SRP: logic delegated to specialized helper functions.
     """
     if df.empty:
         print("DataFrame is empty. Cannot extract features.")
@@ -31,272 +20,213 @@ def extract_features(df, dt=1e-10):
 
     features_list = []
     
-    # Identify metadata columns (constant columns from HDF5 attributes)
+    # Identify metadata columns
     metadata_cols = [col for col in df.columns if col in ['gprMax', 'Title', 'Iterations', 'nx_ny_nz', 'dx_dy_dz', 'dt', 'srcsteps', 'rxsteps', 'nsrc', 'nrx']]
     metadata_values = {col: df[col].iloc[0] for col in metadata_cols}
     
-    # Iterate over columns, skipping 'Time' and metadata columns
     for col in df.columns:
         if col == 'Time' or col in metadata_cols:
             continue
             
         signal = df[col].values
         
-        # --- 1. Statistical Features (Time Domain) ---
-        # Basic statistical measures of the signal amplitude
-        mean_val = np.mean(signal)
-        rms_val = np.sqrt(np.mean(signal**2)) # Root Mean Square: measure of the magnitude
-        std_val = np.std(signal) # Standard Deviation: measure of spread
-        median_val = np.median(signal)
-        skew_val = skew(signal) # Skewness: measure of asymmetry of the distribution
-        kurtosis_val = kurtosis(signal) # Kurtosis: measure of the "tailedness"
+        # 1. Time Domain Stats
+        time_feats = _extract_time_stats(signal)
         
-        # Quantiles: values below which a certain percentage of data falls
-        q1 = np.percentile(signal, 25) # 25th percentile
-        q2 = np.percentile(signal, 50) # 50th percentile (Median)
-        q3 = np.percentile(signal, 75) # 75th percentile
+        # 2. Hilbert Transform (Envelope) Stats
+        hilbert_feats, analytic_signal = _extract_hilbert_stats(signal, dt)
         
-        # Deciles: similar to quantiles but dividing into 10 parts
-        deciles = np.percentile(signal, np.arange(10, 100, 10))
-        d_features = {f'decile_{i+1}0': d for i, d in enumerate(deciles)}
+        # 3. Frequency Domain
+        freq_feats = _extract_frequency_features(signal, dt)
         
-        peak_max = np.max(signal) # Maximum amplitude
-        peak_min = np.min(signal) # Minimum amplitude
-        # Crest Factor: ratio of peak value to RMS value, indicates how extreme the peaks are
-        crest_factor = peak_max / rms_val if rms_val != 0 else 0
+        # 4. STFT (Time-Frequency)
+        stft_feats = _extract_stft_features(signal, dt)
         
-        # --- 2. Hilbert Transform Features ---
-        # The Hilbert transform is used to compute the instantaneous amplitude (envelope) of the signal
-        # Use centralized function with mirroring enabled
-        attrs = calculate_instantaneous_attributes(signal, dt, use_mirroring=True)
-        amplitude_envelope = attrs['envelope']
+        # 5. Slice Statistics
+        slice_feats = _extract_slice_features(signal)
         
-        # Reconstruct analytic signal for later use (Grid Features)
-        # analytic = envelope * exp(i * phase)
-        analytic_signal = attrs['envelope'] * np.exp(1j * attrs['phase'])
+        # 6. Grid Features
+        grid_feats = _extract_grid_features(signal, analytic_signal)
         
-        # Statistical features applied to the envelope of the signal
-        mean_hilbert = np.mean(amplitude_envelope)
-        rms_hilbert = np.sqrt(np.mean(amplitude_envelope**2))
-        std_hilbert = np.std(amplitude_envelope)
-        median_hilbert = np.median(amplitude_envelope)
-        skew_hilbert = skew(amplitude_envelope)
-        kurtosis_hilbert = kurtosis(amplitude_envelope)
-        
-        q1_hilbert = np.percentile(amplitude_envelope, 25)
-        q2_hilbert = np.percentile(amplitude_envelope, 50)
-        q3_hilbert = np.percentile(amplitude_envelope, 75)
-        
-        deciles_hilbert = np.percentile(amplitude_envelope, np.arange(10, 100, 10))
-        d_features_hilbert = {f'hilbert_decile_{i+1}0': d for i, d in enumerate(deciles_hilbert)}
-        
-        peak_max_hilbert = np.max(amplitude_envelope)
-        peak_min_hilbert = np.min(amplitude_envelope)
-        crest_hilbert = peak_max_hilbert / rms_hilbert if rms_hilbert != 0 else 0
-        
-        # --- 3. Other Features ---
-        # Number of Zeros (Zero Crossings): number of times the signal crosses the zero axis
-        zero_crossings = np.where(np.diff(np.signbit(signal)))[0]
-        number_zeros = len(zero_crossings)
-        
-        # Area of Signal (Integral): sum of absolute amplitudes
-        area_signal = np.sum(np.abs(signal)) 
-        
-        # Points of Inflexion: number of times the concavity changes (zero crossings of 2nd derivative)
-        d2 = np.diff(signal, n=2)
-        inflexion_points = len(np.where(np.diff(np.signbit(d2)))[0])
-        
-        # Fourier Features: Analysis in the frequency domain
-        fft_vals = np.fft.fft(signal)
-        fft_spectrum = np.abs(fft_vals) # Magnitude spectrum
-        freqs = np.fft.fftfreq(len(signal), d=dt)
-        
-        # Keep only positive frequencies for analysis
-        pos_mask = freqs >= 0
-        fft_spectrum = fft_spectrum[pos_mask]
-        freqs = freqs[pos_mask]
-        
-        area_fourier = np.sum(fft_spectrum) # Total spectral energy
-        fourier_peak_max = np.max(fft_spectrum) # Peak spectral magnitude
-        
-        # --- 6. Advanced Frequency Domain Features ---
-        # Dominant Frequency: The frequency component with the highest magnitude
-        dominant_freq = freqs[np.argmax(fft_spectrum)]
-        
-        # Bandwidth (-3dB): The width of the frequency range where power is above half the maximum (-3dB)
-        max_power = np.max(fft_spectrum)
-        threshold = max_power / np.sqrt(2) # -3dB corresponds to 1/sqrt(2) of amplitude
-        bandwidth_mask = fft_spectrum >= threshold
-        if np.any(bandwidth_mask):
-            bandwidth = freqs[bandwidth_mask][-1] - freqs[bandwidth_mask][0]
-        else:
-            bandwidth = 0
-            
-        # Mean Frequency (Spectral Centroid): Center of mass of the spectrum
-        if area_fourier > 0:
-            mean_freq = np.sum(freqs * fft_spectrum) / area_fourier
-        else:
-            mean_freq = 0
-            
-        # Median Frequency: Frequency that divides the spectrum energy into two equal halves
-        cumulative_spectrum = np.cumsum(fft_spectrum)
-        if area_fourier > 0:
-            median_freq_idx = np.searchsorted(cumulative_spectrum, area_fourier / 2)
-            median_freq = freqs[min(median_freq_idx, len(freqs)-1)]
-        else:
-            median_freq = 0
-            
-        # Spectral Entropy: Measure of the complexity/randomness of the power spectrum
-        psd = fft_spectrum**2 / len(signal) # Power Spectral Density estimate
-        psd_norm = psd / np.sum(psd) if np.sum(psd) > 0 else psd
-        spectral_entropy = -np.sum(psd_norm * np.log(psd_norm + 1e-12))
-        
-        # Spectral Flatness: Ratio of geometric mean to arithmetic mean of the spectrum. 
-        # High flatness indicates noise-like signal; low flatness indicates tonal signal.
-        gmean = np.exp(np.mean(np.log(fft_spectrum + 1e-12)))
-        amean = np.mean(fft_spectrum)
-        spectral_flatness = gmean / amean if amean > 0 else 0
-        
-        area_hilbert = np.sum(amplitude_envelope)
-
-        # --- 6. STFT Features (Time-Frequency) ---
-        # Short-Time Fourier Transform to analyze frequency content evolution over time (depth)
-        # Using 64-point window with overlap
-        f_stft, t_stft, Zxx = stft(signal, fs=1/dt, nperseg=64, noverlap=32)
-        stft_mag = np.abs(Zxx)
-        
-        # Calculate energy in specific bands over time
-        # E.g., Low (0-500 MHz), Mid (500-1500 MHz), High (>1500 MHz)
-        # fs is huge (1/1e-10 = 10 GHz). f_stft goes up to 5 GHz.
-        mask_low = (f_stft < 5e8)
-        mask_mid = (f_stft >= 5e8) & (f_stft < 1.5e9)
-        mask_high = (f_stft >= 1.5e9)
-        
-        energy_low = np.sum(stft_mag[mask_low, :], axis=0)
-        energy_mid = np.sum(stft_mag[mask_mid, :], axis=0)
-        energy_high = np.sum(stft_mag[mask_high, :], axis=0)
-        
-        # Features: Mean and Max energy in these bands
-        stft_features = {
-            'stft_energy_low_mean': np.mean(energy_low),
-            'stft_energy_low_max': np.max(energy_low),
-            'stft_energy_mid_mean': np.mean(energy_mid),
-            'stft_energy_mid_max': np.max(energy_mid),
-            'stft_energy_high_mean': np.mean(energy_high),
-            'stft_energy_high_max': np.max(energy_high),
-        }
-        
-        # Spectral Centroid Variance over time (Dispersion measure)
-        # Centroid at each time step
-        centroids_t = []
-        for t_idx in range(stft_mag.shape[1]):
-            spectrum_t = stft_mag[:, t_idx]
-            sum_spec = np.sum(spectrum_t)
-            if sum_spec > 0:
-                 cent = np.sum(f_stft * spectrum_t) / sum_spec
-                 centroids_t.append(cent)
-            else:
-                 centroids_t.append(0)
-                 
-        stft_features['stft_centroid_std'] = np.std(centroids_t)
-
-
-        # --- 4. Slice Statistics (14 slices) ---
-        # Divide the signal into 14 equal segments and calculate mean/std for each
-        # Physical Meaning:
-        # - Slices 0-3 (Surface/Shallow): Standard Deviation here measures "Surface Roughness/Texture".
-        #   High Std = Large voids/rocks (Clean). Low Std = Smooth/Filled voids (Fouled).
-        num_slices = 14
-        slice_size = len(signal) // num_slices
-        slice_features = {}
-        for i in range(num_slices):
-            start = i * slice_size
-            end = (i + 1) * slice_size if i < num_slices - 1 else len(signal)
-            slice_data = signal[start:end]
-            slice_features[f'stat_slice_{i}_mean'] = np.mean(slice_data)
-            slice_features[f'stat_slice_{i}_std'] = np.std(slice_data)
-
-        # --- 5. Grid Features (16x10) ---
-        # Resample signal to 160 points and reshape to 16x10 grid
-        # This creates a low-resolution "image" of the signal
-        from scipy.signal import resample
-        
-        grid_size = 160
-        
-        # We need the analytic signal of the resampled signal, or resample the analytic signal.
-        # Resampling the complex analytic signal is better to keep phase info.
-        resampled_signal = resample(signal, grid_size)
-        resampled_analytic = resample(analytic_signal, grid_size)
-        resampled_envelope = np.abs(resampled_analytic)
-        resampled_imag = np.imag(resampled_analytic)
-
-        grid_features = {}
-        
-        # Analysis note:
-        # Indices 48-51 (grid portion 4_8 to 5_1) ~30% of time window.
-        # This "Golden Zone" captures the energy reflection from the typical ballast bed depth.
-        # High energy (Envelope) = Clean/Dry; Low energy = Fouled/Wet.
-        
-        for i in range(16):
-            for j in range(10):
-                idx = i * 10 + j
-                grid_features[f'grid_signal_time_{i}_{j}'] = resampled_signal[idx]
-                grid_features[f'grid_hilbert_envelope_{i}_{j}'] = resampled_envelope[idx]
-                # 'grid_absolute_hilbert' removed (redundant alias)
-                grid_features[f'grid_hilbert_imag_{i}_{j}'] = resampled_imag[idx] # The 'H' feature
-
-        # Combine all features into a dictionary
+        # Combine
         features = {
             'Signal': col,
-            'mean': mean_val,
-            'root_mean_square': rms_val,
-            'standard_deviation': std_val,
-            'median': median_val,
-            'skewness': skew_val,
-            'kurtosis_value': kurtosis_val,
-            'percentile_25': q1,
-            'percentile_50': q2,
-            'percentile_75': q3,
-            'peak_max': peak_max,
-            'peak_min': peak_min,
-            'crest_factor': crest_factor,
-            
-            'hilbert_mean': mean_hilbert,
-            'hilbert_root_mean_square': rms_hilbert,
-            'hilbert_standard_deviation': std_hilbert,
-            'hilbert_median': median_hilbert,
-            'hilbert_skewness': skew_hilbert,
-            'hilbert_kurtosis': kurtosis_hilbert,
-            'hilbert_percentile_25': q1_hilbert,
-            'hilbert_percentile_50': q2_hilbert,
-            'hilbert_percentile_75': q3_hilbert,
-            'hilbert_peak_max': peak_max_hilbert,
-            'hilbert_peak_min': peak_min_hilbert,
-            'hilbert_crest_factor': crest_hilbert,
-            
-            'number_zeros': number_zeros,
-            'area_signal': area_signal,
-            'second_derivative': inflexion_points, # Renamed d2 to second_derivative (inflexion points count)
-            'area_fourier': area_fourier,
-            'fourier_peak_max': fourier_peak_max,
-            'dominant_frequency': dominant_freq,
-            'bandwidth': bandwidth,
-            'mean_frequency': mean_freq,
-            'median_frequency': median_freq,
-            'spectral_entropy': spectral_entropy,
-            'spectral_flatness': spectral_flatness,
-            'area_hilbert': area_hilbert,
-            
-            **d_features,
-            **d_features_hilbert,
-            **slice_features,
-            **grid_features,
-            **stft_features
+            **time_feats,
+            **hilbert_feats,
+            **freq_feats,
+            **stft_feats,
+            **slice_feats,
+            **grid_feats
         }
         
         # Add metadata
         features.update(metadata_values)
-        
         features_list.append(features)
 
     return pd.DataFrame(features_list)
+
+def _extract_time_stats(signal: np.ndarray) -> dict:
+    """Calculates basic statistical moments and quantiles."""
+    mean_val = np.mean(signal)
+    rms_val = np.sqrt(np.mean(signal**2))
+    
+    stats = {
+        'mean': mean_val,
+        'root_mean_square': rms_val,
+        'standard_deviation': np.std(signal),
+        'median': np.median(signal),
+        'skewness': skew(signal),
+        'kurtosis_value': kurtosis(signal),
+        'percentile_25': np.percentile(signal, 25),
+        'percentile_50': np.percentile(signal, 50),
+        'percentile_75': np.percentile(signal, 75),
+        'peak_max': np.max(signal),
+        'peak_min': np.min(signal),
+        'crest_factor': (np.max(signal) / rms_val) if rms_val != 0 else 0,
+        'number_zeros': len(np.where(np.diff(np.signbit(signal)))[0]),
+        'area_signal': np.sum(np.abs(signal)),
+        'second_derivative': len(np.where(np.diff(np.signbit(np.diff(signal, n=2))))[0])
+    }
+    
+    # Deciles
+    deciles = np.percentile(signal, np.arange(10, 100, 10))
+    stats.update({f'decile_{i+1}0': d for i, d in enumerate(deciles)})
+    
+    return stats
+
+def _extract_hilbert_stats(signal: np.ndarray, dt: float) -> tuple:
+    """Calculates statistics on the signal envelope and returns analytic signal."""
+    attrs = calculate_instantaneous_attributes(signal, dt, use_mirroring=True)
+    envelope = attrs['envelope']
+    analytic_signal = envelope * np.exp(1j * attrs['phase'])
+    
+    mean_val = np.mean(envelope)
+    rms_val = np.sqrt(np.mean(envelope**2))
+    
+    stats = {
+        'hilbert_mean': mean_val,
+        'hilbert_root_mean_square': rms_val,
+        'hilbert_standard_deviation': np.std(envelope),
+        'hilbert_median': np.median(envelope),
+        'hilbert_skewness': skew(envelope),
+        'hilbert_kurtosis': kurtosis(envelope),
+        'hilbert_percentile_25': np.percentile(envelope, 25),
+        'hilbert_percentile_50': np.percentile(envelope, 50),
+        'hilbert_percentile_75': np.percentile(envelope, 75),
+        'hilbert_peak_max': np.max(envelope),
+        'hilbert_peak_min': np.min(envelope),
+        'hilbert_crest_factor': (np.max(envelope) / rms_val) if rms_val != 0 else 0,
+        'area_hilbert': np.sum(envelope)
+    }
+    
+    deciles = np.percentile(envelope, np.arange(10, 100, 10))
+    stats.update({f'hilbert_decile_{i+1}0': d for i, d in enumerate(deciles)})
+    
+    return stats, analytic_signal
+
+def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
+    """Calculates Fourier transform metrics."""
+    fft_vals = np.fft.fft(signal)
+    fft_spectrum = np.abs(fft_vals)
+    freqs = np.fft.fftfreq(len(signal), d=dt)
+    
+    pos_mask = freqs >= 0
+    fft_spectrum = fft_spectrum[pos_mask]
+    freqs = freqs[pos_mask]
+    
+    area_fourier = np.sum(fft_spectrum)
+    max_power = np.max(fft_spectrum)
+    
+    # Heuristics
+    if area_fourier > 0:
+        mean_freq = np.sum(freqs * fft_spectrum) / area_fourier
+        cumulative = np.cumsum(fft_spectrum)
+        median_idx = np.searchsorted(cumulative, area_fourier / 2)
+        median_freq = freqs[min(median_idx, len(freqs)-1)]
+    else:
+        mean_freq, median_freq = 0, 0
+
+    # Bandwidth
+    threshold = max_power / np.sqrt(2)
+    bw_mask = fft_spectrum >= threshold
+    bandwidth = (freqs[bw_mask][-1] - freqs[bw_mask][0]) if np.any(bw_mask) else 0
+
+    # Spectral Entropy & Flatness
+    psd = fft_spectrum**2 / len(signal)
+    psd_norm = psd / np.sum(psd) if np.sum(psd) > 0 else psd
+    spectral_entropy = -np.sum(psd_norm * np.log(psd_norm + SC.LOG_EPSILON))
+    
+    g_mean = np.exp(np.mean(np.log(fft_spectrum + SC.LOG_EPSILON)))
+    a_mean = np.mean(fft_spectrum)
+    flatness = (g_mean / a_mean) if a_mean > 0 else 0
+    
+    return {
+        'area_fourier': area_fourier,
+        'fourier_peak_max': max_power,
+        'dominant_frequency': freqs[np.argmax(fft_spectrum)],
+        'bandwidth': bandwidth,
+        'mean_frequency': mean_freq,
+        'median_frequency': median_freq,
+        'spectral_entropy': spectral_entropy,
+        'spectral_flatness': flatness
+    }
+
+def _extract_stft_features(signal: np.ndarray, dt: float) -> dict:
+    """Calculates Time-Frequency features using STFT."""
+    f_stft, t_stft, Zxx = stft(signal, fs=1/dt, nperseg=SC.STFT_NPERSEG, noverlap=SC.STFT_NOVERLAP)
+    stft_mag = np.abs(Zxx)
+    
+    mask_low = (f_stft < SC.FREQ_LOW_CUTOFF)
+    mask_mid = (f_stft >= SC.FREQ_LOW_CUTOFF) & (f_stft < SC.FREQ_MID_CUTOFF)
+    mask_high = (f_stft >= SC.FREQ_MID_CUTOFF)
+    
+    energy_low = np.sum(stft_mag[mask_low, :], axis=0)
+    energy_mid = np.sum(stft_mag[mask_mid, :], axis=0)
+    energy_high = np.sum(stft_mag[mask_high, :], axis=0)
+    
+    # Centroids over time
+    centroids_t = []
+    for t_idx in range(stft_mag.shape[1]):
+        spec = stft_mag[:, t_idx]
+        total = np.sum(spec)
+        centroids_t.append(np.sum(f_stft * spec) / total if total > 0 else 0)
+        
+    return {
+        'stft_energy_low_mean': np.mean(energy_low),
+        'stft_energy_low_max': np.max(energy_low),
+        'stft_energy_mid_mean': np.mean(energy_mid),
+        'stft_energy_mid_max': np.max(energy_mid),
+        'stft_energy_high_mean': np.mean(energy_high),
+        'stft_energy_high_max': np.max(energy_high),
+        'stft_centroid_std': np.std(centroids_t)
+    }
+
+def _extract_slice_features(signal: np.ndarray, num_slices: int = SC.DEFAULT_SLICE_COUNT) -> dict:
+    """Segments signal into slices and calculates local variance."""
+    slice_size = len(signal) // num_slices
+    feats = {}
+    for i in range(num_slices):
+        start = i * slice_size
+        end = (i + 1) * slice_size if i < num_slices - 1 else len(signal)
+        chunk = signal[start:end]
+        feats[f'stat_slice_{i}_mean'] = np.mean(chunk)
+        feats[f'stat_slice_{i}_std'] = np.std(chunk)
+    return feats
+
+def _extract_grid_features(signal: np.ndarray, analytic_signal: np.ndarray, grid_size: int = SC.DEFAULT_GRID_SIZE) -> dict:
+    """Resamples signal to a fixed grid for image-like features."""
+    res_sig = resample(signal, grid_size)
+    res_analytic = resample(analytic_signal, grid_size)
+    res_env = np.abs(res_analytic)
+    res_imag = np.imag(res_analytic)
+    
+    feats = {}
+    # Map to 16x10 grid? Original code loop suggests 160 points mapped to 16x10 indices
+    for i in range(SC.GRID_ROWS):
+        for j in range(SC.GRID_COLS):
+            idx = i * SC.GRID_COLS + j
+            if idx < grid_size:
+                feats[f'grid_signal_time_{i}_{j}'] = res_sig[idx]
+                feats[f'grid_hilbert_envelope_{i}_{j}'] = res_env[idx]
+                feats[f'grid_hilbert_imag_{i}_{j}'] = res_imag[idx]
+    return feats

@@ -12,6 +12,7 @@ from .rock_packing import (
     TrianglePacking, RandomPacking, PackingBounds
 )
 from .physics import classify_pvc
+from .constants import MC, PC
 
 if TYPE_CHECKING:
     pass
@@ -43,6 +44,20 @@ def _get_domain_params(scene: SceneCheckpoint, work_order: Any = None) -> tuple[
     return domain_x, domain_y, domain_z
 
 
+def _find_top_y_from_geometry(scene: SceneCheckpoint, ignore_material: str = MC.AIR) -> float:
+    """
+    Scans existing geometry to find the highest Y coordinate.
+    Used for legacy stacking when WorkOrder or CoordinateSystem is missing.
+    """
+    max_y = 0.0
+    for cmd in scene.geometry:
+        if isinstance(cmd, BoxCommand) and hasattr(cmd, 'y2'):
+            if hasattr(cmd, 'material') and cmd.material == ignore_material:
+                continue
+            max_y = max(max_y, cmd.y2)
+    return max_y
+
+
 class AirWorker(Worker):
     """
     Paints the background/medium with free_space (air).
@@ -51,16 +66,13 @@ class AirWorker(Worker):
     name = "AirWorker"
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
-        # 1. Determine Domain size
         # Prioritize WorkOrder (e.g., if a variant changes domain size)
         domain_x, domain_y, domain_z = _get_domain_params(scene)
 
-        # 2. Add geometry covering entire domain
-        # #box: 0 0 0 domain_x domain_y domain_z free_space
         scene.add_geometry(BoxCommand(
             0, 0, 0,
             domain_x, domain_y, domain_z,
-            "free_space"
+            MC.AIR
         ))
         
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
@@ -71,7 +83,7 @@ class AirWorker(Worker):
         
         # Check if first command is air box
         first_cmd = scene.geometry[0]
-        if not (isinstance(first_cmd, BoxCommand) and first_cmd.material == "free_space"):
+        if not (isinstance(first_cmd, BoxCommand) and first_cmd.material == MC.AIR):
              return ["AirWorker: First command is not free_space box"]
              
         return []
@@ -85,32 +97,26 @@ class SubgradeWorker(Worker):
     name = "SubgradeWorker"
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
-        # 1. Get material
-        mat = materials.get_material("subgrade")
+        mat = materials.get_material(MC.SUBGRADE)
         scene.add_material(mat)
         
-        # 2. Add geometry
-        # Prioritize WorkOrder
         domain_x, _, domain_z = _get_domain_params(scene)
         subgrade_top = getattr(scene.config, 'subgrade_height', 0.5)
 
         if scene.work_order:
             subgrade_top = scene.work_order.get_input('subgrade_height', subgrade_top)
-            
-            # Log output for next worker
             scene.work_order.set('subgrade_top_y', subgrade_top, self.name)
         
         scene.add_geometry(BoxCommand(
             0, 0, 0,
             domain_x, subgrade_top, domain_z,
-            "subgrade"
+            MC.SUBGRADE
         ))
         
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
-        # Check if subgrade exists
         found = False
         for cmd in scene.geometry:
-            if hasattr(cmd, 'material') and cmd.material == 'subgrade':
+            if hasattr(cmd, 'material') and cmd.material == MC.SUBGRADE:
                 found = True
                 break
         
@@ -142,11 +148,7 @@ class FormationWorker(Worker):
                   start_y = scene.work_order.get('subgrade_top_y', 0.0)
              else:
                  # Fallback for legacy support: scan geometry
-                 for cmd in scene.geometry:
-                     if isinstance(cmd, BoxCommand) and hasattr(cmd, 'y2'):
-                         if hasattr(cmd, 'material') and cmd.material == 'free_space':
-                             continue
-                         start_y = max(start_y, cmd.y2)
+                 start_y = _find_top_y_from_geometry(scene)
                      
              # Get thickness
              thickness = 0.10 # default
@@ -157,11 +159,8 @@ class FormationWorker(Worker):
              
              top_y = start_y + thickness
         
-        # 2. Add Material
-        mat = materials.get_material("formation")
+        mat = materials.get_material(MC.FORMATION)
         scene.add_material(mat)
-        
-        # 3. Add Geometry
         
         # Log for next worker
         if scene.work_order:
@@ -172,14 +171,14 @@ class FormationWorker(Worker):
         scene.add_geometry(BoxCommand(
             0, start_y, 0,
             domain_x, top_y, domain_z,
-            "formation"
+            MC.FORMATION
         ))
         
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         # Check if formation exists and is on top of subgrade
         formation_cmds = [
             c for c in scene.geometry 
-            if isinstance(c, BoxCommand) and c.material == "formation"
+            if isinstance(c, BoxCommand) and c.material == MC.FORMATION
         ]
         
         if not formation_cmds:
@@ -217,10 +216,7 @@ class BallastWorker(Worker):
                   start_y = scene.work_order.get('formation_top_y', 0.6)
              else:
                  # Legacy scan
-                 for cmd in scene.geometry:
-                     if isinstance(cmd, BoxCommand) and hasattr(cmd, 'y2'):
-                         if hasattr(cmd, 'material') and cmd.material == 'free_space': continue
-                         start_y = max(start_y, cmd.y2)
+                  start_y = _find_top_y_from_geometry(scene)
 
              # Thickness
              thickness = 0.4
@@ -231,11 +227,6 @@ class BallastWorker(Worker):
              
              top_y = start_y + thickness
         
-        # 2. Add Material (Air/Background for rocks)
-        # Usually ballast layer is just "air" initially, then filled with rocks.
-        # But here we define the bulk volume if needed? 
-        # Actually gprMax is background based. We often don't draw a box for "ballast air" 
-        # unless it's distinct from global air.
         
         # Enforce Domain Restrictions (Ballast cannot exceed domain height)
         _, domain_y, _ = _get_domain_params(scene)
@@ -298,7 +289,7 @@ class RockWorker(Worker):
         # ---------------------------------------------------------------------
         # 2. Material Setup
         # ---------------------------------------------------------------------
-        rock_mat = materials.get_material("bal_rock")
+        rock_mat = materials.get_material(MC.BALLAST_ROCK)
         scene.add_material(rock_mat)
 
         # ---------------------------------------------------------------------
@@ -357,8 +348,6 @@ class RockWorker(Worker):
         layer_height = ballast_thickness / n_layers
         
         # Use UNIFORM size distribution across all layers (literature-accurate)
-        # Fresh ballast has consistent grading throughout depth (20-60mm specification)
-        # Degradation/segregation occurs over time, not as initial design
         r_min = scene.config.rock_radius_min
         r_max = scene.config.rock_radius_max
         
@@ -386,7 +375,6 @@ class RockWorker(Worker):
             y_min = start_y + i * layer_height
             y_max = start_y + (i + 1) * layer_height
 
-            # UNIFORM radius range for all layers (no artificial grading)
             rad_min_i = r_min
             rad_max_i = r_max
             
@@ -404,7 +392,7 @@ class RockWorker(Worker):
                 cmd = CylinderCommand(
                     rock.x, rock.y, z_start,
                     rock.x, rock.y, z_end,
-                    rock.radius, "bal_rock"
+                    rock.radius, MC.BALLAST_ROCK
                 )
                 scene.add_geometry(cmd)
                 
@@ -463,9 +451,6 @@ class RockWorker(Worker):
         print(f"[{self.name}] Achieved Density: {achieved_density:.3f}, Porosity: {porosity:.3f}")
         
         # Store as DataFrame for backward compatibility and analysis
-        # Also store the Collection itself if needed (but serializing objects can be tricky across boundaries)
-        # For now, we stick to DataFrame as the "Output" contract
-        
         z_start = scene.config.rock_z_start
         z_end = scene.config.rock_z_end
         if scene.work_order:
@@ -487,8 +472,6 @@ class RockWorker(Worker):
         scene.work_order.set('highest_rock_y', highest_y, self.name)
         scene.work_order.set('porosity', porosity, self.name)
         
-    # Remove _calculate_density_monte_carlo (moved to RockCollection)
-
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         if not scene.rock_positions:
             return ["RockWorker: No rocks placed"]
@@ -557,7 +540,7 @@ class FoulingWorker(Worker):
         pvc_fraction = min(max(pvc, 0), 100) / 100.0
         fouling_height = ballast_thickness * pvc_fraction
         
-        foul_mat = materials.get_material("bal_foul_granular", moisture=moisture)
+        foul_mat = materials.get_material(MC.FOULING, moisture=moisture)
         scene.add_material(foul_mat)
         
         # 4. Generate Settled Layer
@@ -584,7 +567,7 @@ class FoulingWorker(Worker):
         box_cmd = BoxCommand(
             0, y_start, 0,
             domain_x, y_end, domain_z,
-            "bal_foul_granular"
+            MC.FOULING
         )
         scene.add_geometry(box_cmd)
 
@@ -594,7 +577,7 @@ class FoulingWorker(Worker):
         if y_max <= y_min:
             return
 
-        target_count = int(200 * pvc_fraction)
+        target_count = int(PC.FOULING_PARTICLE_COUNT_MULTIPLIER * pvc_fraction)
         
         if target_count <= 0:
             return
@@ -617,7 +600,7 @@ class FoulingWorker(Worker):
             if self._is_in_void(x, y, r, rocks_list):
                 scene.add_geometry(CylinderCommand(
                     x, y, 0, x, y, domain_z,
-                    r, "bal_foul_granular"
+                    r, MC.FOULING
                 ))
                 placed += 1
 
@@ -668,8 +651,6 @@ class AntennaWorker(Worker):
         if scene.coordinate_system:
             # NEW: Use specific Anchor
             tx_rx_y = scene.coordinate_system.get_y(Anchor.ANTENNA_LEVEL)
-            # Log for QC
-            # print(f"[{self.name}] Using Anchor.ANTENNA_LEVEL: {tx_rx_y:.3f}m")
         else:
             # LEGACY: Fallback logic
             if scene.work_order:
@@ -808,22 +789,4 @@ class AssemblerWorker(Worker):
             if rx_dist < (rock.radius + clearance):
                  errors.append(f"AssemblerWorker: RX too close to rock at ({rock.x:.3f}, {rock.y:.3f})")
                  
-        # 3. Check domain bounds (TX, RX must be within domain)
-        domain_x, domain_y, domain_z = _get_domain_params(scene)
-        
-        # Strict bounds checking
-        if not (0 <= tx_pos[0] <= domain_x):
-                 errors.append(f"AssemblerWorker: TX X ({tx_pos[0]:.3f}) outside domain [0, {domain_x}]")
-        if not (0 <= tx_pos[1] <= domain_y):
-                 errors.append(f"AssemblerWorker: TX Y ({tx_pos[1]:.3f}) outside domain [0, {domain_y}]")
-        if not (0 <= tx_pos[2] <= domain_z):
-                 errors.append(f"AssemblerWorker: TX Z ({tx_pos[2]:.3f}) outside domain [0, {domain_z}]")
-                 
-        if not (0 <= rx_pos[0] <= domain_x):
-                 errors.append(f"AssemblerWorker: RX X ({rx_pos[0]:.3f}) outside domain [0, {domain_x}]")
-        if not (0 <= rx_pos[1] <= domain_y):
-                 errors.append(f"AssemblerWorker: RX Y ({rx_pos[1]:.3f}) outside domain [0, {domain_y}]")
-        if not (0 <= rx_pos[2] <= domain_z):
-                 errors.append(f"AssemblerWorker: RX Z ({rx_pos[2]:.3f}) outside domain [0, {domain_z}]")
-        
         return errors

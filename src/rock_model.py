@@ -110,17 +110,19 @@ class RockCollection:
         if not self.rocks:
             return 0.0
             
-        pts_x = np.random.uniform(0, domain_x, samples)
-        pts_y = np.random.uniform(y_min, y_max, samples)
+        sample_points_x = np.random.uniform(0, domain_x, samples)
+        sample_points_y = np.random.uniform(y_min, y_max, samples)
         
-        rock_x = np.array([r.x for r in self.rocks])
-        rock_y = np.array([r.y for r in self.rocks])
-        rock_r2 = np.array([r.radius**2 for r in self.rocks])
+        rock_centers_x = np.array([r.x for r in self.rocks])
+        rock_centers_y = np.array([r.y for r in self.rocks])
+        rock_squared_radii = np.array([r.radius**2 for r in self.rocks])
         
-        diff_x = pts_x[:, np.newaxis] - rock_x[np.newaxis, :]
-        diff_y = pts_y[:, np.newaxis] - rock_y[np.newaxis, :]
-        dist_sq = diff_x**2 + diff_y**2
-        mask = dist_sq < rock_r2[np.newaxis, :]
+        # Vectorized check: dist_sq < radius^2
+        difference_x = sample_points_x[:, np.newaxis] - rock_centers_x[np.newaxis, :]
+        difference_y = sample_points_y[:, np.newaxis] - rock_centers_y[np.newaxis, :]
+        distance_squared = difference_x**2 + difference_y**2
         
-        hits = np.sum(np.any(mask, axis=1))
+        is_inside_rock = distance_squared < rock_squared_radii[np.newaxis, :]
+        
+        hits = np.sum(np.any(is_inside_rock, axis=1))
         return float(hits) / float(samples)
