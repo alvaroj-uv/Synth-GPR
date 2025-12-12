@@ -17,6 +17,7 @@ from .gpr_commands import (
     HertzianDipoleCommand, RxCommand, Header
 )
 from .scene_descriptor import SceneDefinition
+from .version_utils import get_git_revision_hash
 
 # ============================================================
 # Command Validation (Pattern 1)
@@ -87,6 +88,11 @@ class GPRMaxFileWriter:
         lines.append(Header("Generated gprMax Input File").render())
         lines.append(Header(f"Scenario: {scenario_type}").render())
         lines.append(Header(f"Date: {date.today().isoformat()}").render())
+        
+        # Git Version
+        git_hash = get_git_revision_hash()
+        if git_hash:
+            lines.append(Header(f"Git Version: {git_hash}").render())
         
         if scene.config.base_seed is not None:
              lines.append(Header(f"Base Seed: {scene.config.base_seed}").render())

@@ -27,6 +27,7 @@ import sys
 import argparse
 from pathlib import Path
 import time
+import traceback
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -186,6 +187,7 @@ if __name__ == "__main__":
             sys.exit(1)
         except Exception as e:
             print(f"Error loading config: {e}")
+            traceback.print_exc()
             sys.exit(1)
     
     # Fall back to command-line arguments

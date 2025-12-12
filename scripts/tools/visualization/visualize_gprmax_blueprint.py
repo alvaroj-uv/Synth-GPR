@@ -273,6 +273,15 @@ class GPRResultVisualizer:
                     data['metadata']['FI_class'] = line.split(':')[1].strip()
                 elif line.startswith('## Scenario:'):
                     data['metadata']['scenario'] = line.split(':')[1].strip()
+                elif line.startswith('## Lab_PSD:'):
+                     # Parse JSON string from comment
+                     # Format: ## Lab_PSD: [[63.0, 100.0], [53.0, 100.0]...]
+                     try:
+                         import json
+                         json_str = line.split(':', 1)[1].strip()
+                         data['metadata']['Lab_PSD'] = json.loads(json_str)
+                     except Exception as e:
+                         pass
                     
             return data
         except Exception as e:
@@ -575,15 +584,16 @@ class GPRResultVisualizer:
         
         # Figure Setup
         # Back to standard width since we removed the extra column
-        fig = plt.figure(figsize=(18, 10)) 
+        fig = plt.figure(figsize=(24, 10)) # Wider for 4 columns
         
-        # 3 Columns:
+        # 4 Columns:
         # 0: Raw Signals
-        # 1: Blueprint (Main) - with Overlay Legend
+        # 1: Blueprint (Main) - with Overlay Legend (Wider)
         # 2: Processed Signals
-        gs = gridspec.GridSpec(3, 3, width_ratios=[1, 2, 1])
+        # 3: Grading Curve
+        gs = gridspec.GridSpec(3, 4, width_ratios=[1, 2, 1, 1])
         
-        # --- Column 1: Blueprint ---
+        # --- Column 1: Blueprint (Main) ---
         ax_main = fig.add_subplot(gs[:, 1])
         self._plot_blueprint(ax_main)
         
@@ -596,6 +606,20 @@ class GPRResultVisualizer:
         ax_proc_time = fig.add_subplot(gs[0, 2])
         ax_proc_env = fig.add_subplot(gs[1, 2])
         ax_proc_freq = fig.add_subplot(gs[2, 2])
+
+        # --- Column 3: Stats & Grading Curve ---
+        ax_psd = fig.add_subplot(gs[0, 3]) # Reduced height (1 row)
+        self._plot_grading_curve(ax_psd)
+        
+        # Histogram or Text info below?
+        ax_info = fig.add_subplot(gs[1:3, 3]) # Expanded info area
+        ax_info.axis('off')
+        # Add basic text stats
+        meta = self.data.get('metadata', {})
+        txt = "Geotechnical Stats\n\n"
+        if 'FI' in meta: txt += f"FI: {meta['FI']}\n"
+        if 'FI_class' in meta: txt += f"Class: {meta['FI_class']}\n"
+        ax_info.text(0.1, 0.9, txt, fontsize=10, va='top')
         
         # Signals content
         if self.signals:
@@ -632,6 +656,11 @@ class GPRResultVisualizer:
             proc_feats = self._get_feature_text(proc_signals)
             self._plot_signal_column(ax_proc_time, ax_proc_env, ax_proc_freq, proc_signals,
                                      "Processed", ", ".join(info_parts), proc_feats)
+        else:
+             # If no signals, put some placeholder text or hide axes
+            for ax in [ax_raw_time, ax_raw_env, ax_raw_freq, ax_proc_time, ax_proc_env, ax_proc_freq]:
+                ax.text(0.5, 0.5, "No Signal Data", ha='center')
+                ax.axis('off')
             
         plt.tight_layout()
         if self.output_file:
@@ -719,6 +748,87 @@ class GPRResultVisualizer:
         ax.plot((1 - d, 1 + d), (y_base - d + gap/2, y_base + d + gap/2), **kwargs)
 
 
+
+    def _plot_grading_curve(self, ax: matplotlib.axes.Axes) -> None:
+        """Plots the Particle Size Distribution (PSD) curve with Geotechnical Stats."""
+        psd_data = self.data.get('metadata', {}).get('Lab_PSD')
+        
+        if not psd_data:
+            ax.text(0.5, 0.5, "No PSD Data", ha='center')
+            return
+            
+        # Unpack and Sort (Small -> Large for interpolation)
+        # LabWorker sends [Size, %Passing].
+        # We need strictly increasing or decreasing for interpolation.
+        data_points = sorted(psd_data, key=lambda x: x[0])
+        sizes_mm = np.array([p[0] for p in data_points])
+        percent_passing = np.array([p[1] for p in data_points])
+        
+        # Plot Curve
+        # Style: Blue line with markers
+        ax.semilogx(sizes_mm, percent_passing, 'b-o', linewidth=2, markersize=5, label='Grading Curve')
+        
+        # Labels & Range (User Requested)
+        ax.set_title("Particle Size Distribution Curve", fontweight='bold')
+        ax.set_xlabel("Particle Diameter (mm)")
+        ax.set_ylabel("Percent Finer by Mass (%)")
+        ax.set_ylim(0, 100)
+        ax.set_xlim(0.001, 100) # User requested 0.001 to 100
+        
+        # Grid (Minor is important for Log plots)
+        ax.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
+        ax.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.4)
+        
+        # Background Zones
+        # Fines (<0.075mm)
+        ax.axvspan(0.001, 0.075, color='#E0E0E0', alpha=0.5)
+        ax.text(0.005, 5, 'Fines (Silt/Clay)', fontsize=8, color='#666666', rotation=90)
+        
+        # Sand (0.075 - 4.75mm)
+        ax.axvspan(0.075, 4.75, color='#FFF9C4', alpha=0.5) # Light Yellow
+        ax.text(0.2, 5, 'Sand', fontsize=8, color='#666666')
+        
+        # Gravel (>4.75mm)
+        ax.axvspan(4.75, 100, color='#FFE0B2', alpha=0.5) # Light Orange
+        ax.text(10, 5, 'Gravel', fontsize=8, color='#666666')
+        
+        # Markers
+        ax.axvline(4.75, color='k', linestyle='--', linewidth=0.8) # No.4
+        ax.text(4.75, 102, 'No.4', ha='center', fontsize=7)
+        
+        ax.axvline(0.075, color='k', linestyle='--', linewidth=0.8) # No.200
+        ax.text(0.075, 102, 'No.200', ha='center', fontsize=7)
+
+        # --- Statistics D10, D30, D60 ---
+        # Interpolate Size for given % Passing
+        def get_d_value(target_percent):
+            # percent_passing is increasing with size?
+            # LabWorker Data: [63.0, 100%], [0.002, 5%].
+            # So percent_passing INCREASES as size INCREASES.
+            return np.interp(target_percent, percent_passing, sizes_mm)
+            
+        d10 = get_d_value(10)
+        d30 = get_d_value(30)
+        d60 = get_d_value(60)
+        
+        # Coefficients
+        cu = d60 / d10 if d10 > 0 else 0
+        cc = (d30 ** 2) / (d10 * d60) if (d10 * d60) > 0 else 0
+        
+        # Stats Box
+        stats_text = (
+            f"$D_{{10}}$ = {d10:.3f} mm\n"
+            f"$D_{{30}}$ = {d30:.3f} mm\n"
+            f"$D_{{60}}$ = {d60:.3f} mm\n"
+            f"$C_u$ = {cu:.2f}\n"
+            f"$C_c$ = {cc:.2f}"
+        )
+        
+        props = dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray')
+        ax.text(0.02, 0.95, stats_text, transform=ax.transAxes, fontsize=9,
+                verticalalignment='top', bbox=props)
+
+        ax.legend(loc='lower right', fontsize='small')
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize gprMax input geometry and results.")

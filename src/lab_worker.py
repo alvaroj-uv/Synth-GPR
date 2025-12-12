@@ -13,6 +13,7 @@ from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
 from .constants import PC
 import math
+import json
 
 class LabWorker(Worker):
     name = "LabWorker"
@@ -195,6 +196,55 @@ class LabWorker(Worker):
         scene.metadata['Lab_P200'] = P200
         scene.metadata['Lab_FI'] = FI
         scene.metadata['Lab_Porosity'] = local_porosity
+        
+        # --- NEW: Calculate Full PSD Curve ---
+        # Define standard sieve set (mm)
+        sieves = [
+            63.0, 53.0, 37.5, 26.5, 19.0, 13.2, 9.5, 4.75, # Coarse (Gravel/Rock)
+            2.36, 1.18, 0.600, 0.425, 0.300, 0.150, 0.075, # Sand
+            0.002 # Clay/Silt boundary (virtual)
+        ]
+        
+        psd_data = [] # List of (size_mm, percent_passing)
+        
+        for size_mm in sieves:
+            # 1. Calculate Mass Passing this sieve
+            
+            # Rock Contribution:
+            # Assume rocks are single-size particles defined by their radius? 
+            # Or use the generated rock sizes?
+            # Ideally we check each rock's diameter (2*radius) against the sieve size.
+            pass_rock_area = 0.0
+            for rock in scene.rock_positions:
+                 # Check if this rock is in the layer (reuse logic or simplify)
+                rock_center_y = rock.y
+                radius = rock.radius
+                diameter = 2 * radius * 1000 # m -> mm
+                
+                # Check layer intersection (Basic check for speed)
+                if (rock_center_y + radius) < y_min or (rock_center_y - radius) > y_max:
+                    continue
+
+                if diameter < size_mm:
+                    # It passes!
+                    # Calculate its area contribution to the strip
+                    area = self._circle_strip_intersection(rock.x, rock.y, radius, y_min, y_max)
+                    pass_rock_area += (area * 1e6)
+            
+            # Fouling Contribution:
+            # Fouling is "fines" so we use its internal PSD
+            # size_mm vs standard_fouling_psd
+            percent_foul_passing = get_percent_passing(size_mm / 1000.0, [ (d, p) for d, p in standard_fouling_psd])
+            pass_foul_area = total_fouling_area_mm2 * (percent_foul_passing / 100.0)
+            
+            total_passing = pass_rock_area + pass_foul_area
+            percent_total_passing = (total_passing / total_sample_area) * 100.0 if total_sample_area > 0 else 100.0
+            
+            psd_data.append((size_mm, percent_total_passing))
+            
+        # Serialize to JSON string for metadata
+        scene.metadata['Lab_PSD'] = json.dumps(psd_data)
+
         
         from src.physics import classify_fouling_index
         fi_class = classify_fouling_index(FI)
