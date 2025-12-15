@@ -48,31 +48,31 @@ def get_label_from_filename(filename):
 
 def load_metadata(metadata_path):
     """
-    Loads metadata from CSV and returns a dictionary mapping filename to label.
-    Expected CSV columns: 'filename', 'FI_class' (or 'Label')
+    Loads metadata from CSV and returns a dictionary mapping filename to a dict of attributes.
+    Expected CSV columns: 'filename' (required) + any other attributes.
     """
     try:
         df = pd.read_csv(metadata_path)
         
-        # Check for various column name formats
+        # Check for filename column
         filename_col = None
-        label_col = None
-        
         for col in df.columns:
             if col.lower() in ['filename', 'file', 'name']:
                 filename_col = col
-            if col.lower() in ['fi_class', 'label', 'class', 'classification']:
-                label_col = col
+                break
         
-        if not filename_col or not label_col:
-            print(f"Warning: Could not find required columns in {metadata_path}")
+        if not filename_col:
+            print(f"Warning: Could not find filename column in {metadata_path}")
             print(f"  Found columns: {list(df.columns)}")
-            print("  Expected: 'filename' and 'FI_class' (or similar)")
             return {}
         
-        # Create mapping: filename -> label
-        mapping = pd.Series(df[label_col].values, index=df[filename_col]).to_dict()
-        print(f"Loaded {len(mapping)} labels from metadata file")
+        # Create mapping: filename -> dict of row attributes
+        # We convert to dict('index') which returns {index: {col: val, ...}}
+        # We index by filename first
+        df = df.set_index(filename_col)
+        mapping = df.to_dict('index')
+        
+        print(f"Loaded {len(mapping)} entries from metadata file")
         return mapping
         
     except Exception as e:
@@ -114,12 +114,18 @@ def process_single_file(filepath, label_mapping=None, fields=['Ez']):
         pass  # Silently continue to other methods
     
     # Try metadata lookup if label not found
-    if label == "Unknown" and label_mapping:
+    metadata_row = {}
+    if label_mapping:
         # Try both .in and .out extensions
         for ext in ['.in', '.out']:
             lookup_name = filename.replace('.out', ext)
             if lookup_name in label_mapping:
-                label = label_mapping[lookup_name]
+                metadata_row = label_mapping[lookup_name]
+                # Look for a class label in the metadata
+                for key in ['FI_class', 'Label', 'Class', 'classification', 'Lab_Class']:
+                     if key in metadata_row:
+                         label = metadata_row[key]
+                         break
                 break
     
     # Try parsing corresponding .in file
@@ -164,7 +170,18 @@ def process_single_file(filepath, label_mapping=None, fields=['Ez']):
         features_list = features_df.to_dict('records')
         for feat in features_list:
             feat['Filename'] = filename
-            feat['Label'] = label
+            
+            # Determine final Lab_Class
+            # Priority: Metadata 'Lab_Class' > Metadata 'FI_class' > Filename/Title parsed label
+            final_class = label # Default to parsed label
+            
+            if metadata_row:
+                 if 'Lab_Class' in metadata_row:
+                     final_class = metadata_row['Lab_Class']
+                 elif 'FI_class' in metadata_row:
+                     final_class = metadata_row['FI_class']
+            
+            feat['Lab_Class'] = final_class
         
         return features_list
         
@@ -244,8 +261,8 @@ def create_feature_dataset(input_folder, output_csv='features_dataset.csv',
     
     df_features = pd.DataFrame(all_features)
     
-    # Reorder columns: Filename, Label, Signal first, then features
-    priority_cols = ['Filename', 'Label', 'Signal']
+    # Reorder columns: Filename, Lab_Class, Signal first, then features
+    priority_cols = ['Filename', 'Lab_Class', 'Signal']
     existing_priority = [c for c in priority_cols if c in df_features.columns]
     other_cols = [c for c in df_features.columns if c not in existing_priority]
     df_features = df_features[existing_priority + other_cols]
@@ -259,7 +276,7 @@ def create_feature_dataset(input_folder, output_csv='features_dataset.csv',
         print(f"{'='*60}")
         print(f"Total features extracted: {len(df_features)}")
         print(f"Unique signals:          {df_features['Signal'].nunique() if 'Signal' in df_features.columns else 'N/A'}")
-        print(f"Unique labels:           {df_features['Label'].nunique() if 'Label' in df_features.columns else 'N/A'}")
+        print(f"Unique labels:           {df_features['Lab_Class'].nunique() if 'Lab_Class' in df_features.columns else 'N/A'}")
         print(f"Feature columns:         {len(df_features.columns) - len(existing_priority)}")
         print(f"\nSaved to: {output_csv}")
         print(f"{'='*60}\n")

@@ -37,9 +37,14 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
             self.terminal = sys.stdout
             self.log = open(filename, "w", encoding="utf-8")
         def write(self, message):
-            self.terminal.write(message)
             self.log.write(message)
             self.log.flush()
+            try:
+                self.terminal.write(message)
+            except UnicodeEncodeError:
+                # Fallback for Windows consoles that can't handle unicode
+                self.terminal.write(message.encode('ascii', 'replace').decode('ascii'))
+
         def flush(self):
             self.terminal.flush()
             self.log.flush()
@@ -103,8 +108,17 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
             cls_idx = list(CLASSES.keys()).index(cls_name)
             global_id = (cls_idx * n_samples) + i
             
+
             # Generate sample, DO NOT write metadata to disk yet (save_metadata=False)
             _, rows = single_gen.generate_samples(output_dir, n_samples=1, start_id=global_id, save_metadata=False)
+            
+            # Add filename to metadata for proper linking
+            for r in rows:
+                if 'sample_id' in r:
+                    r['filename'] = f"{r['sample_id']}.in"
+                # Ensure class label is present
+                r['FI_class'] = cls_name
+            
             all_metadata.extend(rows)
             
     # Write aggregated metadata
@@ -152,14 +166,16 @@ def scale_pvc_for_classes(n_samples: int, base_output_dir: str):
         f.write(f'set SCRIPT="{extract_script}"\n')
         f.write('echo [BATCH] Extracting Features...\n')
         f.write('echo Input: %CD%\n')
-        f.write('%PYTHON_EXE% %SCRIPT% "%CD%"\n')
+        f.write('%PYTHON_EXE% %SCRIPT% "%CD%" --metadata metadata.csv\n')
         f.write("echo [BATCH] Extraction Complete.\n")
     print(f"[OK] Created {extract_bat_path}")
 
     # Create visualize_blueprints.bat
     viz_bat_path = os.path.join(output_dir, "visualize_blueprints.bat")
     # Path to visualize_gprmax_blueprint.py
-    viz_script = os.path.join(script_dir, "scripts", "tools", "visualization", "visualize_gprmax_blueprint.py")
+    # script_dir is scripts/main. We need scripts/tools/visualization
+    scripts_dir = os.path.dirname(script_dir)
+    viz_script = os.path.join(scripts_dir, "tools", "visualization", "visualize_gprmax_blueprint.py")
     
     with open(viz_bat_path, "w") as f:
         f.write("@echo off\n")

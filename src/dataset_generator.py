@@ -92,12 +92,17 @@ class DatasetGenerator:
                 # Export metadata to work_order blackboard for inspection
                 metadata = wos.export_metadata()
                 
+                # Merge checkpoint metadata (contains LabWorker results like Lab_Class, Lab_FI)
+                if hasattr(checkpoint, 'metadata'):
+                    metadata.update(checkpoint.metadata)
+                
                 # Log key metadata for LLM analysis
                 # Note: checkpoint._rock_collection.count is an internal detail,
                 # but useful for debugging/LLM analysis.
                 print(f"  → Metadata: PVC={metadata.get('pvc', 0):.2f}%, "
-                      f"FI={metadata.get('FI', 0):.1f}, "
-                      f"Class={metadata.get('FI_class', 'N/A')}, "
+                      f"Lab_FI={metadata.get('Lab_FI', 0):.1f}, "
+                      f"Lab_Class={metadata.get('Lab_Class', 'N/A')}, "
+                      f"Target_Class={metadata.get('FI_class', 'N/A')}, "
                       f"Rocks={checkpoint._rock_collection.count}")
                 
                 # Validation check (non-blocking, just informational)
