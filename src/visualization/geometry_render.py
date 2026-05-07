@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.axes import Axes
@@ -21,11 +22,29 @@ STYLES: dict[str, MaterialStyle] = {
     "subgrade":          MaterialStyle("#2F4F4F", "-",  "Subgrade"),
     "formation":         MaterialStyle("#BDB76B", "+",  "Formation"),
     "bal_rock":          MaterialStyle("#5A5A5A", "/",  "Ballast Rock"),
+    "bal_rock_L1":       MaterialStyle("#A1887F", "/",   "Rock L1"),
+    "bal_rock_L2":       MaterialStyle("#8D6E63", "//",  "Rock L2"),
+    "bal_rock_L3":       MaterialStyle("#6D4C41", "///", "Rock L3"),
+    "bal_foul":          MaterialStyle("#4B3621", ".",  "Fouling (dense)"),
     "bal_foul_granular": MaterialStyle("#C8A055", ".",  "Fouling"),
     "concrete_sleeper":  MaterialStyle("#708090", "x",  "Sleeper"),
 }
 
-_LEGEND_ORDER = ["subgrade", "formation", "bal_rock", "bal_foul_granular", "concrete_sleeper"]
+# Gradient fouling styles: bal_foul_g1 .. bal_foul_g9 (YlOrBr ramp)
+for _i in range(1, 10):
+    STYLES[f"bal_foul_g{_i}"] = MaterialStyle(
+        color=matplotlib.colors.to_hex(plt.cm.YlOrBr(0.3 + _i * 0.07)),
+        hatch="." * ((_i % 3) + 1),
+        label=f"Foul L{_i}",
+    )
+
+_LEGEND_ORDER = [
+    "subgrade", "formation",
+    "bal_rock", "bal_rock_L1", "bal_rock_L2", "bal_rock_L3",
+    "bal_foul", "bal_foul_granular",
+    *[f"bal_foul_g{i}" for i in range(1, 10)],
+    "concrete_sleeper",
+]
 
 
 def draw_geometry(ax: Axes, scene: SceneData) -> None:
@@ -45,7 +64,11 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         style = STYLES.get(box.material, MaterialStyle("#CCCCCC", None, box.material))
         ax.add_patch(mpatches.Rectangle(
             (box.x1, box.y1), box.x2 - box.x1, box.y2 - box.y1,
-            facecolor=style.color, edgecolor="none", zorder=1,
+            facecolor=style.color,
+            edgecolor="black" if style.hatch else "none",
+            linewidth=0.4,
+            hatch=style.hatch,
+            zorder=1,
         ))
         seen_mats.add(box.material)
 
@@ -83,6 +106,12 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         if 0 < y < dy:
             ax.axhline(y, color="#AAAAAA", linewidth=0.6, linestyle="--", zorder=0)
 
+    # Domain border
+    ax.add_patch(mpatches.Rectangle(
+        (0, 0), dx, dy,
+        fill=False, edgecolor="black", linewidth=1.5, zorder=7,
+    ))
+
     ax.set_xlim(0, dx)
     ax.set_ylim(0, dy)
     ax.set_aspect("equal")
@@ -91,8 +120,21 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
     ax.tick_params(labelsize=8)
     ax.grid(visible=True, alpha=0.15, linewidth=0.4)
 
+    _draw_axis_break(ax, "top")
+    _draw_axis_break(ax, "bottom")
+
     _draw_legend(ax, scene, seen_mats, mc_y_min)
     _draw_meta_annotation(ax, scene)
+
+
+def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) -> None:
+    """Draw a double-slash axis-break symbol on both vertical spines."""
+    d = size
+    kwargs = dict(transform=ax.transAxes, color="black", clip_on=False, linewidth=1)
+    y = 0 if location == "bottom" else 1
+    for x0 in (0, 1):
+        ax.plot((x0 - d, x0 + d), (y - d - d / 2, y + d - d / 2), **kwargs)
+        ax.plot((x0 - d, x0 + d), (y - d + d / 2, y + d + d / 2), **kwargs)
 
 
 def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str],
@@ -102,8 +144,11 @@ def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str],
         if mat in seen_mats:
             style = STYLES[mat]
             patches.append(mpatches.Patch(
-                facecolor=style.color, edgecolor="#555555",
-                linewidth=0.5, label=style.label,
+                facecolor=style.color,
+                edgecolor="#555555",
+                hatch=style.hatch,
+                linewidth=0.5,
+                label=style.label,
             ))
     if scene.tx:
         patches.append(plt.Line2D([0], [0], marker="v", color="#E82020",
