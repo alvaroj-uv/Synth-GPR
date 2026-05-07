@@ -97,7 +97,7 @@ class DatasetGenerator:
                 # Log key metadata for LLM analysis
                 # Note: checkpoint._rock_collection.count is an internal detail,
                 # but useful for debugging/LLM analysis.
-                print(f"  → Metadata: PVC={metadata.get('pvc', 0):.2f}%, "
+                print(f"  -> Metadata: PVC={metadata.get('pvc', 0):.2f}%, "
                       f"Lab_FI={metadata.get('Lab_FI', 0):.1f}, "
                       f"Lab_Class={metadata.get('Lab_Class', 'N/A')}, "
                       f"Target_Class={metadata.get('FI_class', 'N/A')}, "
@@ -106,7 +106,7 @@ class DatasetGenerator:
                 # Validation check (non-blocking, just informational)
                 validation_errors = checkpoint.validate_all()
                 if validation_errors:
-                    print(f"  ⚠ Validation warnings: {len(validation_errors)} issue(s)")
+                    print(f"  [!] Validation warnings: {len(validation_errors)} issue(s)")
                     for err in validation_errors[:3]:  # Show first 3
                         print(f"    - {err}")
                 
