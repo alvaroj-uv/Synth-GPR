@@ -1,6 +1,5 @@
 # Python
-src/__pycache__/*
-__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -32,6 +31,7 @@ cache/
 
 # Reports
 pylint_report.txt
+docs/reports/vulture_report.txt
 
 # Old test directories (now in output/tests/)
 test_pipeline_output/
