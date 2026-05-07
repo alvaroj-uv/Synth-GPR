@@ -440,13 +440,15 @@ class RockWorker(Worker):
 
         # Use RockCollection to calculate density/porosity
         achieved_density = rock_collection.calculate_density_monte_carlo(
-            domain_x, start_y, top_y, samples=5000
+            domain_x, start_y, highest_y, samples=5000
         )
             
         porosity = max(0.0, 1.0 - achieved_density)
         
         scene.metadata['achieved_density'] = achieved_density
         scene.metadata['porosity'] = porosity
+        scene.metadata['mc_y_min'] = start_y
+        scene.metadata['mc_y_max'] = highest_y
         
         print(f"[{self.name}] Achieved Density: {achieved_density:.3f}, Porosity: {porosity:.3f}")
         

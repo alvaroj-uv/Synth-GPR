@@ -139,6 +139,19 @@ def render(data: dict, in_path: Path, out_path: Path, dpi: int = 150):
         ax.plot(r["x"], r["y"], marker="^", color="#1060D0",
                 markersize=7, zorder=5, linestyle="none", label="RX")
 
+    # ── Monte Carlo sampling box ──────────────────────────────────────
+    mc_y_min = meta.get("mc_y_min")
+    mc_y_max = meta.get("mc_y_max")
+    if mc_y_min is not None and mc_y_max is not None:
+        mc_y_min = float(mc_y_min)
+        mc_y_max = float(mc_y_max)
+        mc_rect = Rectangle(
+            (0, mc_y_min), dx, mc_y_max - mc_y_min,
+            linewidth=1.2, edgecolor="#FF6600", facecolor="none",
+            linestyle="--", zorder=6, label="MC sampling box",
+        )
+        ax.add_patch(mc_rect)
+
     # ── layer boundary lines ──────────────────────────────────────────
     # Infer boundaries from box edges
     boundary_ys = set()
@@ -164,6 +177,11 @@ def render(data: dict, in_path: Path, out_path: Path, dpi: int = 150):
     if rxs:
         patches.append(plt.Line2D([0], [0], marker="^", color="#1060D0",
                                   markersize=7, linestyle="none", label="RX"))
+    if mc_y_min is not None and mc_y_max is not None:
+        patches.append(mpatches.Patch(
+            facecolor="none", edgecolor="#FF6600", linewidth=1.2,
+            linestyle="--", label="MC sampling box",
+        ))
     ax.legend(handles=patches, loc="upper right", fontsize=7, framealpha=0.85)
 
     # ── metadata annotation ───────────────────────────────────────────
