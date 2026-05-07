@@ -41,40 +41,40 @@ class DatasetGenerator:
         self.config = config
         self.pipeline = ProductionLine(config)
         self.sampler = ParameterSampler(config)
-        
-        # Set random seeds for reproducibility
-        if config.base_seed is not None:
-            random.seed(config.base_seed)
-            try:
-                import numpy as np
-                np.random.seed(config.base_seed)
-            except ImportError:
-                pass
-    
+
     def generate_samples(
         self,
         output_dir: Path | str,
         n_samples: int,
         start_id: int = 0,
         save_metadata: bool = True
-    ) -> List[str]:
+    ) -> tuple[List[str], List[Dict]]:
         """
         Generate n samples to output directory.
-        
+
         Args:
             output_dir: Directory to save .in files
             n_samples: Number of samples to generate
             start_id: Starting sample ID
-            
+
         Returns:
-            Tuple[List[str], List[Dict]]
+            Tuple of (list of written file paths, list of metadata dicts)
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        if self.config.base_seed is not None:
+            seed = self.config.base_seed + start_id
+            random.seed(seed)
+            try:
+                import numpy as np
+                np.random.seed(seed)
+            except ImportError:
+                pass
+
         generated_files = []
         metadata_rows = []
-        
+
         for i in range(n_samples):
             sample_id = start_id + i
             
@@ -92,9 +92,7 @@ class DatasetGenerator:
                 # Export metadata to work_order blackboard for inspection
                 metadata = wos.export_metadata()
                 
-                # Merge checkpoint metadata (contains LabWorker results like Lab_Class, Lab_FI)
-                if hasattr(checkpoint, 'metadata'):
-                    metadata.update(checkpoint.metadata)
+                metadata.update(checkpoint.metadata)
                 
                 # Log key metadata for LLM analysis
                 # Note: checkpoint._rock_collection.count is an internal detail,

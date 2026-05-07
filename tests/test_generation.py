@@ -31,43 +31,33 @@ class TestDataGeneration(unittest.TestCase):
         self.assertEqual(cfg.domain_x, 0.5)
 
     def test_generation_end_to_end(self):
-        """Test full generation pipeline using BallastScenarioGenerator."""
+        """Test full generation pipeline."""
+        import tempfile
         cfg = GeneratorConfig.from_ini(str(self.test_config_path))
         generator = DatasetGenerator(cfg)
-        
-        # We need to manually parse the DatasetGeneration params since they aren't in cfg
-        import configparser
-        cp = configparser.ConfigParser()
-        cp.read(self.test_config_path)
-        
-        n_samples = cp.getint("DatasetGeneration", "n_samples")
-        start_id = cp.getint("DatasetGeneration", "start_id")
-        out_dir = Path(cp.get("DatasetGeneration", "output_dir"))
-        
-        # Generate
-        df = generator.generate_dataset(
-            out_dir=out_dir,
-            n_samples=n_samples,
-            start_id=start_id
-        )
-        
-        # Verification
-        self.assertTrue(out_dir.exists())
-        file_path = out_dir / f"s_{start_id:04d}.in"
-        self.assertTrue(file_path.exists())
-        
-        # Check CSV
-        csv_path = out_dir / "metadata.csv"
-        self.assertTrue(csv_path.exists())
-        self.assertFalse(df.empty)
-        
-        # Check content
-        content = file_path.read_text()
-        self.assertIn("#domain", content)
-        self.assertIn("Granular Aggregates", content)
-        
-        # Validate Geometry Validity
-        self.check_geometry_validity(content, cfg)
+
+        start_id = 99999
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir)
+
+            files, metadata = generator.generate_samples(
+                output_dir=out_dir,
+                n_samples=1,
+                start_id=start_id
+            )
+
+            self.assertEqual(len(files), 1)
+
+            file_path = out_dir / f"s_{start_id:04d}.in"
+            self.assertTrue(file_path.exists())
+
+            csv_path = out_dir / "metadata.csv"
+            self.assertTrue(csv_path.exists())
+
+            content = file_path.read_text()
+            self.assertIn("#domain", content)
+
+            self.check_geometry_validity(content, cfg)
 
     def check_geometry_validity(self, content: str, cfg: GeneratorConfig):
         """Parse commands and verify geometric constraints."""

@@ -54,7 +54,8 @@ class WorkOrder:
         
         typed_params = SceneParameters(
             pvc=params.get('pvc', 0.0),
-            moisture=params.get('moisture', 0.0)
+            moisture=params.get('moisture', 0.0),
+            ballast_thickness=params.get('ballast_thickness', 0.45),
         )
         
         scene_id = f"s_{sample_id:04d}"

@@ -92,7 +92,12 @@ def convert_pvc_to_fi(
     """
     if pvc <= 0:
         return 0.0
-        
+    if porosity <= 0:
+        return 0.0
+
+    pvc = min(pvc, 100.0)
+    porosity = min(porosity, 1.0)
+
     v_foul = (pvc / 100.0) * porosity
     v_rock = 1.0 - porosity
     
@@ -207,11 +212,11 @@ def topp_mixing_model(theta: float) -> float:
     theta = max(0.0, min(theta, 1.0))
     
     # Topp's empirical polynomial
-    e_r = (PHC.TOPP_C0 
-           + PHC.TOPP_C1 * theta 
-           + PHC.TOPP_C2 * theta**2 
+    e_r = (PHC.TOPP_C0
+           + PHC.TOPP_C1 * theta
+           + PHC.TOPP_C2 * theta**2
            + PHC.TOPP_C3 * theta**3)
-    return e_r
+    return max(1.0, min(e_r, 81.0))
 
 
 def fmt(val: float) -> str:
@@ -281,11 +286,11 @@ def get_percent_passing(d_target: float, psd_points: list) -> float:
     # Sort points by diameter ascending for consistent interpolation
     sorted_points = sorted(psd_points, key=lambda x: x[0])
     
-    # Handle bounds
-    if d_target <= sorted_points[0][0]:
-        return sorted_points[0][1]
+    # Handle bounds — check upper first so duplicate x-values return the highest % passing
     if d_target >= sorted_points[-1][0]:
         return sorted_points[-1][1]
+    if d_target < sorted_points[0][0]:
+        return sorted_points[0][1]
         
     # Find bracketing interval and interpolate
     for i in range(len(sorted_points) - 1):

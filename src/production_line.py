@@ -183,7 +183,7 @@ class ProductionLine:
             trace = traceback.format_exc()
             
             # 1. Log to internal system (if available)
-            scene.log_issue(worker.name, "critical", "high", f"Crash: {str(e)}\n{trace}")
+            scene.log_issue(worker.name, "crash", "critical", f"Crash: {str(e)}\n{trace}")
             
             # 2. Force dump to console/stderr for immediate visibility
             # Use a distinctive banner

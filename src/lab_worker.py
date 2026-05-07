@@ -11,7 +11,7 @@ References:
 import numpy as np
 from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
-from .constants import PC
+from .constants import PC, MC
 import math
 import json
 
@@ -31,8 +31,16 @@ class LabWorker(Worker):
         print(f"[{self.name}] Starting Virtual Sieve Analysis (Horizontal Sampling)...")
         
         # 1. Define Sampling Layer
-        # Default: Bottom 15cm (0.15m) of ballast.
-        ballast_bottom = scene.metadata.get('ballast_bottom_y', 0.5) # Default generic
+        # BallastWorker writes ballast bounds to the work_order blackboard, not to
+        # scene.metadata, so prefer the blackboard with scene.metadata as fallback.
+        ballast_bottom = scene.metadata.get('ballast_bottom_y', 0.5)
+        ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
+        if scene.work_order:
+            ballast_bottom    = scene.work_order.get('ballast_bottom_y',  ballast_bottom)
+            ballast_thickness = scene.work_order.get('ballast_thickness', ballast_thickness)
+        ballast_top = ballast_bottom + ballast_thickness
+        if scene.work_order:
+            ballast_top = scene.work_order.get('ballast_top_y', ballast_top)
         
         #  1. Get Domain and Layer Info
         # Get domain_x with proper fallback
@@ -249,8 +257,119 @@ class LabWorker(Worker):
         from src.physics import classify_fouling_index
         fi_class = classify_fouling_index(FI)
         scene.metadata['Lab_Class'] = fi_class
-        
+
+        fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
+        scene.metadata.update(fractions)
+
         print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) -> Class: {fi_class}")
+        print(f"[{self.name}] MC Phase Fractions: Rock={fractions['mc_rock_fraction']:.3f}, "
+              f"Fouling={fractions['mc_fouling_fraction']:.3f}, "
+              f"Subgrade={fractions['mc_subgrade_fraction']:.3f}, "
+              f"Formation={fractions['mc_formation_fraction']:.3f}, "
+              f"Void={fractions['mc_void_fraction']:.3f} | "
+              f"PVC_measured={fractions['mc_pvc_measured']:.1f}% (requested={pvc:.1f}%)")
+
+    def _compute_phase_fractions(
+        self,
+        scene: SceneCheckpoint,
+        ballast_bottom: float,
+        ballast_top: float,
+        domain_x: float,
+        n_samples: int = 50_000,
+    ) -> Dict[str, float]:
+        """
+        Monte Carlo estimation of phase fractions over the full solid domain.
+
+        Samples n_samples random points uniformly in [0, domain_x] × [0, ballast_top]
+        — the entire scene below the antenna air region. Each point is classified as:
+          - rock       : inside a ballast rock cylinder
+          - fouling    : inside a fouling box/cylinder, not rock
+          - subgrade   : inside a subgrade box, not rock/fouling
+          - formation  : inside a formation box, not rock/fouling/subgrade
+          - void       : pore space (unoccupied by any solid)
+
+        PVC is computed from ballast-layer samples only so it remains comparable
+        to the requested PVC label:
+            mc_pvc_measured = fouling_in_ballast / (fouling_in_ballast + void_in_ballast) × 100
+        """
+        from .gpr_commands import BoxCommand, CylinderCommand
+
+        # Full solid domain: y ∈ [0, ballast_top] excludes the antenna air above ballast
+        xs = np.random.uniform(0.0, domain_x, n_samples)
+        ys = np.random.uniform(0.0, ballast_top, n_samples)
+
+        # --- Rock phase (vectorized broadcast) ---
+        in_rock = np.zeros(n_samples, dtype=bool)
+        if scene.rock_positions:
+            rx  = np.array([r.x      for r in scene.rock_positions])
+            ry  = np.array([r.y      for r in scene.rock_positions])
+            rr2 = np.array([r.radius for r in scene.rock_positions]) ** 2
+            dx = xs[:, np.newaxis] - rx
+            dy = ys[:, np.newaxis] - ry
+            in_rock = np.any(dx**2 + dy**2 < rr2, axis=1)
+
+        # --- Fouling phase ---
+        fouling_cmds  = [c for c in scene.geometry
+                         if getattr(c, 'material', None) == MC.FOULING]
+        fouling_boxes = [c for c in fouling_cmds if isinstance(c, BoxCommand)]
+        fouling_cyls  = [c for c in fouling_cmds if isinstance(c, CylinderCommand)]
+
+        in_fouling = np.zeros(n_samples, dtype=bool)
+        for box in fouling_boxes:
+            in_fouling |= (xs >= box.x1) & (xs <= box.x2) & (ys >= box.y1) & (ys <= box.y2)
+        if fouling_cyls:
+            fx  = np.array([c.x1     for c in fouling_cyls])
+            fy  = np.array([c.y1     for c in fouling_cyls])
+            fr2 = np.array([c.radius for c in fouling_cyls]) ** 2
+            dx = xs[:, np.newaxis] - fx
+            dy = ys[:, np.newaxis] - fy
+            in_fouling |= np.any(dx**2 + dy**2 < fr2, axis=1)
+        in_fouling &= ~in_rock
+
+        # --- Formation phase (placed after subgrade in gprMax, so takes priority over it) ---
+        formation_boxes = [c for c in scene.geometry
+                           if isinstance(c, BoxCommand) and getattr(c, 'material', None) == MC.FORMATION]
+        in_formation = np.zeros(n_samples, dtype=bool)
+        for box in formation_boxes:
+            in_formation |= (xs >= box.x1) & (xs <= box.x2) & (ys >= box.y1) & (ys <= box.y2)
+        in_formation &= ~in_rock & ~in_fouling
+
+        # --- Subgrade phase (placed first, lowest priority — formation overwrites it) ---
+        subgrade_boxes = [c for c in scene.geometry
+                          if isinstance(c, BoxCommand) and getattr(c, 'material', None) == MC.SUBGRADE]
+        in_subgrade = np.zeros(n_samples, dtype=bool)
+        for box in subgrade_boxes:
+            in_subgrade |= (xs >= box.x1) & (xs <= box.x2) & (ys >= box.y1) & (ys <= box.y2)
+        in_subgrade &= ~in_rock & ~in_fouling & ~in_formation
+
+        # --- Void (pore space not occupied by any solid) ---
+        in_void = ~in_rock & ~in_fouling & ~in_subgrade & ~in_formation
+
+        rock_frac      = float(np.mean(in_rock))
+        fouling_frac   = float(np.mean(in_fouling))
+        subgrade_frac  = float(np.mean(in_subgrade))
+        formation_frac = float(np.mean(in_formation))
+        void_frac      = float(np.mean(in_void))
+
+        # PVC restricted to the ballast layer so it matches the requested PVC label
+        in_ballast = (ys >= ballast_bottom) & (ys <= ballast_top)
+        ballast_n = int(np.sum(in_ballast))
+        if ballast_n > 0:
+            fouling_in_ballast = float(np.sum(in_fouling & in_ballast)) / ballast_n
+            void_in_ballast    = float(np.sum(in_void    & in_ballast)) / ballast_n
+            void_total = fouling_in_ballast + void_in_ballast
+            mc_pvc = (fouling_in_ballast / void_total * 100.0) if void_total > 0.0 else 0.0
+        else:
+            mc_pvc = 0.0
+
+        return {
+            'mc_rock_fraction':      rock_frac,
+            'mc_fouling_fraction':   fouling_frac,
+            'mc_subgrade_fraction':  subgrade_frac,
+            'mc_formation_fraction': formation_frac,
+            'mc_void_fraction':      void_frac,
+            'mc_pvc_measured':       mc_pvc,
+        }
 
     def _circle_strip_intersection(self, center_x: float, center_y: float, radius: float, y_min: float, y_max: float) -> float:
         """

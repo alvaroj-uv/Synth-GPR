@@ -57,7 +57,7 @@ class SceneCheckpoint:
     domain_settings: Optional[DomainSettings] = None
     
     # Legacy fields (being phased out)
-    metadata: Dict[str, Any] = field(default_factory=dict)  # DEPRECATED: Use work_order.blackboard
+    metadata: Dict[str, Any] = field(default_factory=dict)
     assembled: Optional['SceneDefinition'] = None
     
     def __post_init__(self):

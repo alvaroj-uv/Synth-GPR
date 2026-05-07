@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 
 # Local imports
-from src.scene_geometry import SceneCheckpoint
-from src.work_order import WorkOrder
+from src.worker import SceneCheckpoint
+from src.work_order import WorkOrder, WorkOrderSystem
 
 
 @pytest.fixture
@@ -108,41 +108,36 @@ def minimal_scene_checkpoint():
     Returns:
         SceneCheckpoint: Instance with basic required state
     """
-    from src.config import Config
-    
-    # Create minimal config
-    config = Config()
-    config.domain_x = 1.0
-    config.domain_y = 0.8
-    config.domain_z = 0.5
-    
-    # Create scene
+    from src.config import GeneratorConfig
+
+    config = GeneratorConfig()
     scene = SceneCheckpoint(config=config)
-    
     return scene
 
 
 @pytest.fixture
 def temp_work_order():
     """
-    Create a fresh WorkOrder instance for testing.
-    
+    Create a fresh WorkOrderSystem instance for testing.
+
     Returns:
-        WorkOrder: Clean instance with no history
+        WorkOrderSystem: Clean instance with no history
     """
-    return WorkOrder()
+    from src.domain import SceneParameters
+    wo = WorkOrder(id="s_test", typed_params=SceneParameters())
+    return WorkOrderSystem(wo)
 
 
 @pytest.fixture
 def sample_packing_bounds():
     """
     Create standard packing bounds for rock packing tests.
-    
+
     Returns:
         PackingBounds: 1.0m x 0.3m rectangular region
     """
-    from src.rock_model import PackingBounds
-    
+    from src.rock_packing import PackingBounds
+
     return PackingBounds(
         x_min=0.0,
         x_max=1.0,

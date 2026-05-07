@@ -109,66 +109,15 @@ class MatplotlibRenderer:
             )
             
     def _render_wiggle_trace(self, ax, node: TraceNode):
-        """Renders variable area wiggle trace."""
-        # Typically x is depth/time, y is amplitude? 
-        # Or x is offset, y is time?
-        # Assuming standard plot x, y.
-        # Wiggle usually means filling the positive lobes.
-        
-        # Apply gain
+        """Renders variable area wiggle trace (positive lobes filled)."""
         y_scaled = node.y * node.wiggle_gain
-        
-        # Base line
-        # If this is part of a multi-trace plot, 'x' might need to be shifted.
-        # But TraceNode assumes absolute coordinates.
-        
-        # Fill positive
         ax.fill_between(
-            node.x, 
-            node.x, # Base (vertical trace? wiggle usually vertical). 
-            # WAIT: Standard wiggle is vertical.
-            # If x is time/depth and we plot L-R, wiggle is usually filling "peaks".
-            # Let's assume standard Y vs X plot. Fill between y=0 and y=y_scaled.
-            # But usually wiggle is offset.
-            # The TraceNode has absolute X,Y. So fill between Y_axis_baseline and Y.
-            # Actually, usually wiggle plots are: X = Offset + Amplitude, Y = Time.
-            # Let's assume the user has set X/Y correctly for the display.
-            # Then we fill between the "zero" line of the trace.
-            
-            # Since we don't know the "zero" line from just X,Y arrays unless we know the offset...
-            # We will assume the user provides specific X for the signal.
-            # If it's a "wiggle" on a vertical trace (X=amp, Y=depth), we fill against base X.
-            # If generic, let's just support filling under the curve.
-            
-            # Simple implementation: Fill positive lobes
-            # We need a baseline. For now, assume baseline is 0 if not specified?
-            # Or assume the X array *is* the shape including offset.
-            # This is tricky without a "baseline" property.
-            # Let's assume for standard Time(y) vs Offset(x) plot:
-            # The "Trace" object usually has: center_x, time_y, amplitude.
-            # But our TraceNode is generic x,y. 
-            # I will just implement standard fill_between for now.
-            y_base = np.zeros_like(node.y) # Assuming oscillation around 0? 
-            # No, if X is oscillating, we fill X against X_base.
-            # If Y is oscillating, we fill Y against Y_base.
-             pass 
+            node.x, 0, y_scaled,
+            where=(y_scaled > 0),
+            facecolor=node.wiggle_fill_color,
+            interpolate=True,
         )
-        
-        # Re-thinking Wiggle:
-        # If is_wiggle is True, we fill the area between the curve and a baseline.
-        # We need to know orientation. 
-        # Assuming Y is signal amplitude and X is index/time?
-        # Let's assume standard "fill positive Y".
-        ax.fill_between(
-            node.x, 
-            0, # Baseline 0? This might be wrong if trace is offset.
-            node.y, 
-            where=(node.y > 0), 
-            facecolor=node.wiggle_fill_color, 
-            interpolate=True
-        )
-        # Line
-        ax.plot(node.x, node.y, color=node.style.color, linewidth=node.style.linewidth)
+        ax.plot(node.x, y_scaled, color=node.style.color, linewidth=node.style.linewidth)
 
     def _render_raster(self, node: RasterNode):
         ax = plt.gca()
@@ -192,9 +141,7 @@ class MatplotlibRenderer:
             node.x, node.y, node.text,
             fontsize=node.fontsize,
             color=node.color,
-            rotation=node.rotation
-        )
-            rotation=node.rotation
+            rotation=node.rotation,
         )
 
     def _render_spectrogram(self, node: SpectrogramNode):

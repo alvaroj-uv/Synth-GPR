@@ -200,8 +200,12 @@ def sorted_psd_points(draw):
     
     # Clamp to 100
     percent_passing = [min(p, 100) for p in percent_passing]
-    
-    return list(zip(diameters, percent_passing))
+
+    # Deduplicate by diameter — a valid PSD maps each diameter to exactly one value
+    seen: dict = {}
+    for d, p in zip(diameters, percent_passing):
+        seen[d] = p
+    return sorted(seen.items())
 
 
 @given(psd=sorted_psd_points())

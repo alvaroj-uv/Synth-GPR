@@ -115,13 +115,13 @@ def generate_dataset(output_dir, labels, n_per_label=50, start_id=10000, moistur
         # We append the label to the metadata filename to avoid overwrites if running multiple batches
         metadata_name = f"metadata_{label_upper}.csv"
         
-        files = gen.generate_samples(
+        files, _ = gen.generate_samples(
             output_dir=output_dir,
             n_samples=n_per_label,
             start_id=current_id
         )
-        
-        count = n_per_label
+
+        count = len(files)
         print(f"   Generated {count} samples. IDs: {current_id} - {current_id + count - 1}")
         
         current_id += count
@@ -136,13 +136,6 @@ def generate_dataset(output_dir, labels, n_per_label=50, start_id=10000, moistur
     return total_generated
 
 if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-    
-    # Add src to path for imports
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from src.config import GeneratorConfig
-    
     # Determine script name for default INI file
     script_name = Path(__file__).stem  # 'generate_dataset'
     default_ini = f"{script_name}.ini"
