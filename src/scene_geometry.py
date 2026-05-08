@@ -216,24 +216,17 @@ class DomainSettings:
     domain_cmd: 'DomainCommand'
     dx_dy_dz_cmd: 'DxDyDzCommand'
     time_window_cmd: 'TimeWindowCommand'
-    
+    absorbing_bc_cmd: Any = None
+
     @classmethod
     def from_config(cls, config: 'GeneratorConfig') -> 'DomainSettings':
-        """
-        Create domain settings from generator configuration.
-        
-        Args:
-            config: GeneratorConfig with domain parameters
-            
-        Returns:
-            Immutable DomainSettings instance
-        """
-        from .gpr_commands import DomainCommand, DxDyDzCommand, TimeWindowCommand
-        
+        from .gpr_commands import DomainCommand, DxDyDzCommand, TimeWindowCommand, AbsorbingBCCommand
+
         return cls(
             domain_cmd=DomainCommand(config.domain_x, config.domain_y, config.domain_z),
             dx_dy_dz_cmd=DxDyDzCommand(config.dx, config.dy, config.dz),
-            time_window_cmd=TimeWindowCommand(config.time_window)
+            time_window_cmd=TimeWindowCommand(config.time_window),
+            absorbing_bc_cmd=AbsorbingBCCommand(getattr(config, 'pml_layers', 10)),
         )
     
     def validate(self) -> List[str]:

@@ -18,30 +18,40 @@ class GeneratorConfig:
     # Domain size (Railway GPR standard)
     domain_x: float = 0.5
     domain_y: float = 1.5
-    domain_z: float = 0.005
-    
+    domain_z: float = 0.004   # 1 cell thick (2-D simulation)
+
     # Domain Height Limits (Railway Literature)
     # Typical GPR antenna: 30-100cm above ballast surface
     # Max realistic height: subgrade(0.5) + formation(0.1) + ballast(0.45) + antenna(0.5) + buffer(0.1) = 1.65m
     max_domain_y: float = 1.65  # Hard limit from literature
 
-    dx: float = 0.005
-    dy: float = 0.005
-    dz: float = 0.005
+    # Spatial discretization — Khosravi Largani et al. (2025) FDTD guideline:
+    #   dx <= lambda_min / 10,  lambda_min = c / (fmax * sqrt(er_max))
+    # At fc=1.5 GHz, fmax=2.317 GHz (Wang 2015 Ricker ratio):
+    #   er=10  (subgrade/formation) -> need dx <= 4.09 mm  -> 4 mm OK
+    #   er=14.4 (wet fouling max)   -> need dx <= 3.41 mm  -> 4 mm marginal (warns at runtime)
+    dx: float = 0.004
+    dy: float = 0.004
+    dz: float = 0.004
     
-    # Time window
-    time_window: float = 1.5e-8
+    # Time window — Mbubia Tchoua et al. (2026): 20 ns captures full ballast column + subgrade interface
+    time_window: float = 2.0e-8
 
     # Waveform / antenna
     center_freq: float = 1.5e9
     tx_x: float = 0.300
     rx_x: float = 0.35
     tx_rx_y: float = 1.4  # Raised to use domain efficiently (10cm below top, 50cm above max rocks)
-    tx_rx_z: float = 0.0025
+    tx_rx_z: float = 0.002  # centre of 4 mm domain_z
     add_waveform: bool = True
     add_source: bool = True
     add_geometry_view: bool = False
     add_sleepers: bool = False
+    monostatic: bool = False  # True: RX co-located with TX (single-antenna reflection mode)
+    subgrade_wet: bool = False  # True: saturated subgrade εr=21 (Xie et al. 2010), False: εr=10
+
+    # PML absorbing boundary (Benedetto et al. 2016): 10 cells on all sides
+    pml_layers: int = 10
 
     # Granular & High-Fidelity Settings
     granular_mode: bool = False
@@ -63,10 +73,18 @@ class GeneratorConfig:
     moisture_max: float = 0.3
     fractal_dimension: float = 1.5
     
-    # Fouling Distribution Parameters
-    fouling_settled_fraction: float = 0.7  # 70% settles to bottom layer
+    # Fouling Distribution Parameters — 3-zone model (Benedetto et al. 2016)
+    fouling_settled_fraction: float = 0.7   # kept for back-compat (= dense_fraction below)
+    fouling_dense_fraction: float = 0.5     # zone 1: solid dense fouling (bal_foul)
+    fouling_granular_fraction: float = 0.3  # zone 2: granular transition (bal_foul_granular)
     fouling_particle_size_min: float = 0.002  # 2mm
     fouling_particle_size_max: float = 0.008  # 8mm
+
+    # Fouling PSD type: "standard" (coarser, 30% P200) or "a4" (Benedetto et al. 2016, 84.7% P200)
+    fouling_psd_type: str = "standard"
+
+    # Rock gravity settlement (Benedetto et al. 2016 vertical compaction)
+    rock_gravity_settle: bool = True
     
     # Antenna Placement
     antenna_clearance_above_ballast: float = 0.50  # 50cm above highest rock (railway standard)
@@ -74,7 +92,7 @@ class GeneratorConfig:
     
     # Rock Z-Extent (Extrusion)
     rock_z_start: float = 0.0
-    rock_z_end: float = 0.005  # Default to 0 (2D plane)
+    rock_z_end: float = 0.004  # full z extent = domain_z (2-D simulation)
     
     # Rock Packing Strategy
     rock_packing_algorithm: str = "front_chain"  # "random", "poisson", "front_chain", "physics", "triangle"
@@ -193,6 +211,48 @@ class GeneratorConfig:
             raise ValueError(f"moisture_max must be between 0 and 1, got {self.moisture_max}")
         if self.moisture_min > self.moisture_max:
             raise ValueError(f"moisture_min ({self.moisture_min}) cannot exceed moisture_max ({self.moisture_max})")
+
+        self._check_fdtd_compliance()
+
+    def _check_fdtd_compliance(self) -> None:
+        """Warn when FDTD discretization or domain-size guidelines are violated.
+
+        Guidelines from Khosravi Largani et al. (2025), IEEE GRSL:
+          Rule 1 (discretization): dx <= lambda_min / 10
+                  lambda_min = c / (fmax * sqrt(er_max))
+                  fmax = 1.545 * center_freq  (Wang 2015 Ricker ratio)
+          Rule 2 (domain width):  domain_x >= 1.5 * lambda_max
+                  lambda_max = c / (fmin * sqrt(er_primary))
+                  fmin = 0.455 * center_freq
+        """
+        import warnings, math
+        C = 3e8
+        fmax = self.center_freq * 1.545   # Wang (2015)
+        fmin = self.center_freq * 0.455
+
+        # Rule 1 — worst-case permittivity is wet fouling or subgrade (whichever is higher)
+        er_max = max(self.bal_foul_eps_max * self.wet_eps_factor_max, 10.0)
+        lam_min = C / (fmax * math.sqrt(er_max))
+        dx_req  = lam_min / 10
+        if self.dx > dx_req * 1.01:
+            warnings.warn(
+                f"FDTD Rule 1: dx={self.dx*1000:.1f}mm exceeds lambda_min/10={dx_req*1000:.2f}mm "
+                f"(er_max={er_max:.1f}, fmax={fmax/1e9:.2f}GHz). "
+                f"Reduce dx to <={dx_req*1000:.1f}mm for strict compliance.",
+                UserWarning, stacklevel=3,
+            )
+
+        # Rule 2 — ballast rock is the primary propagation medium
+        er_primary = self.bal_rock_eps
+        lam_max   = C / (fmin * math.sqrt(er_primary))
+        dom_req   = 1.5 * lam_max
+        if self.domain_x < dom_req * 0.99:
+            warnings.warn(
+                f"FDTD Rule 2: domain_x={self.domain_x:.3f}m < 1.5*lambda_max={dom_req:.3f}m "
+                f"(er_ballast={er_primary}, fmin={fmin/1e9:.3f}GHz). "
+                f"Increase domain_x to >={dom_req:.3f}m.",
+                UserWarning, stacklevel=3,
+            )
             
     
     @classmethod

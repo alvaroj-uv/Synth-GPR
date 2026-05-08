@@ -6,7 +6,9 @@
       "Bash(ls \"/c/Users/barba/.conda/envs/gprMax/Scripts/\" 2>/dev/null | head -10 || ls \"/c/Users/barba/.conda/envs/gprMax/\" 2>/dev/null)",
       "Read(//c/Users/barba/.conda/envs/gprMax/Scripts//**)",
       "Read(//c/Users/barba/.conda/envs/gprMax//**)",
-      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe scripts/visualization/render_in_file.py output/test/s_0000.in)"
+      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe scripts/visualization/render_in_file.py output/test/s_0000.in)",
+      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -)",
+      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -W all -c ' *)"
     ]
   }
 }

@@ -193,6 +193,16 @@ class GeometryViewCommand(GPRCommand):
     def get_cmd_string(self) -> str:
         return f"#geometry_view: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.dx)} {fmt(self.dy)} {fmt(self.dz)} {self.filename} {self.type_char}"
 
+@dataclass
+class AbsorbingBCCommand(GPRCommand):
+    """PML absorbing boundary: #pml_cells: n_cells (Benedetto et al. 2016)."""
+    cells: int = 10
+    commented: bool = False
+
+    def get_cmd_string(self) -> str:
+        return f"#pml_cells: {self.cells}"
+
+
 class RawCommand(GPRCommand):
     """Fallback for raw command strings that don't fit other categories."""
     def __init__(self, text: str, commented: bool = False):

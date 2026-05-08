@@ -367,48 +367,63 @@ class RockWorker(Worker):
                 z_start = typed_params.rock_z_start or z_start
                 z_end = typed_params.rock_z_end or z_end
              
-        total_rocks = 0
-        highest_rock_y = start_y
-
+        # Collect all rocks across all layers before emitting geometry
+        all_rocks = []
         for i in range(n_layers):
-            # Non-overlapping layer boundaries (clean slicing for computational efficiency)
             y_min = start_y + i * layer_height
             y_max = start_y + (i + 1) * layer_height
-
-            rad_min_i = r_min
-            rad_max_i = r_max
-            
             bounds = PackingBounds(0.0, domain_x, y_min, y_max)
-            
             rocks = self._generate_rocks_for_layer(
-                scene, strategy, bounds, rad_min_i, rad_max_i, i
+                scene, strategy, bounds, r_min, r_max, i
             )
-            
             for rock in rocks:
-                # Store 3D extent in rock object for domain model completeness
                 rock.z_start = z_start
                 rock.z_end = z_end
-                
-                cmd = CylinderCommand(
-                    rock.x, rock.y, z_start,
-                    rock.x, rock.y, z_end,
-                    rock.radius, MC.BALLAST_ROCK
-                )
-                scene.add_geometry(cmd)
-                
-                # Add to collection
-                rock_collection.add(rock)
-                
-                # Keep legacy list for now just in case, but prefer collection
-                scene.rock_positions.append(rock)
-                
-                highest_rock_y = max(highest_rock_y, rock.y + rock.radius)
-                total_rocks += 1
-                
+                all_rocks.append(rock)
+
+        # Gravity settlement: drop each rock to rest on floor or neighbours
+        if getattr(scene.config, 'rock_gravity_settle', True) and all_rocks:
+            self._settle_rocks(all_rocks, start_y)
+
+        # Emit geometry
+        total_rocks = 0
+        highest_rock_y = start_y
+        for rock in all_rocks:
+            cmd = CylinderCommand(
+                rock.x, rock.y, z_start,
+                rock.x, rock.y, z_end,
+                rock.radius, MC.BALLAST_ROCK
+            )
+            scene.add_geometry(cmd)
+            rock_collection.add(rock)
+            scene.rock_positions.append(rock)
+            highest_rock_y = max(highest_rock_y, rock.y + rock.radius)
+            total_rocks += 1
+
         return total_rocks, highest_rock_y
 
-    def _generate_rocks_for_layer(self, scene: SceneCheckpoint, strategy: Any, 
-                                  bounds: PackingBounds, r_min: float, r_max: float, 
+    def _settle_rocks(self, rocks: List[Any], floor_y: float) -> None:
+        """Drop each rock under gravity until it rests on the floor or a lower rock.
+
+        Rocks are processed lowest-first. Each rock's y is updated in-place.
+        O(n²) — acceptable for typical counts (~200 rocks, Benedetto et al. 2016).
+        """
+        import math
+        rocks.sort(key=lambda r: r.y)
+        settled: List[Any] = []
+        for rock in rocks:
+            best_y = floor_y + rock.radius  # resting on layer floor
+            for s in settled:
+                dx = abs(rock.x - s.x)
+                gap = rock.radius + s.radius
+                if dx < gap:  # horizontal overlap → can stack
+                    contact_y = s.y + math.sqrt(gap ** 2 - dx ** 2)
+                    best_y = max(best_y, contact_y)
+            rock.y = best_y
+            settled.append(rock)
+
+    def _generate_rocks_for_layer(self, scene: SceneCheckpoint, strategy: Any,
+                                  bounds: PackingBounds, r_min: float, r_max: float,
                                   layer_idx: int) -> List[Any]:
         """Tries primary strategy, falls back to GridPacking if needed."""
         target_fill = scene.config.rock_packing_target_fill
@@ -542,36 +557,43 @@ class FoulingWorker(Worker):
         pvc_fraction = min(max(pvc, 0), 100) / 100.0
         fouling_height = ballast_thickness * pvc_fraction
         
+        # Register both fouling materials (granular + dense)
         foul_mat = materials.get_material(MC.FOULING, moisture=moisture)
         scene.add_material(foul_mat)
-        
-        # 4. Generate Settled Layer
-        settled_fraction = scene.config.fouling_settled_fraction
-        settled_h = fouling_height * settled_fraction
-        
-        if settled_h > 2e-3: 
-            foul_horizon_y = start_y + settled_h
-            self._generate_settled_layer(scene, start_y, foul_horizon_y, domain_x, domain_z)
-            settled_top = foul_horizon_y
-        else:
-            settled_top = start_y
-            
-        # 5. Generate Dispersed Particles
-        disp_top = start_y + fouling_height
+        dense_mat = materials.get_material(MC.FOULING_DENSE, moisture=moisture)
+        scene.add_material(dense_mat)
+
+        # 3-zone fouling model (Benedetto et al. 2016):
+        #   Zone 1 — dense solid (bal_foul):        bottom dense_fraction of fouling_height
+        #   Zone 2 — granular dispersed (bal_foul_granular): next granular_fraction
+        #   Zone 3 — sparse dispersed (bal_foul_granular):   remaining top fraction
+        dense_frac    = getattr(scene.config, 'fouling_dense_fraction',    0.5)
+        granular_frac = getattr(scene.config, 'fouling_granular_fraction', 0.3)
+
+        z1_top = start_y + fouling_height * dense_frac
+        z2_top = z1_top  + fouling_height * granular_frac
+        z3_top = start_y + fouling_height
+
+        # Zone 1: solid dense block
+        if z1_top - start_y > 2e-3:
+            self._generate_settled_layer(scene, start_y, z1_top, domain_x, domain_z,
+                                         material=MC.FOULING_DENSE)
+
+        # Zone 2: dense dispersed particles (0.7× multiplier)
         self._generate_dispersed_particles(
-            scene, settled_top, disp_top, 
-            pvc_fraction, domain_x, domain_z
+            scene, z1_top, z2_top, pvc_fraction * 0.7, domain_x, domain_z
         )
 
-    def _generate_settled_layer(self, scene: SceneCheckpoint, y_start: float, y_end: float, 
-                                domain_x: float, domain_z: float) -> None:
-        """Generates the solid block of settled fouling material."""
-        box_cmd = BoxCommand(
-            0, y_start, 0,
-            domain_x, y_end, domain_z,
-            MC.FOULING
+        # Zone 3: sparse dispersed particles (0.25× multiplier)
+        self._generate_dispersed_particles(
+            scene, z2_top, z3_top, pvc_fraction * 0.25, domain_x, domain_z
         )
-        scene.add_geometry(box_cmd)
+
+    def _generate_settled_layer(self, scene: SceneCheckpoint, y_start: float, y_end: float,
+                                domain_x: float, domain_z: float,
+                                material: str = MC.FOULING) -> None:
+        """Generates the solid block of settled fouling material."""
+        scene.add_geometry(BoxCommand(0, y_start, 0, domain_x, y_end, domain_z, material))
 
     def _generate_dispersed_particles(self, scene: SceneCheckpoint, y_min: float, y_max: float, 
                                      pvc_fraction: float, domain_x: float, domain_z: float) -> None:
@@ -664,7 +686,7 @@ class AntennaWorker(Worker):
 
         # Determine Horizontal Positions
         tx_x = scene.config.tx_x + offset
-        rx_x = scene.config.rx_x + offset
+        rx_x = tx_x if scene.config.monostatic else scene.config.rx_x + offset
         tx_rx_z = scene.config.tx_rx_z
         
         # Create Point3D objects (fixing Primitive Obsession #2)

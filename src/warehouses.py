@@ -28,12 +28,11 @@ class MaterialWarehouse:
         # Universal Constants
         self._materials[MC.AIR] = MaterialCommand(*MC.AIR_PROPS, 1.0, 0.0, MC.AIR)
         
-        # Subgrade
-        # TODO: Get from Config if available, else standard
-        sub_eps = self.config.bal_foul_eps_max if hasattr(self.config, 'bal_foul_eps_max') else MC.SUBGRADE_PROPS[0]
-        
+        # Subgrade: dry εr=10, saturated εr=21 (Xie et al. 2010)
+        sub_eps = (MC.SUBGRADE_EPS_SAT if getattr(self.config, 'subgrade_wet', False)
+                   else MC.SUBGRADE_PROPS[0])
         self._materials[MC.SUBGRADE] = MaterialCommand(
-            sub_eps, 
+            sub_eps,
             MC.SUBGRADE_PROPS[1],
             1.0, 0.0,
             MC.SUBGRADE
@@ -54,7 +53,6 @@ class MaterialWarehouse:
         )
         
         # Fouling (Clay/Soil) - Base
-        # We use minimum fouling props as base
         self._materials['fouling_base'] = MaterialCommand(
             self.config.bal_foul_eps_min,
             self.config.bal_foul_sigma_min,
@@ -62,12 +60,20 @@ class MaterialWarehouse:
             "fouling_base"
         )
 
+        # Dense fouling placeholder (actual value computed moisture-dependently at runtime)
+        self._materials[MC.FOULING_DENSE] = MaterialCommand(
+            self.config.bal_foul_eps_max,
+            self.config.bal_foul_sigma_max if hasattr(self.config, 'bal_foul_sigma_max') else 0.05,
+            1.0, 0.0,
+            MC.FOULING_DENSE
+        )
+
     def get_material(self, name: str, **kwargs) -> Optional[MaterialCommand]:
         """Retrieve a material definition by name."""
-        # Dynamic handling for moisture-dependent fouling
         if name == MC.FOULING and "moisture" in kwargs:
             return self.get_fouled_material(kwargs["moisture"])
-            
+        if name == MC.FOULING_DENSE and "moisture" in kwargs:
+            return self.get_fouled_dense_material(kwargs["moisture"])
         return self._materials.get(name)
     
     def get_fouled_material(self, moisture: float) -> MaterialCommand:
@@ -87,6 +93,13 @@ class MaterialWarehouse:
         foul_sigma = 0.001 + 0.2 * moisture
         
         return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, MC.FOULING)
+
+    def get_fouled_dense_material(self, moisture: float) -> MaterialCommand:
+        """Dense settled fouling (zone 1): fully void-filled, higher εr."""
+        from .physics import topp_mixing_model
+        dense_eps = topp_mixing_model(min(moisture + 0.15, 0.6))
+        dense_sigma = 0.002 + 0.3 * moisture
+        return MaterialCommand(dense_eps, dense_sigma, 1.0, 0.0, MC.FOULING_DENSE)
 
     def mix_material(self, base_name: str, additive_name: str, fraction: float) -> MaterialCommand:
         """

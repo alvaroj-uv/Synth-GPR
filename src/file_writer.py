@@ -259,13 +259,15 @@ class GPRMaxFileWriter:
         # Combine sources and receivers into one list for the source_commands field
         all_source_commands = list(checkpoint.sources) + list(checkpoint.receivers)
         
+        domain_cmds = [
+            checkpoint.domain_cmd,
+            checkpoint.dx_dy_dz_cmd,
+            checkpoint.time_window_cmd,
+            checkpoint.absorbing_bc_cmd,  # PML boundary (may be None for old checkpoints)
+        ]
         scene_def = SceneDefinition(
             config=checkpoint.config,
-            domain_commands=[
-                checkpoint.domain_cmd,
-                checkpoint.dx_dy_dz_cmd,
-                checkpoint.time_window_cmd
-            ],
+            domain_commands=[c for c in domain_cmds if c is not None],
             material_commands=checkpoint.materials,
             geometry_commands=checkpoint.geometry,
             source_commands=all_source_commands,

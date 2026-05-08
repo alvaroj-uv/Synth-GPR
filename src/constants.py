@@ -61,13 +61,15 @@ class MaterialConstants:
     SUBGRADE: str = "subgrade"
     FORMATION: str = "formation"
     BALLAST_ROCK: str = "bal_rock"
-    FOULING: str = "bal_foul_granular"
+    FOULING: str = "bal_foul_granular"       # granular / partially fouled
+    FOULING_DENSE: str = "bal_foul"          # dense settled fouling (zone 1)
     SLEEPER: str = "sleeper"
     RAIL: str = "rail"
     
     # Defaults (Dielectric, Conductivity)
     AIR_PROPS: tuple = (1.0, 0.0)
-    SUBGRADE_PROPS: tuple = (10.0, 0.02) # Approx
+    SUBGRADE_PROPS: tuple = (10.0, 0.02)      # dry/moist
+    SUBGRADE_EPS_SAT: float = 21.0            # saturated — Xie et al. (2010)
     FORMATION_PROPS: tuple = (10.0, 0.03) # S&W
     BALLAST_ROCK_PROPS: tuple = (5.5, 0.001) # Granite/Limestone
     FOULING_BASE_PROPS: tuple = (5.0, 0.01) # Dry clay/fines

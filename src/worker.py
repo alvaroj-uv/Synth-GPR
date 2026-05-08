@@ -149,6 +149,11 @@ class SceneCheckpoint:
     def time_window_cmd(self) -> Any:
         """Access time window command (legacy compatibility)."""
         return self.domain_settings.time_window_cmd if self.domain_settings else None
+
+    @property
+    def absorbing_bc_cmd(self) -> Any:
+        """Access PML absorbing boundary command."""
+        return self.domain_settings.absorbing_bc_cmd if self.domain_settings else None
     
     @property
     def rock_positions(self) -> List[Any]:

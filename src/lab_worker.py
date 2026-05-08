@@ -165,14 +165,24 @@ class LabWorker(Worker):
         
         total_fouling_area_mm2 = fouling_area_settled
         
-        # Synthesize Fine Fraction using Standard PSD Curve
-        standard_fouling_psd = [
-            (PC.SIEVE_NO4, 100.0),   # 4.75mm
-            (PC.SIEVE_NO10, 80.0),   # 2.00mm
-            (PC.SIEVE_NO40, 50.0),   # 0.425mm
-            (PC.SIEVE_NO200, 30.0),  # 0.075mm (Fines content)
-            (0.002, 5.0)             # Clay fraction
-        ]
+        # Fouling PSD: "standard" (coarser) or "a4" (Benedetto et al. 2016, silty A4 soil)
+        psd_type = getattr(scene.config, 'fouling_psd_type', 'standard')
+        if psd_type == 'a4':
+            standard_fouling_psd = [
+                (PC.SIEVE_NO4,   100.0),  # 4.75mm: 100%
+                (PC.SIEVE_NO10,  99.6),   # 2.00mm: 99.6%
+                (PC.SIEVE_NO40,  99.4),   # 0.425mm: 99.4%
+                (PC.SIEVE_NO200, 84.7),   # 0.075mm: 84.7% (silty A4 material)
+                (0.002,          15.0),   # Clay fraction (estimated)
+            ]
+        else:
+            standard_fouling_psd = [
+                (PC.SIEVE_NO4,   100.0),  # 4.75mm
+                (PC.SIEVE_NO10,  80.0),   # 2.00mm
+                (PC.SIEVE_NO40,  50.0),   # 0.425mm
+                (PC.SIEVE_NO200, 30.0),   # 0.075mm (Fines content)
+                (0.002,          5.0),    # Clay fraction
+            ]
         
         from src.physics import get_percent_passing
         
@@ -258,10 +268,45 @@ class LabWorker(Worker):
         fi_class = classify_fouling_index(FI)
         scene.metadata['Lab_Class'] = fi_class
 
+        # δ = radius / depth-from-ballast-surface (Xie et al. 2010)
+        # Detectability threshold: δ < 0.08 → hyperbolic signature fades out
+        deltas = []
+        for rock in scene.rock_positions:
+            depth = ballast_top - rock.y
+            if depth > 0:
+                deltas.append(rock.radius / depth)
+        if deltas:
+            scene.metadata['Lab_delta_min'] = round(min(deltas), 4)
+            scene.metadata['Lab_delta_max'] = round(max(deltas), 4)
+            scene.metadata['Lab_delta_frac_detectable'] = round(
+                sum(1 for d in deltas if d >= 0.08) / len(deltas), 3
+            )
+
         fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
         scene.metadata.update(fractions)
 
-        print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) -> Class: {fi_class}")
+        # Rb-f (Indraratna et al. 2011): volume-based ratio independent of moisture
+        # Rb-f = (Vf / Gs_f) / (Vb / Gs_b) × 100  ≈ (area_foul / Gs_f) / (area_rock / Gs_b) × 100
+        Gs_f = getattr(MC, 'DEFAULT_FOULING_DENSITY', 2.6)
+        Gs_b = getattr(MC, 'DEFAULT_BALLAST_DENSITY', 2.6)
+        rb_f = ((total_fouling_area_mm2 / Gs_f) / (total_rock_area_mm2 / Gs_b) * 100.0
+                if total_rock_area_mm2 > 0 else 0.0)
+        scene.metadata['Lab_Rb_f'] = round(rb_f, 3)
+
+        # CRIM effective permittivity (Birchak 1974, α=0.5 — Benedetto et al. 2016)
+        # εr_eff = (f_rock·√εr_rock + f_foul·√εr_foul + f_void·1)²
+        if layer_area_mm2 > 0:
+            f_rock_2d = min(total_rock_area_mm2 / layer_area_mm2, 1.0)
+            f_foul_2d = min(total_fouling_area_mm2 / layer_area_mm2, 1.0)
+            f_void_2d = max(0.0, 1.0 - f_rock_2d - f_foul_2d)
+            er_rock = getattr(scene.config, 'bal_rock_eps', 5.5)
+            from src.physics import topp_mixing_model
+            er_foul = topp_mixing_model(scene.metadata.get('moisture', 0.0))
+            er_eff = (f_rock_2d * math.sqrt(er_rock) + f_foul_2d * math.sqrt(er_foul) + f_void_2d) ** 2
+            scene.metadata['Lab_er_eff'] = round(er_eff, 3)
+
+        print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) "
+              f"Rb-f={rb_f:.2f}% -> Class: {fi_class}")
         print(f"[{self.name}] MC Phase Fractions: Rock={fractions['mc_rock_fraction']:.3f}, "
               f"Fouling={fractions['mc_fouling_fraction']:.3f}, "
               f"Subgrade={fractions['mc_subgrade_fraction']:.3f}, "
