@@ -25,9 +25,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 
-from src.visualization.in_parser import parse_in_file
-from src.visualization.geometry_render import draw_geometry
-from src.visualization.signal_panels import (
+from src.visualization.scene import parse_in_file, draw_geometry
+from src.visualization.panels import (
     SignalPanelConfig,
     filter_signals,
     preprocess_signals,
@@ -35,8 +34,8 @@ from src.visualization.signal_panels import (
     draw_ascan,
     draw_envelope,
     draw_spectrogram,
+    draw_grading_curve,
 )
-from src.visualization.grading_curve import draw_grading_curve
 
 logging.basicConfig(
     level=logging.INFO,

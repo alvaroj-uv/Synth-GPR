@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(Remove-Item \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\\\\src\\\\visualization\\\\in_parser.py\", \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\\\\src\\\\visualization\\\\geometry_render.py\", \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\\\\src\\\\visualization\\\\signal_panels.py\", \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\\\\src\\\\visualization\\\\grading_curve.py\")",
+      "Bash(ls \"/c/Users/barba/.conda/envs/gprMax/Scripts/\" 2>/dev/null | head -10 || ls \"/c/Users/barba/.conda/envs/gprMax/\" 2>/dev/null)",
+      "Read(//c/Users/barba/.conda/envs/gprMax/Scripts//**)",
+      "Read(//c/Users/barba/.conda/envs/gprMax//**)",
+      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe scripts/visualization/render_in_file.py output/test/s_0000.in)"
+    ]
+  }
+}

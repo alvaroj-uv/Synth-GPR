@@ -16,8 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.visualization.in_parser import parse_in_file
-from src.visualization.geometry_render import draw_geometry
+from src.visualization.scene import parse_in_file, draw_geometry
 
 
 def main() -> None:

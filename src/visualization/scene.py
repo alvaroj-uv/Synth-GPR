@@ -1,14 +1,113 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
+import json
 
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.axes import Axes
 
-from src.visualization.in_parser import SceneData
 
+# ── Data model ────────────────────────────────────────────────────────────────
+
+@dataclass
+class BoxGeom:
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    material: str
+
+
+@dataclass
+class CylinderGeom:
+    x: float
+    y: float
+    radius: float
+    material: str
+
+
+@dataclass
+class AntennaPos:
+    x: float
+    y: float
+
+
+@dataclass
+class SceneData:
+    domain_x: float = 0.0
+    domain_y: float = 0.0
+    title: str = ""
+    boxes: list = field(default_factory=list)      # list[BoxGeom]
+    cylinders: list = field(default_factory=list)  # list[CylinderGeom]
+    tx: Optional[AntennaPos] = None
+    rx: Optional[AntennaPos] = None
+    meta: dict = field(default_factory=dict)
+
+
+# ── Parser ────────────────────────────────────────────────────────────────────
+
+def parse_in_file(path: Path) -> SceneData:
+    """Parse a gprMax .in file into SceneData.
+
+    Handles: #domain, #title, #box, #cylinder, #hertzian_dipole, #rx
+    and ## key: value metadata comments (JSON-decoded when possible).
+    """
+    scene = SceneData()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+
+            if line.startswith("## ") and ":" in line:
+                key, _, val = line[3:].partition(":")
+                k, v = key.strip(), val.strip()
+                try:
+                    scene.meta[k] = json.loads(v)
+                except (json.JSONDecodeError, ValueError):
+                    scene.meta[k] = v
+                continue
+
+            if not line.startswith("#"):
+                continue
+            tokens = line.split()
+            if not tokens:
+                continue
+            cmd = tokens[0]
+
+            if cmd == "#title:":
+                scene.title = " ".join(tokens[1:])
+            elif cmd == "#domain:":
+                scene.domain_x = float(tokens[1])
+                scene.domain_y = float(tokens[2])
+            elif cmd == "#box:":
+                # #box: x1 y1 z1 x2 y2 z2 material
+                scene.boxes.append(BoxGeom(
+                    x1=float(tokens[1]), y1=float(tokens[2]),
+                    x2=float(tokens[4]), y2=float(tokens[5]),
+                    material=tokens[7],
+                ))
+            elif cmd == "#cylinder:":
+                # #cylinder: x1 y1 z1 x2 y2 z2 radius material
+                scene.cylinders.append(CylinderGeom(
+                    x=float(tokens[1]), y=float(tokens[2]),
+                    radius=float(tokens[7]),
+                    material=tokens[8],
+                ))
+            elif cmd == "#hertzian_dipole:":
+                # #hertzian_dipole: polarisation x y z waveform_id
+                scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]))
+            elif cmd == "#rx:":
+                # #rx: x y z
+                scene.rx = AntennaPos(x=float(tokens[1]), y=float(tokens[2]))
+
+    return scene
+
+
+# ── Material styles ───────────────────────────────────────────────────────────
 
 @dataclass
 class MaterialStyle:
@@ -30,7 +129,6 @@ STYLES: dict[str, MaterialStyle] = {
     "concrete_sleeper":  MaterialStyle("#708090", "x",  "Sleeper"),
 }
 
-# Gradient fouling styles: bal_foul_g1 .. bal_foul_g9 (YlOrBr ramp)
 for _i in range(1, 10):
     STYLES[f"bal_foul_g{_i}"] = MaterialStyle(
         color=matplotlib.colors.to_hex(plt.cm.YlOrBr(0.3 + _i * 0.07)),
@@ -47,15 +145,11 @@ _LEGEND_ORDER = [
 ]
 
 
+# ── Geometry renderer ─────────────────────────────────────────────────────────
+
 def draw_geometry(ax: Axes, scene: SceneData) -> None:
-    """
-    Draw all geometry objects from a SceneData onto ax.
-
-    Renders boxes, cylinders, TX/RX antennas, the MC sampling box overlay,
-    layer boundary guide lines, metadata annotation, and legend.
-    """
+    """Draw boxes, cylinders, antennas, MC box, boundary lines, and legend."""
     dx, dy = scene.domain_x, scene.domain_y
-
     ax.set_facecolor(STYLES.get("free_space", MaterialStyle("#F0F4F8")).color)
 
     seen_mats: set[str] = set()
@@ -87,7 +181,6 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ax.plot(scene.rx.x, scene.rx.y, marker="^", color="#1060D0",
                 markersize=7, zorder=5, linestyle="none")
 
-    # MC sampling box
     mc_y_min = scene.meta.get("mc_y_min")
     mc_y_max = scene.meta.get("mc_y_max")
     if mc_y_min is not None and mc_y_max is not None:
@@ -97,7 +190,6 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
             linestyle="--", zorder=6,
         ))
 
-    # Layer boundary guide lines
     boundary_ys: set[float] = set()
     for box in scene.boxes:
         if box.material in ("subgrade", "formation", "bal_foul_granular"):
@@ -106,7 +198,6 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         if 0 < y < dy:
             ax.axhline(y, color="#AAAAAA", linewidth=0.6, linestyle="--", zorder=0)
 
-    # Domain border
     ax.add_patch(mpatches.Rectangle(
         (0, 0), dx, dy,
         fill=False, edgecolor="black", linewidth=1.5, zorder=7,
@@ -122,13 +213,11 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
 
     _draw_axis_break(ax, "top")
     _draw_axis_break(ax, "bottom")
-
     _draw_legend(ax, scene, seen_mats, mc_y_min)
     _draw_meta_annotation(ax, scene)
 
 
 def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) -> None:
-    """Draw a double-slash axis-break symbol on both vertical spines."""
     d = size
     kwargs = dict(transform=ax.transAxes, color="black", clip_on=False, linewidth=1)
     y = 0 if location == "bottom" else 1
@@ -137,18 +226,14 @@ def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) ->
         ax.plot((x0 - d, x0 + d), (y - d + d / 2, y + d + d / 2), **kwargs)
 
 
-def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str],
-                 mc_y_min) -> None:
+def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str], mc_y_min) -> None:
     patches = []
     for mat in _LEGEND_ORDER:
         if mat in seen_mats:
             style = STYLES[mat]
             patches.append(mpatches.Patch(
-                facecolor=style.color,
-                edgecolor="#555555",
-                hatch=style.hatch,
-                linewidth=0.5,
-                label=style.label,
+                facecolor=style.color, edgecolor="#555555",
+                hatch=style.hatch, linewidth=0.5, label=style.label,
             ))
     if scene.tx:
         patches.append(plt.Line2D([0], [0], marker="v", color="#E82020",
