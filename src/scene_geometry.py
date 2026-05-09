@@ -201,6 +201,49 @@ class RockCollection:
         """Number of rocks in collection."""
         return len(self.positions)
 
+    @property
+    def rocks(self) -> List[Any]:
+        """Alias for positions — mirrors rock_model.RockCollection API."""
+        return self.positions
+
+    def calculate_density_monte_carlo(self, domain_x: float, y_min: float, y_max: float,
+                                      samples: int = 5000) -> float:
+        """Estimate 2-D packing density via Monte Carlo sampling."""
+        import numpy as np
+        if not self.positions:
+            return 0.0
+        pts_x = np.random.uniform(0, domain_x, samples)
+        pts_y = np.random.uniform(y_min, y_max, samples)
+        rx  = np.array([r.x      for r in self.positions])
+        ry  = np.array([r.y      for r in self.positions])
+        rr2 = np.array([r.radius for r in self.positions]) ** 2
+        dx  = pts_x[:, np.newaxis] - rx
+        dy  = pts_y[:, np.newaxis] - ry
+        hits = np.sum(np.any(dx**2 + dy**2 < rr2, axis=1))
+        return float(hits) / float(samples)
+
+    def to_dataframe(self, default_z_start: float = None, default_z_end: float = None):
+        """Convert to DataFrame for storage/analytics."""
+        import pandas as pd
+        rows = [{
+            'x': r.x, 'y': r.y, 'radius': r.radius,
+            'z_start': r.z_start if r.z_start is not None else default_z_start,
+            'z_end':   r.z_end   if r.z_end   is not None else default_z_end,
+            'material': 'bal_rock',
+        } for r in self.positions]
+        return pd.DataFrame(rows)
+
+    @classmethod
+    def from_dataframe(cls, df) -> 'RockCollection':
+        """Reconstruct from DataFrame."""
+        from .rock_model import Rock
+        return cls(positions=[
+            Rock(x=row.x, y=row.y, radius=row.radius,
+                 z_start=getattr(row, 'z_start', None),
+                 z_end=getattr(row, 'z_end', None))
+            for row in df.itertuples()
+        ])
+
 
 @dataclass(frozen=True)
 class DomainSettings:

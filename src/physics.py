@@ -159,30 +159,33 @@ def inverse_convert_fi_to_pvc(
     return pvc_fraction * 100.0
 
 
-def classify_fouling_index(fi: float) -> Literal["CL", "MF", "F", "HF"]:
+def classify_fouling_index(fi: float) -> Literal["C", "MC", "MF", "F", "HF"]:
     """
     Classify fouling based on Fouling Index (FI).
-    
+
     WHY THESE THRESHOLDS:
-    These are industry-standard categories from Selig & Waters (1994),
-    derived from empirical studies correlating ballast contamination to
-    track performance degradation. They're not arbitrary—they represent
-    critical points where drainage and load-bearing capacity change.
-    
+    5-class scheme from Selig & Waters (1994), matching the industry standard
+    used in GPR + ML studies (e.g., Rojas-Vivanco et al. 2025, Transp. Geotech.).
+    Splitting C from MC matters: the C/MC boundary (FI=1%) is where the
+    confusion matrix in the literature shows the most misclassification.
+
     Classification (Selig & Waters, 1994):
-        - Clean (CL):              FI < 10%
+        - Clean (C):               FI < 1%
+        - Moderately Clean (MC):   1%  <= FI < 10%
         - Moderately Fouled (MF):  10% <= FI < 20%
         - Fouled (F):              20% <= FI < 40%
         - Highly Fouled (HF):      FI >= 40%
-    
+
     Args:
         fi: Fouling Index (mass percentage)
-    
+
     Returns:
-        Classification code: "CL", "MF", "F", or "HF"
+        Classification code: "C", "MC", "MF", "F", or "HF"
     """
     if fi < PHC.FI_CLEAN_THRESHOLD:
-        return "CL"
+        return "C"
+    elif fi < PHC.FI_MODERATELY_CLEAN_THRESHOLD:
+        return "MC"
     elif fi < PHC.FI_MODERATELY_FOULED_THRESHOLD:
         return "MF"
     elif fi < PHC.FI_FOULED_THRESHOLD:
@@ -272,6 +275,69 @@ def _log_linear_interpolate(
     interpolated_percent = percent_passing_lower + slope * (log_target - log_lower)
     
     return max(0.0, min(100.0, interpolated_percent))
+
+
+def circle_strip_intersection(cx: float, cy: float, radius: float,
+                               y_min: float, y_max: float) -> float:
+    """Area of a circle intersected with a horizontal strip [y_min, y_max]."""
+    return (_circular_segment_area_below(cx, cy, radius, y_max) -
+            _circular_segment_area_below(cx, cy, radius, y_min))
+
+
+def _circular_segment_area_below(cx: float, cy: float, radius: float, line_y: float) -> float:
+    """Area of a circle below the horizontal line y = line_y."""
+    import math
+    d = line_y - cy
+    if d >= radius:
+        return math.pi * radius ** 2
+    if d <= -radius:
+        return 0.0
+    return radius ** 2 * (math.pi / 2 + math.asin(d / radius)) + d * math.sqrt(radius ** 2 - d ** 2)
+
+
+def crim_bulk_eps(
+    v_rock: float, eps_rock: float,
+    v_fines: float, eps_fines: float,
+    v_water: float, eps_water: float,
+    v_air: float,
+) -> float:
+    """CRIM bulk dielectric constant (Barrett et al. 2019, Eq. 5).
+
+    sqrt(eps_bulk) = sum_i V_i * sqrt(eps_i)   (Complex Refractive Index Method)
+    """
+    sqrt_eps = (v_rock  * math.sqrt(max(eps_rock,  1.0))
+              + v_fines * math.sqrt(max(eps_fines, 1.0))
+              + v_water * math.sqrt(max(eps_water, 1.0))
+              + v_air   * 1.0)
+    return max(1.0, sqrt_eps ** 2)
+
+
+def surface_reflectivity_R(eps_above: float, eps_below: float) -> float:
+    """Normal-incidence surface reflectivity (Barrett et al. 2019, Eq. 7).
+
+    R = ((sqrt(eps1) - sqrt(eps2)) / (sqrt(eps1) + sqrt(eps2)))^2
+    """
+    a = math.sqrt(max(eps_above, 1e-9))
+    b = math.sqrt(max(eps_below, 1e-9))
+    denom = a + b
+    if denom < 1e-12:
+        return 0.0
+    return ((a - b) / denom) ** 2
+
+
+def attenuation_factor_npm(freq_hz: float, eps_real: float, sigma_eff: float) -> float:
+    """EM signal attenuation alpha in Np/m (Barrett et al. 2019, Eq. 8).
+
+    alpha = omega * sqrt(mu0*eps0*eps' / 2 * (sqrt(1 + tan^2(delta)) - 1))
+    where tan(delta) = eps'' / eps',  eps'' = sigma / (omega * eps0)
+    """
+    eps0  = 8.854e-12
+    mu0   = 4.0 * math.pi * 1e-7
+    omega = 2.0 * math.pi * freq_hz
+    eps_imag  = sigma_eff / (omega * eps0)
+    tan_delta = eps_imag / max(eps_real, 1e-9)
+    inner = mu0 * eps0 * eps_real / 2.0 * (math.sqrt(1.0 + tan_delta ** 2) - 1.0)
+    return omega * math.sqrt(max(inner, 0.0))
 
 
 def get_percent_passing(d_target: float, psd_points: list) -> float:

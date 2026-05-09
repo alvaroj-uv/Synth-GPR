@@ -14,9 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
-from src.visualization.scene import parse_in_file, draw_geometry
+from src.visualization.scene import parse_in_file, render_geometry_figure
 
 
 def main() -> None:
@@ -31,16 +30,7 @@ def main() -> None:
     out_path = args.out or in_path.with_suffix(".png")
 
     scene = parse_in_file(in_path)
-
-    aspect = scene.domain_y / max(scene.domain_x, 1e-6)
-    fig_w  = 6.0
-    fig_h  = min(fig_w * aspect * 0.75, 14)
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=args.dpi)
-    ax.set_title(in_path.stem, fontsize=10, fontweight="bold")
-
-    draw_geometry(ax, scene)
-
-    fig.tight_layout()
+    fig, _ = render_geometry_figure(scene, title=in_path.stem, dpi=args.dpi)
     fig.savefig(out_path, dpi=args.dpi, bbox_inches="tight")
     print(f"Saved -> {out_path}")
 

@@ -28,6 +28,10 @@ class SceneParameters:
     # Fouling Properties
     pvc: float = 0.0                    # Percentage Void Contamination (0-100%)
     moisture: float = 0.0               # Moisture content (0-1.0)
+
+    # Stratified fouling — independent PVC for each ballast half (Bianchini Ciampoli 2019)
+    pvc_top: Optional[float] = None     # Top-half PVC; None = uniform mode
+    pvc_bottom: Optional[float] = None  # Bottom-half PVC; None = uniform mode
     
     # Layer Geometry
     ballast_thickness: float = 0.45     # Ballast layer thickness (meters)
@@ -54,10 +58,14 @@ class SceneParameters:
         """Validate parameters."""
         if not (0 <= self.pvc <= 100):
             raise ValueError(f"pvc must be 0-100, got {self.pvc}")
-        
+        if self.pvc_top is not None and not (0 <= self.pvc_top <= 100):
+            raise ValueError(f"pvc_top must be 0-100, got {self.pvc_top}")
+        if self.pvc_bottom is not None and not (0 <= self.pvc_bottom <= 100):
+            raise ValueError(f"pvc_bottom must be 0-100, got {self.pvc_bottom}")
+
         if not (0 <= self.moisture <= 1.0):
             raise ValueError(f"moisture must be 0-1.0, got {self.moisture}")
-        
+
         if self.ballast_thickness < 0:
             raise ValueError(f"ballast_thickness must be positive, got {self.ballast_thickness}")
     
@@ -66,6 +74,8 @@ class SceneParameters:
         return {
             'pvc': self.pvc,
             'moisture': self.moisture,
+            'pvc_top': self.pvc_top,
+            'pvc_bottom': self.pvc_bottom,
             'ballast_thickness': self.ballast_thickness,
             'formation_thickness': self.formation_thickness,
             'subgrade_thickness': self.subgrade_thickness,

@@ -167,6 +167,13 @@ class GeneratorConfig:
     # Antenna-shifted variant generation
     generate_antenna_variants: bool = False
     antenna_shift_amount: float = 0.05  # 5cm shift left/right
+
+    # ============================================================
+    # Stratified Fouling — Bianchini Ciampoli et al. (2019)
+    # Top and bottom halves of the ballast column get independent PVC values.
+    # Only active when granular_mode=True.
+    # ============================================================
+    stratified_fouling: bool = False
     
     # ============================================================
     # Workflow Parameters (for script execution)

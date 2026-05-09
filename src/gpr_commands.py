@@ -5,21 +5,23 @@ from .physics import fmt
 
 class GPRCommand(ABC):
     """Abstract Base Class for all gprMax commands."""
-    
+
+    commented: bool = False  # Subclasses override via dataclass field
+
     @property
     def priority(self) -> int:
         """Rendering priority (lower = earlier). Default: 10"""
         return 10
-    
+
     @abstractmethod
     def get_cmd_string(self) -> str:
         """Return the raw command string without comment prefix."""
         pass
-        
+
     def render(self) -> str:
-        """Render the command, optionally verifying commented status."""
+        """Render the command, prefixing with ## when commented."""
         cmd_str = self.get_cmd_string()
-        if getattr(self, 'commented', False):
+        if self.commented:
             return f"## {cmd_str}"
         return cmd_str
 

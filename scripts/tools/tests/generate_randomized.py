@@ -37,7 +37,7 @@ generator = DatasetGenerator(
 
 print("Generating sample with domain randomization...")
 generator.generate_dataset(
-    labels=["CL"],
+    labels=["C"],
     samples_per_label=1,
     start_id=30000
 )

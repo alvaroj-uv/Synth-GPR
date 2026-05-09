@@ -1,4 +1,4 @@
-"""
+﻿"""
 Concrete Worker implementations for the Factory Architecture.
 
 Each worker handles a specific layer or component of the GPR scene.
@@ -17,45 +17,6 @@ from .constants import MC, PC
 if TYPE_CHECKING:
     pass
 
-def _get_domain_params(scene: SceneCheckpoint, work_order: Any = None) -> tuple[float, float, float]:
-    """
-    Helper to get domain dimensions from WorkOrder/SceneParameters or Config.
-    """
-    # Defaults from config
-    domain_x = scene.config.domain_x
-    domain_y = scene.config.domain_y
-    domain_z = scene.config.domain_z
-    
-    # Override from WorkOrder's typed_params if present
-    wo = work_order or scene.work_order
-    if wo and hasattr(wo, '_work_order') and hasattr(wo._work_order, 'typed_params'):
-        # WorkOrderSystem case
-        params = wo._work_order.typed_params
-        domain_x = params.domain_x or domain_x
-        domain_y = params.domain_y or domain_y
-        domain_z = params.domain_z or domain_z
-    elif wo and hasattr(wo, 'typed_params'):
-        # Direct WorkOrder case
-        params = wo.typed_params
-        domain_x = params.domain_x or domain_x
-        domain_y = params.domain_y or domain_y
-        domain_z = params.domain_z or domain_z
-        
-    return domain_x, domain_y, domain_z
-
-
-def _find_top_y_from_geometry(scene: SceneCheckpoint, ignore_material: str = MC.AIR) -> float:
-    """
-    Scans existing geometry to find the highest Y coordinate.
-    Used for legacy stacking when WorkOrder or CoordinateSystem is missing.
-    """
-    max_y = 0.0
-    for cmd in scene.geometry:
-        if isinstance(cmd, BoxCommand) and hasattr(cmd, 'y2'):
-            if hasattr(cmd, 'material') and cmd.material == ignore_material:
-                continue
-            max_y = max(max_y, cmd.y2)
-    return max_y
 
 
 class AirWorker(Worker):
@@ -67,7 +28,7 @@ class AirWorker(Worker):
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
         # Prioritize WorkOrder (e.g., if a variant changes domain size)
-        domain_x, domain_y, domain_z = _get_domain_params(scene)
+        domain_x, domain_y, domain_z = scene.get_domain_params()
 
         scene.add_geometry(BoxCommand(
             0, 0, 0,
@@ -100,7 +61,7 @@ class SubgradeWorker(Worker):
         mat = materials.get_material(MC.SUBGRADE)
         scene.add_material(mat)
         
-        domain_x, _, domain_z = _get_domain_params(scene)
+        domain_x, _, domain_z = scene.get_domain_params()
         subgrade_top = getattr(scene.config, 'subgrade_height', 0.5)
 
         if scene.work_order:
@@ -148,7 +109,7 @@ class FormationWorker(Worker):
                   start_y = scene.work_order.get('subgrade_top_y', 0.0)
              else:
                  # Fallback for legacy support: scan geometry
-                 start_y = _find_top_y_from_geometry(scene)
+                 start_y = scene.find_top_y_from_geometry(MC.AIR)
                      
              # Get thickness
              thickness = 0.10 # default
@@ -166,7 +127,7 @@ class FormationWorker(Worker):
         if scene.work_order:
              scene.work_order.set('formation_top_y', top_y, self.name)
 
-        domain_x, _, domain_z = _get_domain_params(scene)
+        domain_x, _, domain_z = scene.get_domain_params()
 
         scene.add_geometry(BoxCommand(
             0, start_y, 0,
@@ -216,7 +177,7 @@ class BallastWorker(Worker):
                   start_y = scene.work_order.get('formation_top_y', 0.6)
              else:
                  # Legacy scan
-                  start_y = _find_top_y_from_geometry(scene)
+                  start_y = scene.find_top_y_from_geometry(MC.AIR)
 
              # Thickness
              thickness = 0.4
@@ -229,7 +190,7 @@ class BallastWorker(Worker):
         
         
         # Enforce Domain Restrictions (Ballast cannot exceed domain height)
-        _, domain_y, _ = _get_domain_params(scene)
+        _, domain_y, _ = scene.get_domain_params()
             
         if top_y > domain_y:
             scene.log_issue(self.name, "domain_violation", "warning", 
@@ -256,7 +217,7 @@ class BallastWorker(Worker):
         return []
 
 
-from .rock_model import RockCollection
+from .rock_model import Rock
 
 class RockWorker(Worker):
     """
@@ -312,20 +273,17 @@ class RockWorker(Worker):
                 
         # No caching logic - always generate fresh
         print(f"[{self.name}] Generating fresh rocks (Strategy: {strategy.__class__.__name__})")
-        
-        # Use RockCollection for domain logic
-        rock_collection = RockCollection()
-        
+
         total_rocks, highest_rock_y = self._pack_all_layers(
-            scene, start_y, top_y, strategy, rock_collection
+            scene, start_y, top_y, strategy
         )
         scene.metadata['packing_source'] = 'generated'
         scene.metadata['rock_count'] = total_rocks
-        
+
         # ---------------------------------------------------------------------
         # 5. Serialization and Persistence
         # ---------------------------------------------------------------------
-        self._store_results(scene, start_y, top_y, highest_rock_y, rock_collection)
+        self._store_results(scene, start_y, top_y, highest_rock_y)
         
     def _calculate_ballast_bounds(self, scene: SceneCheckpoint) -> tuple[float, float] | None:
         """Determines the vertical bounds of the ballast layer."""
@@ -340,8 +298,8 @@ class RockWorker(Worker):
             scene.log_issue(self.name, "missing_dependency", "error", "No WorkOrder found.")
             return None
 
-    def _pack_all_layers(self, scene: SceneCheckpoint, start_y: float, top_y: float, 
-                         strategy: Any, rock_collection: RockCollection) -> tuple[int, float]:
+    def _pack_all_layers(self, scene: SceneCheckpoint, start_y: float, top_y: float,
+                         strategy: Any) -> tuple[int, float]:
         """Iterates through layers and packs rocks."""
         ballast_thickness = top_y - start_y
         n_layers = scene.config.rock_layers
@@ -351,7 +309,7 @@ class RockWorker(Worker):
         r_min = scene.config.rock_radius_min
         r_max = scene.config.rock_radius_max
         
-        domain_x, _, _ = _get_domain_params(scene)
+        domain_x, _, _ = scene.get_domain_params()
              
         z_start = scene.config.rock_z_start
         z_end = scene.config.rock_z_end
@@ -367,7 +325,8 @@ class RockWorker(Worker):
                 z_start = typed_params.rock_z_start or z_start
                 z_end = typed_params.rock_z_end or z_end
              
-        # Collect all rocks across all layers before emitting geometry
+        # Collect all rocks across all layers before emitting geometry.
+        # Packing strategies are 2-D (x, y, r only); z is stamped here.
         all_rocks = []
         for i in range(n_layers):
             y_min = start_y + i * layer_height
@@ -377,9 +336,8 @@ class RockWorker(Worker):
                 scene, strategy, bounds, r_min, r_max, i
             )
             for rock in rocks:
-                rock.z_start = z_start
-                rock.z_end = z_end
-                all_rocks.append(rock)
+                all_rocks.append(Rock(x=rock.x, y=rock.y, radius=rock.radius,
+                                      z_start=z_start, z_end=z_end))
 
         # Gravity settlement: drop each rock to rest on floor or neighbours
         if getattr(scene.config, 'rock_gravity_settle', True) and all_rocks:
@@ -395,8 +353,7 @@ class RockWorker(Worker):
                 rock.radius, MC.BALLAST_ROCK
             )
             scene.add_geometry(cmd)
-            rock_collection.add(rock)
-            scene.rock_positions.append(rock)
+            scene.add_rock(rock)
             highest_rock_y = max(highest_rock_y, rock.y + rock.radius)
             total_rocks += 1
 
@@ -406,7 +363,7 @@ class RockWorker(Worker):
         """Drop each rock under gravity until it rests on the floor or a lower rock.
 
         Rocks are processed lowest-first. Each rock's y is updated in-place.
-        O(n²) — acceptable for typical counts (~200 rocks, Benedetto et al. 2016).
+        O(nÂ²) â€" acceptable for typical counts (~200 rocks, Benedetto et al. 2016).
         """
         import math
         rocks.sort(key=lambda r: r.y)
@@ -416,7 +373,7 @@ class RockWorker(Worker):
             for s in settled:
                 dx = abs(rock.x - s.x)
                 gap = rock.radius + s.radius
-                if dx < gap:  # horizontal overlap → can stack
+                if dx < gap:  # horizontal overlap â†’ can stack
                     contact_y = s.y + math.sqrt(gap ** 2 - dx ** 2)
                     best_y = max(best_y, contact_y)
             rock.y = best_y
@@ -446,46 +403,36 @@ class RockWorker(Worker):
         scene.metadata['packing_strategy'] = final_strategy_name
         return rocks
 
-    def _store_results(self, scene: SceneCheckpoint, start_y: float, top_y: float, 
-                       highest_y: float, rock_collection: RockCollection) -> None:
+    def _store_results(self, scene: SceneCheckpoint, start_y: float, top_y: float,
+                       highest_y: float) -> None:
         """Stores rock model in WorkOrder/DataFrame."""
-        if not scene.work_order: return
-        
-        domain_x, _, _ = _get_domain_params(scene)
+        if not scene.work_order:
+            return
 
-        # Use RockCollection to calculate density/porosity
-        achieved_density = rock_collection.calculate_density_monte_carlo(
-            domain_x, start_y, highest_y, samples=5000
-        )
-            
+        domain_x, _, _ = scene.get_domain_params()
+        achieved_density = scene.rock_density_monte_carlo(domain_x, start_y, highest_y, samples=5000)
         porosity = max(0.0, 1.0 - achieved_density)
-        
+
         scene.metadata['achieved_density'] = achieved_density
         scene.metadata['porosity'] = porosity
         scene.metadata['mc_y_min'] = start_y
         scene.metadata['mc_y_max'] = highest_y
-        
-        print(f"[{self.name}] Achieved Density: {achieved_density:.3f}, Porosity: {porosity:.3f}")
-        
-        # Store as DataFrame for backward compatibility and analysis
-        z_start = scene.config.rock_z_start
-        z_end = scene.config.rock_z_end
-        if scene.work_order:
-            if hasattr(scene.work_order, '_work_order'):
-                typed_params = scene.work_order._work_order.typed_params
-                z_start = typed_params.rock_z_start or z_start
-                z_end = typed_params.rock_z_end or z_end
-            elif hasattr(scene.work_order, 'typed_params'):
-                typed_params = scene.work_order.typed_params
-                z_start = typed_params.rock_z_start or z_start
-                z_end = typed_params.rock_z_end or z_end
 
-        df = rock_collection.to_dataframe(default_z_start=z_start, default_z_end=z_end)
-        
+        print(f"[{self.name}] Achieved Density: {achieved_density:.3f}, Porosity: {porosity:.3f}")
+
+        z_start = scene.config.rock_z_start
+        z_end   = scene.config.rock_z_end
+        if hasattr(scene.work_order, '_work_order'):
+            p = scene.work_order._work_order.typed_params
+            z_start = p.rock_z_start or z_start
+            z_end   = p.rock_z_end   or z_end
+        elif hasattr(scene.work_order, 'typed_params'):
+            p = scene.work_order.typed_params
+            z_start = p.rock_z_start or z_start
+            z_end   = p.rock_z_end   or z_end
+
+        df = scene.rocks_to_dataframe(default_z_start=z_start, default_z_end=z_end)
         scene.work_order.set('rock_model', df, self.name)
-        # Also store the collection object for direct memory access by subsequent workers
-        scene.work_order.set('rock_collection', rock_collection, self.name) 
-        
         scene.work_order.set('highest_rock_y', highest_y, self.name)
         scene.work_order.set('porosity', porosity, self.name)
         
@@ -505,89 +452,115 @@ class FoulingWorker(Worker):
     name = "FoulingWorker"
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
-        # 1. Check if fouling is needed
         work_order = scene.work_order
         if not work_order:
             pvc = params.get('pvc', 0.0)
             moisture = params.get('moisture', 0.0)
+            pvc_top = None
+            pvc_bottom = None
         else:
             pvc = work_order.get_input('pvc', 0.0)
             moisture = work_order.get_input('moisture', 0.0)
-            
+            pvc_top    = work_order.get_input('pvc_top', None)
+            pvc_bottom = work_order.get_input('pvc_bottom', None)
+
         scene.metadata['pvc'] = pvc
         scene.metadata['moisture'] = moisture
-        
-        porosity = scene.metadata.get('porosity', 0.4)
-        if work_order and not 'porosity' in scene.metadata: 
-            porosity = work_order.get_input('porosity', 0.4)
-            
-        scene.metadata['used_porosity'] = porosity 
-        scene.metadata['FI_class'] = classify_pvc(pvc, porosity=porosity)
-        
-        print(f"[{self.name}] FI Class: {scene.metadata['FI_class']} (PVC={pvc}%, n={porosity:.3f})")
-            
-        if pvc <= 0:
-            return 
-            
-        if work_order:
-            # We should try to use CoordinateSystem if possible, but Fouling is tricky 
-            # as it often depends on "ballast thickness" which is a property of the layer.
-            if scene.coordinate_system:
-                 # NEW: Use CoordinateSystem (Type-Safe)
-                 from src.domain import Layer
-                 bounds = scene.coordinate_system.bounds(Layer.BALLAST)
-                 start_y, top_y = bounds.bottom, bounds.top
-                 ballast_thickness = bounds.height
-            else:
-                 start_y = work_order.get('ballast_bottom_y', 0.5)
-                 ballast_thickness = work_order.get('ballast_thickness', 0.4)
-        else:
-            if scene.coordinate_system:
-                 # NEW: Use CoordinateSystem (Type-Safe)
-                 from src.domain import Layer
-                 bounds = scene.coordinate_system.bounds(Layer.BALLAST)
-                 start_y, top_y = bounds.bottom, bounds.top
-                 ballast_thickness = bounds.height
-            else:
-                 start_y = scene.metadata.get('ballast_bottom_y', 0.5)
-                 ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
 
-        domain_x, _, domain_z = _get_domain_params(scene, work_order)
-            
-        pvc_fraction = min(max(pvc, 0), 100) / 100.0
-        fouling_height = ballast_thickness * pvc_fraction
-        
-        # Register both fouling materials (granular + dense)
+        porosity = scene.metadata.get('porosity', 0.4)
+        if work_order and 'porosity' not in scene.metadata:
+            porosity = work_order.get_input('porosity', 0.4)
+
+        scene.metadata['used_porosity'] = porosity
+        scene.metadata['FI_class'] = classify_pvc(pvc, porosity=porosity)
+
+        # Resolve ballast bounds
+        if scene.coordinate_system:
+            from src.domain import Layer
+            bounds = scene.coordinate_system.bounds(Layer.BALLAST)
+            start_y, top_y = bounds.bottom, bounds.top
+            ballast_thickness = bounds.height
+        elif work_order:
+            start_y = work_order.get('ballast_bottom_y', 0.5)
+            ballast_thickness = work_order.get('ballast_thickness', 0.4)
+            top_y = start_y + ballast_thickness
+        else:
+            start_y = scene.metadata.get('ballast_bottom_y', 0.5)
+            ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
+            top_y = start_y + ballast_thickness
+
+        domain_x, _, domain_z = scene.get_domain_params()
+
+        is_stratified = pvc_bottom is not None or pvc_top is not None
+        any_fouling = is_stratified or pvc > 0
+
+        if not any_fouling:
+            print(f"[{self.name}] FI Class: {scene.metadata['FI_class']} (PVC={pvc}%, n={porosity:.3f})")
+            return
+
+        # Register materials once for both modes
         foul_mat = materials.get_material(MC.FOULING, moisture=moisture)
         scene.add_material(foul_mat)
         dense_mat = materials.get_material(MC.FOULING_DENSE, moisture=moisture)
         scene.add_material(dense_mat)
 
-        # 3-zone fouling model (Benedetto et al. 2016):
-        #   Zone 1 — dense solid (bal_foul):        bottom dense_fraction of fouling_height
-        #   Zone 2 — granular dispersed (bal_foul_granular): next granular_fraction
-        #   Zone 3 — sparse dispersed (bal_foul_granular):   remaining top fraction
+        if is_stratified:
+            # Two independent fouling zones split at the ballast midpoint.
+            # Bottom zone: full 3-zone gravity-settled model (dense block at y_start).
+            # Top zone:    dispersed particles only — a dense block at mid_y would be
+            #              physically impossible since fines always settle to the column base.
+            mid_y = (start_y + top_y) / 2.0
+            eff_pvc_bottom = pvc_bottom if pvc_bottom is not None else 0.0
+            eff_pvc_top    = pvc_top    if pvc_top    is not None else 0.0
+
+            print(f"[{self.name}] Stratified — bottom PVC={eff_pvc_bottom:.1f}%  top PVC={eff_pvc_top:.1f}%")
+            scene.metadata['pvc_bottom'] = eff_pvc_bottom
+            scene.metadata['pvc_top']    = eff_pvc_top
+
+            if eff_pvc_bottom > 0:
+                self._apply_fouling_zone(scene, start_y, mid_y, eff_pvc_bottom, domain_x, domain_z)
+            if eff_pvc_top > 0:
+                self._apply_dispersed_zone(scene, mid_y, top_y, eff_pvc_top, domain_x, domain_z)
+        else:
+            print(f"[{self.name}] FI Class: {scene.metadata['FI_class']} (PVC={pvc}%, n={porosity:.3f})")
+            self._apply_fouling_zone(scene, start_y, top_y, pvc, domain_x, domain_z)
+
+    def _apply_fouling_zone(self, scene: SceneCheckpoint, y_start: float, y_top: float,
+                            pvc: float, domain_x: float, domain_z: float) -> None:
+        """Apply 3-zone fouling model (Benedetto et al. 2016) to a vertical interval.
+
+        Zone 1 — dense solid block at the base (bal_foul).
+        Zone 2 — granular dispersed particles above zone 1 (bal_foul_granular).
+        Zone 3 — sparse dispersed particles in remaining fouled height.
+        """
+        pvc_fraction = min(max(pvc, 0.0), 100.0) / 100.0
+        zone_height   = y_top - y_start
+        fouling_height = zone_height * pvc_fraction
+
         dense_frac    = getattr(scene.config, 'fouling_dense_fraction',    0.5)
         granular_frac = getattr(scene.config, 'fouling_granular_fraction', 0.3)
 
-        z1_top = start_y + fouling_height * dense_frac
+        z1_top = y_start + fouling_height * dense_frac
         z2_top = z1_top  + fouling_height * granular_frac
-        z3_top = start_y + fouling_height
+        z3_top = y_start + fouling_height
 
-        # Zone 1: solid dense block
-        if z1_top - start_y > 2e-3:
-            self._generate_settled_layer(scene, start_y, z1_top, domain_x, domain_z,
+        if z1_top - y_start > 2e-3:
+            self._generate_settled_layer(scene, y_start, z1_top, domain_x, domain_z,
                                          material=MC.FOULING_DENSE)
+        self._generate_dispersed_particles(scene, z1_top, z2_top, pvc_fraction * 0.7,  domain_x, domain_z)
+        self._generate_dispersed_particles(scene, z2_top, z3_top, pvc_fraction * 0.25, domain_x, domain_z)
 
-        # Zone 2: dense dispersed particles (0.7× multiplier)
-        self._generate_dispersed_particles(
-            scene, z1_top, z2_top, pvc_fraction * 0.7, domain_x, domain_z
-        )
+    def _apply_dispersed_zone(self, scene: SceneCheckpoint, y_start: float, y_top: float,
+                              pvc: float, domain_x: float, domain_z: float) -> None:
+        """Uniformly dispersed fouling for the upper ballast zone (no settled block).
 
-        # Zone 3: sparse dispersed particles (0.25× multiplier)
-        self._generate_dispersed_particles(
-            scene, z2_top, z3_top, pvc_fraction * 0.25, domain_x, domain_z
-        )
+        Used for the top half in stratified mode: any fines in the upper zone are
+        not yet gravity-settled (surface infiltration / recent contamination), so
+        they appear as random granular particles throughout the zone rather than as
+        a dense layer that would physically fall to the column base.
+        """
+        pvc_fraction = min(max(pvc, 0.0), 100.0) / 100.0
+        self._generate_dispersed_particles(scene, y_start, y_top, pvc_fraction, domain_x, domain_z)
 
     def _generate_settled_layer(self, scene: SceneCheckpoint, y_start: float, y_end: float,
                                 domain_x: float, domain_z: float,
@@ -609,10 +582,7 @@ class FoulingWorker(Worker):
         placed = 0
         max_attempts = target_count * 10
         
-        # Retrieve RockCollection for efficient overlap checking
-        rocks_collection = self._get_rock_collection(scene)
-        # Fallback to list if collection not found
-        rocks_list = rocks_collection.rocks if rocks_collection else scene.rock_positions
+        rocks_list = scene.rock_positions
         
         for _ in range(max_attempts):
             if placed >= target_count: break
@@ -627,20 +597,6 @@ class FoulingWorker(Worker):
                     r, MC.FOULING
                 ))
                 placed += 1
-
-    def _get_rock_collection(self, scene: SceneCheckpoint) -> Optional[RockCollection]:
-        """Retrieve RockCollection or reconstruct from DataFrame."""
-        if scene.work_order:
-             # Try direct object access first
-             collection = scene.work_order.get('rock_collection')
-             if collection: return collection
-             
-             # Fallback to DataFrame reconstruction
-             df = scene.work_order.get('rock_model')
-             if df is not None:
-                 return RockCollection.from_dataframe(df)
-                 
-        return None
 
     def _is_in_void(self, x: float, y: float, r: float, rocks: List[Any]) -> bool:
         """Check if a particle at (x,y) with radius r overlaps any rock."""
@@ -703,7 +659,7 @@ class AntennaWorker(Worker):
                  raise ValueError(f"{self.name}: RX Position {rx_position} invalid (outside domain)")
         else:
              # Legacy checks
-             domain_x, domain_y, domain_z = _get_domain_params(scene)
+             domain_x, domain_y, domain_z = scene.get_domain_params()
              if not (0 <= tx_x <= domain_x): raise ValueError(f"TX X out of bounds") 
              # ... (simplified legacy checks)
 
@@ -746,7 +702,7 @@ class AssemblerWorker(Worker):
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
         # 1. Add Geometry View (for Paraview)
         # Covers entire domain
-        domain_x, domain_y, domain_z = _get_domain_params(scene)
+        domain_x, domain_y, domain_z = scene.get_domain_params()
              
         # Filename based on ID if possible
         filename = "geometry"

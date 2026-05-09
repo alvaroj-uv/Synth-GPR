@@ -91,8 +91,12 @@ class DatasetGenerator:
                 
                 # Export metadata to work_order blackboard for inspection
                 metadata = wos.export_metadata()
-                
                 metadata.update(checkpoint.metadata)
+
+                # Carry sampler-only keys that aren't in SceneParameters
+                for k in ('FI_bottom', 'FI_top', 'pvc_bottom', 'pvc_top'):
+                    if k in params and k not in metadata:
+                        metadata[k] = params[k]
                 
                 # Log key metadata for LLM analysis
                 # Note: checkpoint._rock_collection.count is an internal detail,
@@ -101,7 +105,7 @@ class DatasetGenerator:
                       f"Lab_FI={metadata.get('Lab_FI', 0):.1f}, "
                       f"Lab_Class={metadata.get('Lab_Class', 'N/A')}, "
                       f"Target_Class={metadata.get('FI_class', 'N/A')}, "
-                      f"Rocks={checkpoint._rock_collection.count}")
+                      f"Rocks={checkpoint.rock_count}")
                 
                 # Validation check (non-blocking, just informational)
                 validation_errors = checkpoint.validate_all()

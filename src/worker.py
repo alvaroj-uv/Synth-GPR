@@ -159,6 +159,58 @@ class SceneCheckpoint:
     def rock_positions(self) -> List[Any]:
         """Access rock positions list (backward compatibility)."""
         return self._rock_collection.positions
+
+    def add_rock(self, rock: Any) -> None:
+        """Add a rock to the collection (delegates to rock collection)."""
+        self._rock_collection.add_rock(rock)
+
+    @property
+    def rock_count(self) -> int:
+        """Number of rocks in the scene."""
+        return self._rock_collection.count
+
+    @property
+    def antennas_configured(self) -> bool:
+        """Whether antennas have been configured."""
+        return self._antenna_config.is_configured
+
+    def get_domain_params(self) -> tuple:
+        """Return (domain_x, domain_y, domain_z) from WorkOrder typed_params or config."""
+        dx = self.config.domain_x
+        dy = self.config.domain_y
+        dz = self.config.domain_z
+        wo = self.work_order
+        if wo and hasattr(wo, '_work_order') and hasattr(wo._work_order, 'typed_params'):
+            p = wo._work_order.typed_params
+            dx = p.domain_x or dx
+            dy = p.domain_y or dy
+            dz = p.domain_z or dz
+        elif wo and hasattr(wo, 'typed_params'):
+            p = wo.typed_params
+            dx = p.domain_x or dx
+            dy = p.domain_y or dy
+            dz = p.domain_z or dz
+        return dx, dy, dz
+
+    def find_top_y_from_geometry(self, ignore_material: str = "") -> float:
+        """Scan placed geometry to find the highest Y coordinate."""
+        from .gpr_commands import BoxCommand
+        max_y = 0.0
+        for cmd in self.geometry:
+            if isinstance(cmd, BoxCommand) and hasattr(cmd, 'y2'):
+                if ignore_material and getattr(cmd, 'material', None) == ignore_material:
+                    continue
+                max_y = max(max_y, cmd.y2)
+        return max_y
+
+    def rock_density_monte_carlo(self, domain_x: float, y_min: float, y_max: float,
+                                  samples: int = 5000) -> float:
+        """Monte Carlo packing density estimate (delegates to rock collection)."""
+        return self._rock_collection.calculate_density_monte_carlo(domain_x, y_min, y_max, samples)
+
+    def rocks_to_dataframe(self, default_z_start: float = None, default_z_end: float = None):
+        """Serialise rock collection to DataFrame (delegates to rock collection)."""
+        return self._rock_collection.to_dataframe(default_z_start, default_z_end)
     
     def validate_all(self) -> List[str]:
         """

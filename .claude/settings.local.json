@@ -8,7 +8,8 @@
       "Read(//c/Users/barba/.conda/envs/gprMax//**)",
       "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe scripts/visualization/render_in_file.py output/test/s_0000.in)",
       "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -)",
-      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -W all -c ' *)"
+      "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -W all -c ' *)",
+      "Bash(xargs grep -l \"\\\\.in\\\\\"|\"\\\\.png\\\\\"\" | head -15)"
     ]
   }
 }

@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 import random
 import numpy as np
 from .worker import Worker, SceneCheckpoint
-from .rock_model import Rock, RockCollection
+from .rock_model import Rock
 from .gpr_commands import CylinderCommand
 
 
@@ -41,24 +41,17 @@ class DegradationWorker(Worker):
             print(f"[{self.name}] No degradation (fresh ballast)")
             return  # Fresh ballast, no degradation
         
-        # Get existing rocks
-        if not scene.work_order:
-            scene.log_issue(self.name, "missing_dependency", "error", "No WorkOrder found.")
+        # Get existing rocks directly from the scene
+        if not scene.rock_positions:
+            scene.log_issue(self.name, "missing_dependency", "error", "No rocks found in scene.")
             return
-            
-        rock_collection = scene.work_order.get('rock_collection')
-        if not rock_collection:
-            scene.log_issue(self.name, "missing_dependency", "error", "No rock_collection found in WorkOrder.")
-            return
-        
+
         # Get ballast bounds
         start_y = scene.work_order.get('ballast_bottom_y', 0.5)
         ballast_thickness = scene.work_order.get('ballast_thickness', 0.4)
         top_y = start_y + ballast_thickness
         
-        # Get domain params
-        from .workers import _get_domain_params
-        domain_x, _, domain_z = _get_domain_params(scene)
+        domain_x, _, domain_z = scene.get_domain_params()
         
         # Get Z extent
         z_start = scene.config.rock_z_start
@@ -71,7 +64,7 @@ class DegradationWorker(Worker):
         
         # 1. Simulate particle breakage
         broken_rocks, fines = self._simulate_breakage(
-            rock_collection, degradation_level, scene.config
+            scene.rock_positions, degradation_level, scene.config
         )
         
         # 2. Migrate fines to bottom zone
@@ -90,9 +83,8 @@ class DegradationWorker(Worker):
                 rock.radius, "bal_rock"
             )
             scene.add_geometry(cmd)
-            rock_collection.add(rock)
-            scene.rock_positions.append(rock)
-        
+            scene.add_rock(rock)
+
         for fine in migrated_fines:
             cmd = CylinderCommand(
                 fine.x, fine.y, z_start,
@@ -100,8 +92,7 @@ class DegradationWorker(Worker):
                 fine.radius, "bal_rock"
             )
             scene.add_geometry(cmd)
-            rock_collection.add(fine)
-            scene.rock_positions.append(fine)
+            scene.add_rock(fine)
         
         # Update metadata
         scene.metadata['degradation_broken_count'] = len(broken_rocks)
@@ -109,8 +100,8 @@ class DegradationWorker(Worker):
         
         print(f"[{self.name}] Generated {len(broken_rocks)} broken fragments, {len(migrated_fines)} migrated fines")
     
-    def _simulate_breakage(self, rock_collection: RockCollection, degradation_level: float, 
-                          config: Any) -> tuple[List[Rock], List[Rock]]:
+    def _simulate_breakage(self, rock_positions: List[Rock], degradation_level: float,
+                           config: Any) -> tuple[List[Rock], List[Rock]]:
         """
         Simulate particle breakage based on size and degradation level.
         
@@ -126,7 +117,7 @@ class DegradationWorker(Worker):
         broken_rocks = []
         fines = []
         
-        for rock in rock_collection.rocks:
+        for rock in rock_positions:
             # Determine breakage probability based on size
             # Literature: larger particles (>40mm) more susceptible to breakage
             if rock.radius > 0.020:  # >40mm diameter

@@ -25,7 +25,7 @@ generator_baseline = DatasetGenerator(
 
 # Generate 1 clean sample
 generator_baseline.generate_dataset(
-    labels=["CL"],
+    labels=["C"],
     samples_per_label=1,
     start_id=30000
 )
@@ -52,7 +52,7 @@ generator_randomized = DatasetGenerator(
 
 # Generate 1 clean sample (same parameters)
 generator_randomized.generate_dataset(
-    labels=["CL"],
+    labels=["C"],
     samples_per_label=1,
     start_id=30000
 )

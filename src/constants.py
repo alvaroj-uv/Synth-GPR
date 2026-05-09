@@ -120,15 +120,16 @@ class PackingConstants:
 @dataclass(frozen=True)
 class PhysicsConstants:
     """Constants for physics calculations and fouling classification."""
-    # Fouling Index Thresholds (Selig & Waters, 1994)
-    FI_CLEAN_THRESHOLD: float = 10.0
-    FI_MODERATELY_FOULED_THRESHOLD: float = 20.0
-    FI_FOULED_THRESHOLD: float = 40.0
+    # Fouling Index Thresholds (Selig & Waters, 1994) — 5-class scheme
+    FI_CLEAN_THRESHOLD: float = 1.0           # C  → MC boundary
+    FI_MODERATELY_CLEAN_THRESHOLD: float = 10.0  # MC → MF boundary
+    FI_MODERATELY_FOULED_THRESHOLD: float = 20.0  # MF → F  boundary
+    FI_FOULED_THRESHOLD: float = 40.0         # F  → HF boundary
     
     # Material Properties (Specific Gravities)
     DEFAULT_POROSITY: float = 0.4  # Ballast void fraction
-    DEFAULT_BALLAST_DENSITY: float = 2.6  # Gs_b (granite/limestone)
-    DEFAULT_FOULING_DENSITY: float = 2.6  # Gs_f (clay/mineral fines)
+    DEFAULT_BALLAST_DENSITY: float = 2.72  # Gs_b — Koohmishi et al. (2025) Table 1, crushed granite/limestone
+    DEFAULT_FOULING_DENSITY: float = 2.58  # Gs_f — Koohmishi et al. (2025) Table 1, clay fouling
     
     # Topp's Model Coefficients (Topp et al., 1980)
     # Relates soil moisture to dielectric constant
@@ -139,6 +140,16 @@ class PhysicsConstants:
     
     # Numerical Thresholds
     ZERO_EPSILON: float = 1e-9  # For near-zero checks
+
+    # Synthetic LDCP profiler — quasi-static point resistance (MPa)
+    # Values calibrated to P.A.N.D.A. field data ranges (Benz Navarrete et al. 2022)
+    LDCP_STEP_M: float = 0.001           # 1 mm depth step
+    LDCP_QS_ROCK: float = 30.0           # granite/limestone aggregate
+    LDCP_QS_FOULING: float = 2.0         # clay/fines (granular or dense)
+    LDCP_QS_SUBGRADE: float = 8.0        # compacted subgrade
+    LDCP_QS_FORMATION: float = 15.0      # sub-ballast formation
+    LDCP_QS_VOID: float = 0.5            # open pore space
+    LDCP_FH_FACTOR_CLAY: float = 1.5     # F factor: FI = %FH / F (clay fouling, Rojas-Vivanco 2025 eq. 9)
 
 # Singleton instances
 PC = PhysicalConstants()

@@ -217,6 +217,29 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
     _draw_meta_annotation(ax, scene)
 
 
+def render_geometry_figure(
+    scene: SceneData,
+    title: str = "",
+    dpi: int = 150,
+    max_height: float = 14.0,
+    base_width: float = 6.0,
+) -> tuple:
+    """Create a standalone figure for a single geometry panel.
+
+    Returns (fig, ax) ready for saving or further annotation.
+    Both render_in_file.py and the blueprint use this when they need
+    a self-contained geometry image (not a subplot inside a dashboard).
+    """
+    aspect = scene.domain_y / max(scene.domain_x, 1e-6)
+    fig_h  = min(base_width * aspect * 0.75, max_height)
+    fig, ax = plt.subplots(figsize=(base_width, fig_h), dpi=dpi)
+    if title:
+        ax.set_title(title, fontsize=10, fontweight="bold")
+    draw_geometry(ax, scene)
+    fig.tight_layout()
+    return fig, ax
+
+
 def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) -> None:
     d = size
     kwargs = dict(transform=ax.transAxes, color="black", clip_on=False, linewidth=1)

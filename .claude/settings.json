@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/visualization/render_in_file.py d:/tmp/gpr_test/s_0000.in --out d:/tmp/gpr_test/s_0000.png 2>&1)",
+      "Read(//d/tmp/gpr_test/**)",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_test2 --labels MF -n 1 --start_id 0 2>&1)",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/tools/visualization/visualize_gprmax_blueprint.py d:/tmp/gpr_test2/s_0000.in --geometry-only --no-show --out d:/tmp/gpr_test2/geo_only.png 2>&1)",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/visualization/render_in_file.py d:/tmp/gpr_test2/s_0000.in --out d:/tmp/gpr_test2/render_test.png 2>&1)",
+      "Bash(cd /d \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\")",
+      "Bash(Find /s /b \"src\" -type f -name \"*.py\")",
+      "Bash(findstr /r /s \"@dataclass\" src\\\\*.py src\\\\domain\\\\*.py)",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_fix_test --labels CL -n 1 --start_id 0 2>&1 | Select-String -Pattern \"LabWorker|RockWorker|Error|Traceback|CRITICAL\")",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_encap_test --labels MF -n 1 --start_id 0 2>&1 | Select-String -Pattern \"RockWorker|LabWorker|Rocks:|Antennas|Error|Traceback|CRITICAL\")",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_encap_test2 --labels MF -n 1 --start_id 0 2>&1 | Select-String -Pattern \"RockWorker|LabWorker|Rocks:|Antennas|Error|Traceback|CRITICAL\")",
+      "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_struct_test --labels MF -n 1 --start_id 0 2>&1)",
+      "Read(//c//**)"
+    ]
+  }
+}

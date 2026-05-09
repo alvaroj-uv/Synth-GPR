@@ -11,7 +11,8 @@ References:
 import numpy as np
 from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
-from .constants import PC, MC
+from .constants import PC, MC, PHC
+from .physics import circle_strip_intersection
 import math
 import json
 
@@ -69,6 +70,7 @@ class LabWorker(Worker):
             print(f"[{self.name}] No rocks found. FI=0.")
             scene.metadata['Lab_FI'] = 0.0
             scene.metadata['Lab_Class'] = "C"
+            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_FI_est': 0.0, 'Lab_LDCP_qs_mean': 0.0})
             return
 
         total_rock_area_mm2 = 0.0
@@ -88,7 +90,7 @@ class LabWorker(Worker):
                 
             # It intersects or is inside.
             # Calculate intersection area with strip [y_min, y_max]
-            area = self._circle_strip_intersection(rock_center_x, rock_center_y, radius, y_min, y_max)
+            area = circle_strip_intersection(rock_center_x, rock_center_y, radius, y_min, y_max)
             total_rock_area_mm2 += (area * 1e6) # m2 -> mm2
 
         # 3. Calculate Local Porosity
@@ -101,69 +103,36 @@ class LabWorker(Worker):
         
         print(f"[{self.name}] Layer Stats: RockArea={total_rock_area_mm2/1e6:.4f}m2, Porosity={local_porosity:.3f}")
 
-        # 4. Determine Fouling in this Layer
-        # PVC is Global Volume Fraction. 
-        # But FoulingWorker distributes it: Settled Layer (Bottom) + Dispersed (Top).
-        # We need to know how much fouling is ACTUALLY in this layer.
-        
-        # Retrieve Fouling Parameters
-        pvc = scene.metadata.get('pvc', 0.0)
-        
-        if pvc <= 0:
-             scene.metadata['Lab_FI'] = 0.0
-             scene.metadata['Lab_Class'] = "C"
-             return
+        # 4. Measure Fouling Area in Strip Directly from Placed Geometry
+        from .gpr_commands import BoxCommand, CylinderCommand
+        fouling_mats = {MC.FOULING, MC.FOULING_DENSE}
+        fouling_boxes = [c for c in scene.geometry
+                         if isinstance(c, BoxCommand) and getattr(c, 'material', None) in fouling_mats]
+        fouling_cyls  = [c for c in scene.geometry
+                         if isinstance(c, CylinderCommand) and getattr(c, 'material', None) in fouling_mats]
 
-        # Fouling Logic Reconstruction (Simplify or Query?)
-        # FoulingWorker uses: fouling_height = ballast_thickness * (pvc/100)
-        # Settled Fraction = 0.7 * fouling_height (at bottom)
-        # Dispersed = 0.3 * fouling_height (above settled)
-        
-        ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
-        pvc_fraction = min(max(pvc, 0), 100) / 100.0
-        fouling_height_total = ballast_thickness * pvc_fraction
-        
-        # Use config for settled fraction, default from constants
-        settled_fraction = getattr(scene.config, 'fouling_settled_fraction', PC.FOULING_SETTLED_FRACTION)
-        settled_h = fouling_height_total * settled_fraction
-        
-        # We assume Fouling Material fills 100% of VOIDS up to settled_h
-        # And fills "dispersed" fraction of voids above that?
-        # Actually FoulingWorker logic:
-        # Settled Layer: Fills voids 100% from start_y to start_y + settled_h.
-        # Dispersed: Fills partial voids above.
-        
-        # Calculate Fouling Area in the Strip
-        # Intersection of Strip [y_min, y_max] with Settled Zone [ballast_bottom, ballast_bottom + settled_h]
-        
-        settled_top = ballast_bottom + settled_h
-        
-        # Intersection height between Strip and Settled Zone
-        # Strip is [y_min, y_max]
-        # Settled is [ballast_bottom, settled_top]
-        hydro_min = max(y_min, ballast_bottom)
-        hydro_max = min(y_max, settled_top)
-        
-        settled_overlap_h = max(0.0, hydro_max - hydro_min)
-        
-        # Fouling Area from Settled Part = Overlap_H * Width * LocalPorosity (Approx)
-        # (Assuming porosity is uniform-ish verticaly, or we recount rock area just for this part?)
-        # For simplicity, use Average Local Porosity of the strip for the whole strip calculation.
-        
-        fouling_area_settled = (settled_overlap_h * domain_x * 1000 * 1000) * local_porosity
-        
-        # Dispersed? (Ignored for "Sampling at Bottom" usually, or simplified)
-        # If we sample only the bottom 15cm, and settled layer is often > 15cm for high PVC.
-        # If PVC is low, settled layer < 15cm. Then we start seeing clean ballast above.
-        # So Fouling Area is limited by the Settled Height.
-        
-        # Does Dispersed contribute?
-        # Dispersed particles are "dust".
-        # Let's count them if we want high precision, but Settled is the dominant mass.
-        # Let's assume Dispersed adds negligible mass for Sieve Analysis compared to the "Mud/Sand" layer.
-        # Or add if needed.
-        
-        total_fouling_area_mm2 = fouling_area_settled
+        if not fouling_boxes and not fouling_cyls:
+            scene.metadata['Lab_FI'] = 0.0
+            scene.metadata['Lab_Class'] = "C"
+            scene.metadata['Lab_FR'] = 0.0
+            _leng_base = {'granite': 3.237, 'limestone': 3.732}
+            rock_type = getattr(scene.config, 'rock_type', 'granite').lower()
+            scene.metadata['Lab_er_bulk_leng'] = _leng_base.get(rock_type, 3.237)
+            self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
+            return
+
+        pvc = scene.metadata.get('pvc', 0.0)
+
+        # Box geometry: solid fills displaced by rocks → scale by local_porosity
+        total_fouling_area_mm2 = 0.0
+        for box in fouling_boxes:
+            overlap_h = max(0.0, min(box.y2, y_max) - max(box.y1, y_min))
+            total_fouling_area_mm2 += (overlap_h * domain_x * 1e6) * local_porosity
+
+        # Cylinder geometry: placed in voids already → no porosity correction needed
+        for cyl in fouling_cyls:
+            area = circle_strip_intersection(cyl.x1, cyl.y1, cyl.radius, y_min, y_max)
+            total_fouling_area_mm2 += area * 1e6
         
         # Fouling PSD: "standard" (coarser) or "a4" (Benedetto et al. 2016, silty A4 soil)
         psd_type = getattr(scene.config, 'fouling_psd_type', 'standard')
@@ -246,7 +215,7 @@ class LabWorker(Worker):
                 if diameter < size_mm:
                     # It passes!
                     # Calculate its area contribution to the strip
-                    area = self._circle_strip_intersection(rock.x, rock.y, radius, y_min, y_max)
+                    area = circle_strip_intersection(rock.x, rock.y, radius, y_min, y_max)
                     pass_rock_area += (area * 1e6)
             
             # Fouling Contribution:
@@ -285,10 +254,21 @@ class LabWorker(Worker):
         fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
         scene.metadata.update(fractions)
 
+        # FR (Fouling Ratio, mass-based): FR = (Mf / Mb) × 100
+        # Derived from MC fractions: mass ∝ volume × Gs, so
+        #   FR = (mc_fouling_fraction × Gs_f) / (mc_rock_fraction × Gs_b) × 100
+        # Reference: Feldman & Nissen (2002); also used in Koohmishi et al. (2025).
+        if fractions['mc_rock_fraction'] > 0:
+            lab_fr = (fractions['mc_fouling_fraction'] * PHC.DEFAULT_FOULING_DENSITY /
+                      (fractions['mc_rock_fraction'] * PHC.DEFAULT_BALLAST_DENSITY)) * 100.0
+        else:
+            lab_fr = 0.0
+        scene.metadata['Lab_FR'] = round(lab_fr, 3)
+
         # Rb-f (Indraratna et al. 2011): volume-based ratio independent of moisture
         # Rb-f = (Vf / Gs_f) / (Vb / Gs_b) × 100  ≈ (area_foul / Gs_f) / (area_rock / Gs_b) × 100
-        Gs_f = getattr(MC, 'DEFAULT_FOULING_DENSITY', 2.6)
-        Gs_b = getattr(MC, 'DEFAULT_BALLAST_DENSITY', 2.6)
+        Gs_f = PHC.DEFAULT_FOULING_DENSITY   # 2.58 — Koohmishi et al. (2025)
+        Gs_b = PHC.DEFAULT_BALLAST_DENSITY   # 2.72 — Koohmishi et al. (2025)
         rb_f = ((total_fouling_area_mm2 / Gs_f) / (total_rock_area_mm2 / Gs_b) * 100.0
                 if total_rock_area_mm2 > 0 else 0.0)
         scene.metadata['Lab_Rb_f'] = round(rb_f, 3)
@@ -305,8 +285,24 @@ class LabWorker(Worker):
             er_eff = (f_rock_2d * math.sqrt(er_rock) + f_foul_2d * math.sqrt(er_foul) + f_void_2d) ** 2
             scene.metadata['Lab_er_eff'] = round(er_eff, 3)
 
+        # Leng & Al-Qadi (2010) bulk ballast εr — empirical linear model from lab-controlled testing.
+        # εr = intercept_f + slope_f × (pvc/100) + slope_m × moisture
+        # where pvc/100 = fraction of air void filled by fouling (0–0.5 tested range),
+        # and moisture = volumetric water content as fraction of air void (0–0.15 tested range).
+        # Source: Fig. 7 (dry fouling) + Fig. 8 (moisture) of Leng & Al-Qadi, TRB 2010, Paper 10-0562.
+        _leng = {
+            'granite':   (3.237, 1.038, 31.893),
+            'limestone': (3.732, 1.634, 39.883),
+        }
+        rock_type = getattr(scene.config, 'rock_type', 'granite').lower()
+        b, sf, sm = _leng.get(rock_type, _leng['granite'])
+        er_bulk_leng = b + sf * (pvc / 100.0) + sm * scene.metadata.get('moisture', 0.0)
+        scene.metadata['Lab_er_bulk_leng'] = round(er_bulk_leng, 3)
+
+        self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
+
         print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) "
-              f"Rb-f={rb_f:.2f}% -> Class: {fi_class}")
+              f"Rb-f={rb_f:.2f}% FR={lab_fr:.2f}% -> Class: {fi_class}")
         print(f"[{self.name}] MC Phase Fractions: Rock={fractions['mc_rock_fraction']:.3f}, "
               f"Fouling={fractions['mc_fouling_fraction']:.3f}, "
               f"Subgrade={fractions['mc_subgrade_fraction']:.3f}, "
@@ -353,23 +349,34 @@ class LabWorker(Worker):
             dy = ys[:, np.newaxis] - ry
             in_rock = np.any(dx**2 + dy**2 < rr2, axis=1)
 
-        # --- Fouling phase ---
+        # --- Fouling phase — painter's algorithm priority ---
+        # gprMax render order (last command per voxel wins):
+        #   priority-10 boxes: FOULING_DENSE boxes rendered before rocks
+        #   priority-20 cylinders: rock cylinders first (RockWorker),
+        #                          FOULING_GRANULAR cylinders after (FoulingWorker, later insertion)
+        # Result: rocks override FOULING_DENSE boxes; FOULING_GRANULAR cylinders override rocks.
+        _fouling_mats = {MC.FOULING, MC.FOULING_DENSE}
         fouling_cmds  = [c for c in scene.geometry
-                         if getattr(c, 'material', None) == MC.FOULING]
+                         if getattr(c, 'material', None) in _fouling_mats]
         fouling_boxes = [c for c in fouling_cmds if isinstance(c, BoxCommand)]
         fouling_cyls  = [c for c in fouling_cmds if isinstance(c, CylinderCommand)]
 
-        in_fouling = np.zeros(n_samples, dtype=bool)
+        in_fouling_box = np.zeros(n_samples, dtype=bool)
         for box in fouling_boxes:
-            in_fouling |= (xs >= box.x1) & (xs <= box.x2) & (ys >= box.y1) & (ys <= box.y2)
+            in_fouling_box |= (xs >= box.x1) & (xs <= box.x2) & (ys >= box.y1) & (ys <= box.y2)
+
+        in_fouling_cyl = np.zeros(n_samples, dtype=bool)
         if fouling_cyls:
             fx  = np.array([c.x1     for c in fouling_cyls])
             fy  = np.array([c.y1     for c in fouling_cyls])
             fr2 = np.array([c.radius for c in fouling_cyls]) ** 2
-            dx = xs[:, np.newaxis] - fx
-            dy = ys[:, np.newaxis] - fy
-            in_fouling |= np.any(dx**2 + dy**2 < fr2, axis=1)
-        in_fouling &= ~in_rock
+            dx  = xs[:, np.newaxis] - fx
+            dy  = ys[:, np.newaxis] - fy
+            in_fouling_cyl = np.any(dx**2 + dy**2 < fr2, axis=1)
+
+        # Apply render priority:
+        in_rock    = in_rock & ~in_fouling_cyl                      # fouling cyls paint over rocks
+        in_fouling = in_fouling_cyl | (in_fouling_box & ~in_rock)   # boxes lose to rocks
 
         # --- Formation phase (placed after subgrade in gprMax, so takes priority over it) ---
         formation_boxes = [c for c in scene.geometry
@@ -416,31 +423,172 @@ class LabWorker(Worker):
             'mc_pvc_measured':       mc_pvc,
         }
 
-    def _circle_strip_intersection(self, center_x: float, center_y: float, radius: float, y_min: float, y_max: float) -> float:
-        """
-        Calculate the area of a circle (center_x, center_y, radius) intersection with a horizontal strip y_min <= y <= y_max.
-        """
-        # Area = Area_below(y_max) - Area_below(y_min)
-        return self._circular_segment_area_below(center_x, center_y, radius, y_max) - \
-               self._circular_segment_area_below(center_x, center_y, radius, y_min)
+    def _scan_ballast_column(
+        self,
+        scene: SceneCheckpoint,
+        ballast_bottom: float,
+        ballast_top: float,
+        domain_x: float,
+    ):
+        """1-D painter's-algorithm scan along domain centreline (x = domain_x / 2).
 
-    def _circular_segment_area_below(self, center_x: float, center_y: float, radius: float, horizontal_line_y: float) -> float:
+        Returns (ys, material_labels) as numpy arrays. Same render priority as
+        gprMax: boxes applied first, cylinders after; last writer wins per voxel.
         """
-        Area of circle below horizontal line y = horizontal_line_y.
+        from .gpr_commands import BoxCommand, CylinderCommand
+
+        STEP = PHC.LDCP_STEP_M
+        x_probe = domain_x / 2.0
+        ys = np.arange(ballast_bottom + STEP / 2.0, ballast_top, STEP)
+        n = len(ys)
+        if n == 0:
+            return ys, np.array([], dtype=object)
+
+        material_labels = np.full(n, "void", dtype=object)
+        for cmd in scene.geometry:
+            mat = getattr(cmd, 'material', None)
+            if mat is None:
+                continue
+            if isinstance(cmd, BoxCommand):
+                if x_probe < cmd.x1 or x_probe > cmd.x2:
+                    continue
+                mask = (ys >= cmd.y1) & (ys <= cmd.y2)
+                material_labels[mask] = mat
+            elif isinstance(cmd, CylinderCommand):
+                dx2 = (x_probe - cmd.x1) ** 2
+                mask = dx2 + (ys - cmd.y1) ** 2 <= cmd.radius ** 2
+                material_labels[mask] = mat
+
+        return ys, material_labels
+
+    def _run_ldcp_profiler(
+        self,
+        scene: SceneCheckpoint,
+        ballast_bottom: float,
+        ballast_top: float,
+        domain_x: float,
+    ) -> None:
         """
-        # Relative height from center
-        vertical_distance = horizontal_line_y - center_y
-        
-        if vertical_distance >= radius:
-            return math.pi * radius**2 # All of it
-        if vertical_distance <= -radius:
-            return 0.0 # None of it
-            
-        # Area = r^2 * (pi/2 + arcsin(d/r)) + d * sqrt(r^2 - d^2)
-        
-        angle_term = math.pi/2 + math.asin(vertical_distance/radius)
-        linear_term = vertical_distance * math.sqrt(radius**2 - vertical_distance**2)
-        return (radius**2) * angle_term + linear_term
+        Synthetic 1-D LDCP profiler along the domain centreline (x = domain_x / 2).
+
+        Classifies each 1 mm step via the painter's algorithm, assigns a synthetic
+        quasi-static point resistance (qs) per material and derives:
+
+          Lab_LDCP_FH      – %FH: % of ballast depth classified as fouling material
+          Lab_LDCP_FI_est  – FI estimate = %FH / F_clay  (Rojas-Vivanco 2025, eq. 9)
+          Lab_LDCP_qs_mean – mean synthetic qs across the ballast column (MPa)
+
+        Also triggers Barrett et al. (2019) CRIM and clean-thickness computation.
+        """
+        ys, material_labels = self._scan_ballast_column(
+            scene, ballast_bottom, ballast_top, domain_x
+        )
+        n = len(ys)
+
+        if n == 0:
+            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_FI_est': 0.0, 'Lab_LDCP_qs_mean': 0.0})
+            return
+
+        is_rock    = np.array([m.startswith("bal_rock") for m in material_labels])
+        is_fouling = np.array([m.startswith("bal_foul")  for m in material_labels])
+        is_sub     = material_labels == MC.SUBGRADE
+        is_form    = material_labels == MC.FORMATION
+
+        qs = np.full(n, PHC.LDCP_QS_VOID)
+        qs[is_rock]    = PHC.LDCP_QS_ROCK
+        qs[is_fouling] = PHC.LDCP_QS_FOULING
+        qs[is_sub]     = PHC.LDCP_QS_SUBGRADE
+        qs[is_form]    = PHC.LDCP_QS_FORMATION
+
+        fh_pct  = float(np.mean(is_fouling)) * 100.0
+        fi_est  = fh_pct / PHC.LDCP_FH_FACTOR_CLAY
+        qs_mean = float(np.mean(qs))
+
+        scene.metadata['Lab_LDCP_FH']      = round(fh_pct, 2)
+        scene.metadata['Lab_LDCP_FI_est']  = round(fi_est, 2)
+        scene.metadata['Lab_LDCP_qs_mean'] = round(qs_mean, 2)
+
+        print(f"[{self.name}] LDCP Profile ({n} steps @ 1mm): "
+              f"FH={fh_pct:.1f}% -> FI_est={fi_est:.1f}  qs_mean={qs_mean:.1f} MPa")
+
+        self._compute_crim_and_thickness(
+            scene, ys, material_labels, ballast_bottom, ballast_top
+        )
+
+    def _compute_crim_and_thickness(
+        self,
+        scene: SceneCheckpoint,
+        ys,
+        material_labels,
+        ballast_bottom: float,
+        ballast_top: float,
+    ) -> None:
+        """Barrett et al. (2019) derived metrics from the 1-D column scan.
+
+        Stores:
+          Lab_bulk_eps          – CRIM bulk dielectric constant (Eq. 5)
+          Lab_surface_R         – normal-incidence reflectivity at air/ballast surface (Eq. 7)
+          Lab_alpha_400MHz_npm  – attenuation coefficient at 400 MHz  (Np/m, Eq. 8)
+          Lab_alpha_2GHz_npm    – attenuation coefficient at 2 GHz    (Np/m, Eq. 8)
+          Lab_clean_ballast_mm  – clean ballast thickness: surface to topmost fouling (mm)
+        """
+        from src.physics import crim_bulk_eps, surface_reflectivity_R, attenuation_factor_npm, topp_mixing_model
+
+        n = len(ys)
+        if n == 0:
+            return
+
+        is_rock    = np.array([m.startswith("bal_rock") for m in material_labels])
+        is_fouling = np.array([m.startswith("bal_foul")  for m in material_labels])
+        is_solid   = np.array([m in {MC.SUBGRADE, MC.FORMATION} for m in material_labels])
+        is_void    = ~is_rock & ~is_fouling & ~is_solid
+
+        v_rock  = float(np.mean(is_rock))
+        v_fines = float(np.mean(is_fouling))
+        v_void  = float(np.mean(is_void))
+
+        # Moisture: volumetric fraction of total volume that is water
+        moisture = scene.metadata.get('moisture', 0.0)
+        v_water  = min(float(moisture), v_void)
+        v_air    = v_void - v_water
+
+        eps_rock  = float(getattr(scene.config, 'bal_rock_eps', 5.5))
+        eps_fines = topp_mixing_model(moisture)
+        eps_water = 80.1
+
+        bulk_eps = crim_bulk_eps(v_rock, eps_rock, v_fines, eps_fines, v_water, eps_water, v_air)
+        scene.metadata['Lab_bulk_eps'] = round(bulk_eps, 3)
+
+        R = surface_reflectivity_R(1.0, bulk_eps)
+        scene.metadata['Lab_surface_R'] = round(R, 4)
+
+        # Volume-weighted effective conductivity
+        sigma_rock  = float(getattr(scene.config, 'bal_rock_sigma', 1e-4))
+        sigma_fines = moisture * 0.1    # wet clay contribution ~ 0.1 S/m × moisture
+        sigma_water = 0.05              # typical groundwater conductivity
+        sigma_eff = max(
+            v_rock * sigma_rock + v_fines * sigma_fines + v_water * sigma_water,
+            1e-9,
+        )
+
+        scene.metadata['Lab_alpha_400MHz_npm'] = round(
+            attenuation_factor_npm(400e6, bulk_eps, sigma_eff), 4
+        )
+        scene.metadata['Lab_alpha_2GHz_npm'] = round(
+            attenuation_factor_npm(2e9, bulk_eps, sigma_eff), 4
+        )
+
+        # Clean ballast thickness: from ballast_top down to topmost fouling encounter
+        fouling_ys = ys[is_fouling]
+        if len(fouling_ys) > 0:
+            clean_mm = (ballast_top - float(np.max(fouling_ys))) * 1000.0
+        else:
+            clean_mm = (ballast_top - ballast_bottom) * 1000.0
+        scene.metadata['Lab_clean_ballast_mm'] = round(max(0.0, clean_mm), 1)
+
+        print(f"[{self.name}] Barrett(2019): bulk_eps={bulk_eps:.2f}  R={R:.4f}  "
+              f"alpha_400MHz={scene.metadata['Lab_alpha_400MHz_npm']:.4f} Np/m  "
+              f"clean_ballast={scene.metadata['Lab_clean_ballast_mm']:.0f} mm")
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []

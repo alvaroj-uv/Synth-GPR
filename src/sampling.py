@@ -30,22 +30,22 @@ class ParameterSampler:
         )
         
         # Sample PVC and moisture
-        pvc = random.uniform(cfg.pvc_min, cfg.pvc_max) if cfg.granular_mode else 0.0
         moisture = random.uniform(cfg.moisture_min, cfg.moisture_max)
-        
+
+        if cfg.granular_mode and cfg.stratified_fouling:
+            return self._sample_stratified(ballast_thickness, moisture)
+
+        pvc = random.uniform(cfg.pvc_min, cfg.pvc_max) if cfg.granular_mode else 0.0
+
         # Calculate Fouling Index (FI)
         if cfg.granular_mode:
             FI = convert_pvc_to_fi(pvc)
             FI_class = classify_fouling_index(FI)
         else:
             rock_h, foul_h = self._sample_heights()
-            # If not granular, does ballast_thickness apply?
-            # Yes, total thickness.
-            FI = compute_fouling_index(rock_h + foul_h, foul_h) # Wait, compute_FI takes (ballast, foul) or (rock, foul)?
-            # physics.compute_fouling_index(ballast_thickness, fouling_thickness)
-            # Legacy logic sampled total and foul separately.
+            FI = compute_fouling_index(rock_h + foul_h, foul_h)
             FI_class = classify_fouling_index(FI)
-            
+
         return {
             'ballast_thickness': ballast_thickness,
             'pvc': pvc,
@@ -53,6 +53,37 @@ class ParameterSampler:
             'antenna_offset': 0.0,
             'FI': FI,
             'FI_class': FI_class
+        }
+
+    def _sample_stratified(self, ballast_thickness: float, moisture: float) -> Dict[str, Any]:
+        """
+        Sample independent PVC values for top and bottom ballast halves.
+
+        Both layers are sampled from the full [pvc_min, pvc_max] range independently.
+        The column-level label is derived from the mean FI of the two layers.
+        Per-layer FI values are preserved in the returned dict for metadata logging.
+        """
+        cfg = self.config
+        pvc_bottom = random.uniform(cfg.pvc_min, cfg.pvc_max)
+        pvc_top    = random.uniform(cfg.pvc_min, cfg.pvc_max)
+
+        FI_bottom = convert_pvc_to_fi(pvc_bottom)
+        FI_top    = convert_pvc_to_fi(pvc_top)
+        FI        = (FI_bottom + FI_top) / 2.0
+        FI_class  = classify_fouling_index(FI)
+        pvc_mean  = (pvc_bottom + pvc_top) / 2.0
+
+        return {
+            'ballast_thickness': ballast_thickness,
+            'pvc':        pvc_mean,
+            'pvc_bottom': pvc_bottom,
+            'pvc_top':    pvc_top,
+            'moisture':   moisture,
+            'antenna_offset': 0.0,
+            'FI':         FI,
+            'FI_bottom':  FI_bottom,
+            'FI_top':     FI_top,
+            'FI_class':   FI_class,
         }
 
     def _sample_heights(self) -> Tuple[float, float]:

@@ -148,11 +148,11 @@ class ProductionLine:
             work_order_system.log("=== Scene Statistics ===", "System")
             work_order_system.log(f"  Materials: {len(checkpoint.materials)}", "System")
             work_order_system.log(f"  Geometry Commands: {len(checkpoint.geometry)}", "System")
-            work_order_system.log(f"  Rocks: {checkpoint._rock_collection.count}", "System")
+            work_order_system.log(f"  Rocks: {checkpoint.rock_count}", "System")
             physical_sources = [s for s in checkpoint.sources if not s.__class__.__name__.startswith('Waveform')]
             work_order_system.log(f"  Sources: {len(physical_sources)}", "System")
             work_order_system.log(f"  Receivers: {len(checkpoint.receivers)}", "System")
-            work_order_system.log(f"  Antennas Configured: {checkpoint._antenna_config.is_configured}", "System")
+            work_order_system.log(f"  Antennas Configured: {checkpoint.antennas_configured}", "System")
             
             # Domain info
             if checkpoint.domain_settings:

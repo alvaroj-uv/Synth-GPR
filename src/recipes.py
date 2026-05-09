@@ -64,8 +64,8 @@ class RecipeBook:
     def get_variant_recipe(variant_type: str) -> List[Worker]:
         """
         Get workers for the variant/customization phase.
-        
-        Currently unused - reserved for future multi-variant generation
+
+        Reserved for future multi-variant generation
         (e.g., different antenna offsets, moisture variations, etc.)
         """
-        pass
+        raise NotImplementedError(f"No variant recipe defined for '{variant_type}'")
