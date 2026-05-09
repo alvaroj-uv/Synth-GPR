@@ -98,14 +98,11 @@ class DatasetGenerator:
                     if k in params and k not in metadata:
                         metadata[k] = params[k]
                 
-                # Log key metadata for LLM analysis
-                # Note: checkpoint._rock_collection.count is an internal detail,
-                # but useful for debugging/LLM analysis.
-                print(f"  -> Metadata: PVC={metadata.get('pvc', 0):.2f}%, "
-                      f"Lab_FI={metadata.get('Lab_FI', 0):.1f}, "
-                      f"Lab_Class={metadata.get('Lab_Class', 'N/A')}, "
-                      f"Target_Class={metadata.get('FI_class', 'N/A')}, "
-                      f"Rocks={checkpoint.rock_count}")
+                # Log explicit virtual lab results
+                print(f"  -> Virtual Lab Results for Sample {sample_id}:")
+                print(f"       Classification : Target={metadata.get('FI_class', 'N/A')} | Lab_Class={metadata.get('Lab_Class', 'N/A')} | Lab_FI={metadata.get('Lab_FI', 0):.1f} | PVC={metadata.get('pvc', 0):.2f}%")
+                print(f"       Virtual LDCP   : FI_est={metadata.get('Lab_LDCP_FI_est', 0):.1f} | qs_mean={metadata.get('Lab_LDCP_qs_mean', 0):.2f} MPa")
+                print(f"       GPR Physics    : bulk_eps={metadata.get('Lab_bulk_eps', 0):.3f} | clean_depth={metadata.get('Lab_clean_ballast_mm', 0):.1f} mm | rocks={checkpoint.rock_count}")
                 
                 # Validation check (non-blocking, just informational)
                 validation_errors = checkpoint.validate_all()
