@@ -94,7 +94,8 @@ class ProductionLine:
             coordinate_system=coords
         )
         
-        base_workers = RecipeBook.get_base_recipe("standard")
+        base_workers = RecipeBook.get_base_recipe(self.config, product_type="standard")
+
         
         for worker in base_workers:
             self._execute_worker(worker, scene, self.keeper)

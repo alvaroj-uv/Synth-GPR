@@ -28,11 +28,227 @@ import numpy as np
 from .constants import PAC
 from .rock_model import PackingBounds, Rock
 
-# Removed local Rock/PackingBounds definitions
 
+# ── Quadtree for O(log N) collision detection ─────────────────────────────────
+# Inspired by jagua-rs (Gar, 2024): decoupling geometry from optimization.
+
+class _QTNode:
+    """Internal node for CircleQuadtree."""
+    __slots__ = ('cx', 'cy', 'half', 'rocks', 'children')
+
+    def __init__(self, cx: float, cy: float, half: float):
+        self.cx = cx
+        self.cy = cy
+        self.half = half
+        self.rocks: list = []
+        self.children: list = []  # 4 children when split
+
+    def _split(self):
+        h = self.half / 2
+        cx, cy = self.cx, self.cy
+        self.children = [
+            _QTNode(cx - h, cy - h, h),
+            _QTNode(cx + h, cy - h, h),
+            _QTNode(cx - h, cy + h, h),
+            _QTNode(cx + h, cy + h, h),
+        ]
+
+    def _child_idx(self, x: float, y: float) -> int:
+        return (1 if x > self.cx else 0) + (2 if y > self.cy else 0)
+
+
+class CircleQuadtree:
+    """
+    Quadtree for fast circle-circle overlap detection.
+
+    Inspired by jagua-rs Collision Detection Engine (Gar, 2024).
+    Reduces overlap checks from O(N) to O(log N) per query.
+
+    Args:
+        bounds:    Spatial domain covered by the tree.
+        max_depth: Maximum tree depth (default 6 → 64×64 leaf grid).
+        max_items: Max circles per leaf before splitting (default 8).
+    """
+
+    def __init__(self, bounds: PackingBounds, max_depth: int = 6, max_items: int = 8):
+        cx = (bounds.x_min + bounds.x_max) / 2
+        cy = (bounds.y_min + bounds.y_max) / 2
+        half = max(bounds.width, bounds.height) / 2
+        self._root = _QTNode(cx, cy, half)
+        self._max_depth = max_depth
+        self._max_items = max_items
+        self.max_r = 0.0  # Track maximum radius for correct pruning
+
+    def insert(self, rock: Rock) -> None:
+        """Insert a rock into the quadtree."""
+        self.max_r = max(self.max_r, rock.radius)
+        self._insert(self._root, rock, 0)
+
+    def _insert(self, node: _QTNode, rock: Rock, depth: int) -> None:
+        if not node.children:
+            node.rocks.append(rock)
+            if len(node.rocks) > self._max_items and depth < self._max_depth:
+                node._split()
+                for r in node.rocks:
+                    idx = node._child_idx(r.x, r.y)
+                    self._insert(node.children[idx], r, depth + 1)
+                node.rocks = []
+        else:
+            idx = node._child_idx(rock.x, rock.y)
+            self._insert(node.children[idx], rock, depth + 1)
+
+    def overlaps_any(self, x: float, y: float, radius: float, min_gap: float = 0.0) -> bool:
+        """
+        Return True if a circle at (x, y, radius) overlaps any stored circle.
+
+        Args:
+            x, y:    Centre of candidate circle.
+            radius:  Radius of candidate circle.
+            min_gap: Required minimum surface-to-surface clearance (metres).
+        """
+        return self._query(self._root, x, y, radius, min_gap)
+
+    def _query(self, node: _QTNode, x: float, y: float, radius: float, min_gap: float) -> bool:
+        import math
+        # Prune: if the query circle + max possible rock radius can't reach this node, skip.
+        reach = radius + min_gap + self.max_r
+        if (x + reach < node.cx - node.half or x - reach > node.cx + node.half or
+                y + reach < node.cy - node.half or y - reach > node.cy + node.half):
+            return False
+
+        for rock in node.rocks:
+            d = math.hypot(x - rock.x, y - rock.y)
+            if d < radius + rock.radius + min_gap:
+                return True
+
+        for child in node.children:
+            if self._query(child, x, y, radius, min_gap):
+                return True
+        return False
+
+
+# ── Grading Curve (PSD sampler) ───────────────────────────────────────────────
+# Inspired by ParticlePack/Distribution.cs (MosGeo, Geophysics 2019):
+# Converts a user-defined PDF (sieve curve) to a CDF and samples radii from it
+# using inverse-CDF, replacing the flat uniform(r_min, r_max) distribution.
+
+class GradingCurve:
+    """
+    Particle Size Distribution (PSD) sampler using inverse-CDF method.
+
+    Inspired by ParticlePack/Distribution.cs (MosGeo, Geophysics 2019).
+    Converts a particle size distribution (sieve curve) to a CDF so that
+    random radii are drawn proportionally to the actual grading.
+
+    Args:
+        sieve_sizes_m:   Sieve opening sizes in metres, ascending.
+        pct_passing:     Cumulative % passing for each sieve size (0-100).
+
+    Example (EN 13450 Type-I railway ballast, 31.5/63 fraction)::
+
+        GradingCurve.en13450()
+    """
+
+    def __init__(self, sieve_sizes_m: List[float], pct_passing: List[float]):
+        if len(sieve_sizes_m) != len(pct_passing):
+            raise ValueError("sieve_sizes_m and pct_passing must be the same length.")
+        if len(sieve_sizes_m) < 2:
+            raise ValueError("At least 2 sieve points required.")
+
+        # Convert % passing to cumulative probabilities (0-1), normalised
+        cdf = np.array(pct_passing, dtype=float)
+        cdf = np.clip(cdf, 0.0, 100.0) / 100.0
+        # Ensure strictly monotone (handle duplicate values)
+        for i in range(1, len(cdf)):
+            if cdf[i] <= cdf[i - 1]:
+                cdf[i] = cdf[i - 1] + 1e-9
+        cdf = cdf / cdf[-1]  # Normalise to [0, 1]
+
+        self._sizes = np.array(sieve_sizes_m, dtype=float) / 2.0  # diameter -> radius
+        self._cdf = cdf
+
+    # ── Factory methods ────────────────────────────────────────────────────────
+
+    @classmethod
+    def en13450(cls) -> "GradingCurve":
+        """
+        EN 13450:2013 Type-I railway ballast (31.5/63 fraction).
+
+        Midpoint of the specification envelope.
+        Sieve sizes in mm: 22.4, 31.5, 40, 50, 63, 80.
+        Reference: EN 13450:2013, Table 4.
+        """
+        sieve_mm = [22.4, 31.5, 40.0, 50.0, 63.0, 80.0]
+        pct_pass = [ 0.0,  8.5, 32.5, 65.0, 95.0, 99.0]  # midpoint of spec envelope
+        return cls([s / 1000.0 for s in sieve_mm], pct_pass)
+
+    @classmethod
+    def fuller(cls, d_max: float, n: float = 0.5, n_points: int = 20) -> "GradingCurve":
+        """
+        Fuller-Thompson ideal grading curve (maximises packing density).
+
+        P(d) = 100 * (d / d_max)^n,  n=0.5 for maximum density.
+
+        Args:
+            d_max:    Maximum particle diameter (metres).
+            n:        Fuller exponent (default 0.5).
+            n_points: Resolution of the CDF table.
+        """
+        sizes = np.linspace(d_max * 0.1, d_max, n_points)
+        pct   = 100.0 * (sizes / d_max) ** n
+        return cls(list(sizes), list(pct))
+
+    @classmethod
+    def uniform(cls, r_min: float, r_max: float) -> "GradingCurve":
+        """Flat (uniform) distribution — equivalent to random.uniform."""
+        return cls([r_min * 2, r_max * 2], [0.0, 100.0])
+
+    # ── Sampling ───────────────────────────────────────────────────────────────
+
+    def sample(self, clamp_min: float = 0.0, clamp_max: float = float("inf")) -> float:
+        """
+        Draw one random radius proportional to the grading curve (inverse-CDF).
+
+        Args:
+            clamp_min: Lower radius clamp (metres).
+            clamp_max: Upper radius clamp (metres).
+
+        Returns:
+            A radius in metres.
+        """
+        u = random.random()
+        r = float(np.interp(u, self._cdf, self._sizes))
+        return max(clamp_min, min(clamp_max, r))
+
+    def sample_n(self, n: int, clamp_min: float = 0.0,
+                 clamp_max: float = float("inf")) -> List[float]:
+        """Draw n independent radius samples."""
+        return [self.sample(clamp_min, clamp_max) for _ in range(n)]
+
+
+def _grading_curve_from_config(config) -> "GradingCurve":
+    """
+    Build the appropriate GradingCurve from a GeneratorConfig.
+
+    Reads ``rock_psd_type``:
+    - ``"uniform"``   -> flat distribution between r_min and r_max (default)
+    - ``"en13450"``   -> EN 13450 Type-I railway ballast envelope midpoint
+    - ``"fuller"``    -> Fuller-Thompson maximum-density curve
+    """
+    psd_type = getattr(config, 'rock_psd_type', 'uniform')
+    r_min = config.rock_radius_min
+    r_max = config.rock_radius_max
+
+    if psd_type == 'en13450':
+        return GradingCurve.en13450()
+    elif psd_type == 'fuller':
+        return GradingCurve.fuller(d_max=r_max * 2)
+    else:  # 'uniform' or any unknown value
+        return GradingCurve.uniform(r_min, r_max)
 
 
 class RockPackingStrategy(ABC):
+
     """
     Abstract base class for rock placement strategies.
     
@@ -48,18 +264,43 @@ class RockPackingStrategy(ABC):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: "GradingCurve" = None
     ) -> List[Rock]:
         """
         Generate rocks within the given bounds.
-        
+
         Args:
-            bounds: Rectangular bounding box for placement
-            
+            bounds:           Rectangular bounding box for placement.
+            radius_min/max:   Rock radius range (metres). Used as clamps when a
+                              grading_curve is provided, or as uniform range otherwise.
+            target_fill_ratio: Target area fill fraction (0–1).
+            max_attempts:     Safety cap on placement iterations.
+            min_gap:          Minimum surface-to-surface clearance (metres).
+                              Inspired by jagua-rs min_item_separation.
+            grading_curve:    Optional GradingCurve (PSD sampler). When provided,
+                              radii are drawn from the grading distribution instead
+                              of a flat uniform distribution. Inspired by
+                              ParticlePack/Distribution.cs (MosGeo, 2019).
+
         Returns:
-            List of Rock objects
+            List of Rock objects.
         """
         pass
+
+    def _sample_radius(self, radius_min: float, radius_max: float,
+                       grading_curve: "GradingCurve" = None) -> float:
+        """
+        Sample a single rock radius, respecting the grading curve if provided.
+
+        When grading_curve is None, falls back to flat uniform distribution
+        (legacy behaviour, zero change for existing strategies).
+        """
+        if grading_curve is not None:
+            return grading_curve.sample(clamp_min=radius_min, clamp_max=radius_max)
+        return random.uniform(radius_min, radius_max)
+
 
     def _create_rock(self, x: float, y: float, radius: float) -> Rock:
         """Helper method to create a Rock object."""
@@ -186,7 +427,9 @@ class PoissonDiskPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: GradingCurve = None
     ) -> List[Rock]:
         """Generate non-overlapping rocks using Poisson disk sampling."""
         rocks = []
@@ -207,35 +450,29 @@ class PoissonDiskPacking(RockPackingStrategy):
         def is_valid(x: float, y: float, r: float) -> bool:
             """
             Check if a rock placement is valid (no overlaps, within bounds).
-            
-            Args:
-                x: X-coordinate
-                y: Y-coordinate
-                r: Radius
-                
-            Returns:
-                True if placement is valid
+
+            Uses surrounding grid cells for O(1) neighbor lookups.
+            Respects min_gap surface-to-surface clearance.
             """
             # Check bounds with margin
             if x - r < bounds.x_min or x + r > bounds.x_max:
                 return False
             if y - r < bounds.y_min or y + r > bounds.y_max:
                 return False
-            
-            # Check neighbors in surrounding cells
+
+            # Check neighbors in surrounding cells (include min_gap)
             cell_x, cell_y = get_cell(x, y)
             for dx in [-2, -1, 0, 1, 2]:
                 for dy in [-2, -1, 0, 1, 2]:
                     neighbor = grid.get((cell_x + dx, cell_y + dy))
                     if neighbor:
                         dist = np.hypot(x - neighbor.x, y - neighbor.y)
-                        min_dist = r + neighbor.radius
-                        if dist < min_dist:
+                        if dist < r + neighbor.radius + min_gap:
                             return False
             return True
         
         # Initialize with one random sample
-        r0 = random.uniform(radius_min, radius_max)
+        r0 = self._sample_radius(radius_min, radius_max, grading_curve)
         x0 = random.uniform(bounds.x_min + r0, bounds.x_max - r0)
         y0 = random.uniform(bounds.y_min + r0, bounds.y_max - r0)
         
@@ -256,8 +493,8 @@ class PoissonDiskPacking(RockPackingStrategy):
             
             # Try k candidates in annulus around active sample
             for _ in range(self.k_attempts):
-                # Random radius for new rock
-                r_new = random.uniform(radius_min, radius_max)
+                # Random radius for new rock (respects grading curve)
+                r_new = self._sample_radius(radius_min, radius_max, grading_curve)
                 
                 # Generate point in annulus (between r and 2r from active)
                 min_dist = active_rock.radius + r_new
@@ -1318,14 +1555,24 @@ class CirclifyPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: GradingCurve = None
     ) -> List[Rock]:
+        """
+        Generate rocks using the A1.0 heuristic (Huang et al. 2006).
+
+        Uses a CircleQuadtree (jagua-rs inspired) for O(log N) overlap queries,
+        min_gap surface-to-surface clearance, and an optional GradingCurve
+        (ParticlePack inspired) for physically accurate PSD sampling.
+        """
         import math
         import itertools
         import sys
-        
+        import random
+
         _eps = sys.float_info.epsilon
-        
+
         def distance(c1, c2):
             dx = c2.x - c1.x
             dy = c2.y - c1.y
@@ -1351,9 +1598,11 @@ class CirclifyPacking(RockPackingStrategy):
             return (xs1, ys1), (xs2, ys2)
 
         def get_placement_candidates(radius, c1, c2):
+            # Expand c1/c2 by (radius + min_gap) to enforce separation
+            gap = min_gap / 2  # Split gap between the two circles
             margin = radius * _eps * 10.0
-            ic1 = Rock(c1.x, c1.y, c1.radius + radius + margin)
-            ic2 = Rock(c2.x, c2.y, c2.radius + radius + margin)
+            ic1 = Rock(c1.x, c1.y, c1.radius + radius + gap + margin)
+            ic2 = Rock(c2.x, c2.y, c2.radius + radius + gap + margin)
             i1, i2 = get_intersection(ic1, ic2)
             if i1 is None:
                 return None, None
@@ -1366,88 +1615,196 @@ class CirclifyPacking(RockPackingStrategy):
         def get_hole_degree(candidate, circles):
             return sum(distance(candidate, c) * c.radius for c in circles)
 
-        def place_new_circle(radius, placed_circles):
+        def place_new_circle(radius, placed_circles, qt):
+            """Place a circle tangent to two existing ones, chosen to minimize hole degree.
+
+            Uses CircleQuadtree (qt) for O(log N) overlap rejection instead of
+            the previous O(N) linear scan.
+            """
             n_circles = len(placed_circles)
             if n_circles <= 1:
                 x = radius if n_circles == 0 else -radius
                 return Rock(x, 0.0, radius)
-            
+
             mhd = None
             lead_candidate = None
-            
-            # Optimization: Checking all combinations is O(N^3).
-            # To speed up, we check only a subset of recently placed circles
-            # which form the "advancing front", plus some random ones.
-            import random
+
+            # Advancing-front subset: recent circles + random sample
             if n_circles < 30:
                 check_circles = placed_circles
             else:
-                check_circles = placed_circles[-20:] + random.sample(placed_circles[:-20], min(10, len(placed_circles)-20))
-                
+                check_circles = (placed_circles[-20:]
+                                 + random.sample(placed_circles[:-20],
+                                                 min(10, len(placed_circles) - 20)))
+
             for c1, c2 in itertools.combinations(check_circles, 2):
-                other_circles = [c for c in check_circles if c not in (c1, c2)]
                 cand1, cand2 = get_placement_candidates(radius, c1, c2)
                 for cand in (cand1, cand2):
                     if cand is None:
                         continue
-                    if not other_circles:
-                        lead_candidate = cand
-                        break
-                    if any(distance(c, cand) < -1e-9 for c in placed_circles): # Full overlap check is still fast
+                    # ── Quadtree collision check (O(log N)) ──────────────────
+                    if qt.overlaps_any(cand.x, cand.y, cand.radius, min_gap):
                         continue
-                    hd = get_hole_degree(cand, other_circles)
+                    # ── Hole-degree ranking ──────────────────────────────────
+                    other = [c for c in check_circles if c not in (c1, c2)]
+                    if not other:
+                        return cand
+                    hd = get_hole_degree(cand, other)
                     if mhd is None or hd < mhd:
                         mhd = hd
                         lead_candidate = cand
                     if abs(mhd) < radius * _eps * 10.0:
-                        break
-            
+                        return lead_candidate
+
             return lead_candidate
 
-        # 1. Generate random radii
-        import random
+        # ── 1. Generate radii list (over-generate to fill corners) ────────────
         diag = math.hypot(bounds.width, bounds.height)
-        # We need enough area to cover the diagonal. Over-generate heavily to fill corners.
-        target_area = math.pi * (diag / 2)**2 * target_fill_ratio * 2.0
-        
+        target_area = math.pi * (diag / 2) ** 2 * target_fill_ratio * 2.0
+
         radii = []
         current_area = 0.0
         while current_area < target_area:
-            r = random.uniform(radius_min, radius_max)
+            r = self._sample_radius(radius_min, radius_max, grading_curve)
             radii.append(r)
-            current_area += math.pi * r**2
-            
-        # Sort radii descending for best packing (Huang heuristic)
-        radii.sort(reverse=True)
-        
-        # 2. Pack them tightly around (0,0)
-        placed_rocks = []
+            current_area += math.pi * r ** 2
+
+        radii.sort(reverse=True)  # Largest first (Huang heuristic)
+
+        # ── 2. Build the quadtree over a large virtual domain ─────────────────
+        # Pack around (0,0); use a generous virtual bounds for the tree.
+        pack_half = diag
+        virtual_bounds = PackingBounds(-pack_half, pack_half, -pack_half, pack_half)
+        qt = CircleQuadtree(virtual_bounds, max_depth=7)
+
+        # ── 3. Place circles using the A1.0 heuristic ─────────────────────────
+        placed_rocks: List[Rock] = []
         for r in radii:
-            new_rock = place_new_circle(r, placed_rocks)
+            new_rock = place_new_circle(r, placed_rocks, qt)
             if new_rock:
                 placed_rocks.append(new_rock)
-                
-        # 3. Center the pack and crop to bounds
+                qt.insert(new_rock)  # Keep tree up-to-date
+
+        # ── 4. Translate to domain centre and crop to bounds ──────────────────
         if not placed_rocks:
             return []
-            
+
         cx = (bounds.x_min + bounds.x_max) / 2
         cy = (bounds.y_min + bounds.y_max) / 2
-        
-        final_rocks = []
-        current_fill = 0.0
-        
+
+        final_rocks: List[Rock] = []
         for rock in placed_rocks:
             rx = rock.x + cx
             ry = rock.y + cy
-            
             if (rx - rock.radius >= bounds.x_min and
-                rx + rock.radius <= bounds.x_max and
-                ry - rock.radius >= bounds.y_min and
-                ry + rock.radius <= bounds.y_max):
-                
+                    rx + rock.radius <= bounds.x_max and
+                    ry - rock.radius >= bounds.y_min and
+                    ry + rock.radius <= bounds.y_max):
                 final_rocks.append(Rock(rx, ry, rock.radius))
-                    
+
         return final_rocks
 
 
+class GrowthPacking(RockPackingStrategy):
+    """
+    Circle growth packing — each circle grows from min to max radius.
+
+    Port of the Generative Artistry "Circle Packing" algorithm
+    (https://generativeartistry.com/tutorials/circle-packing/).
+
+    Algorithm (per circle):
+        1. Pick a random candidate position.
+        2. Check it doesn't already overlap anything at minRadius.
+        3. Grow the radius one step at a time until it would collide with
+           another circle, a boundary, or reach maxRadius.
+        4. Place the circle at its maximum collision-free size.
+
+    Key difference from all other strategies:
+        Radii are **not sampled** from a distribution — they are *derived*
+        from the available space around each candidate position.  This
+        produces a naturally space-filling, organic pattern where every
+        circle is as large as the local geometry allows.
+
+    Uses a CircleQuadtree for O(log N) collision checks (jagua-rs inspired)
+    and respects ``min_gap`` surface-to-surface clearance.
+
+    Args:
+        place_attempts: Random positions to try per circle (default 500).
+        grow_step:      Radius increment per growth iteration in metres
+                        (default 0.001 m = 1 mm).
+    """
+
+    def __init__(self, place_attempts: int = 500, grow_step: float = 0.001):
+        self.place_attempts = place_attempts
+        self.grow_step = grow_step
+
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: GradingCurve = None       # accepted but not used — size is geometry-driven
+    ) -> List[Rock]:
+        """
+        Generate rocks by growing each circle to its maximum local size.
+
+        ``grading_curve`` is accepted for interface compatibility but ignored:
+        the size distribution emerges from the geometry, not a PSD.
+        """
+        import math
+
+        qt = CircleQuadtree(bounds, max_depth=7)
+        rocks: List[Rock] = []
+
+        def _collides(x: float, y: float, r: float) -> bool:
+            """True if circle (x,y,r) overlaps any placed circle or boundary."""
+            if (x - r < bounds.x_min or x + r > bounds.x_max or
+                    y - r < bounds.y_min or y + r > bounds.y_max):
+                return True
+            return qt.overlaps_any(x, y, r, min_gap)
+
+        current_fill = 0.0
+        outer_tries  = 0
+
+        while current_fill < target_fill_ratio and outer_tries < max_attempts:
+            outer_tries += 1
+            placed_this_round = False
+
+            for _ in range(self.place_attempts):
+                # ── 1. Random candidate centre ────────────────────────────────
+                cx = random.uniform(bounds.x_min + radius_min,
+                                    bounds.x_max - radius_min)
+                cy = random.uniform(bounds.y_min + radius_min,
+                                    bounds.y_max - radius_min)
+
+                # ── 2. Reject immediately if even minRadius collides ──────────
+                if _collides(cx, cy, radius_min):
+                    continue
+
+                # ── 3. Grow radius until first collision ──────────────────────
+                r = radius_min
+                while r + self.grow_step <= radius_max:
+                    if _collides(cx, cy, r + self.grow_step):
+                        break
+                    r += self.grow_step
+
+                # ── 4. Place at maximum collision-free size ───────────────────
+                rock = Rock(cx, cy, r)
+                rocks.append(rock)
+                qt.insert(rock)
+
+                current_fill += (math.pi * r * r) / bounds.area
+                placed_this_round = True
+
+                if current_fill >= target_fill_ratio:
+                    break
+
+            # If we burned through all place_attempts without placing anything
+            # the domain is saturated — stop early
+            if not placed_this_round:
+                break
+
+        return rocks

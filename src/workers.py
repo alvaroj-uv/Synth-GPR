@@ -8,8 +8,9 @@ import random
 from .worker import Worker, SceneCheckpoint
 from .gpr_commands import BoxCommand, CylinderCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
 from .rock_packing import (
-    PoissonDiskPacking, FrontChainPacking, PhysicsPacking, 
-    TrianglePacking, RandomPacking, PackingBounds, CirclifyPacking
+    PoissonDiskPacking, FrontChainPacking, PhysicsPacking,
+    TrianglePacking, RandomPacking, PackingBounds, CirclifyPacking,
+    GrowthPacking
 )
 from .physics import classify_pvc
 from .constants import MC, PC
@@ -270,6 +271,8 @@ class RockWorker(Worker):
                 strategy = RandomPacking()
             elif algo_name == 'circlify':
                 strategy = CirclifyPacking()
+            elif algo_name == 'growth':
+                strategy = GrowthPacking()
             else:
                 strategy = PoissonDiskPacking()
                 
@@ -385,23 +388,28 @@ class RockWorker(Worker):
                                   bounds: PackingBounds, r_min: float, r_max: float,
                                   layer_idx: int) -> List[Any]:
         """Tries primary strategy, falls back to GridPacking if needed."""
+        from .rock_packing import _grading_curve_from_config
+
         target_fill = scene.config.rock_packing_target_fill
         max_attempts = scene.config.rock_packing_max_attempts
-        
+        min_gap = getattr(scene.config, 'rock_min_gap', 0.0)
+        grading_curve = _grading_curve_from_config(scene.config)
+
         rocks = strategy.generate_rocks(
-            bounds, r_min, r_max, target_fill, max_attempts
+            bounds, r_min, r_max, target_fill, max_attempts, min_gap, grading_curve
         )
-        
+
+
         final_strategy_name = strategy.__class__.__name__
 
         if not rocks:
-             scene.log_issue(self.name, "packing_failure", "warning", 
+             scene.log_issue(self.name, "packing_failure", "warning",
                              f"Primary strategy failed for layer {layer_idx}. Switching to GridPacking.")
              from .rock_packing import GridPacking
              fallback = GridPacking()
              rocks = fallback.generate_rocks(bounds, r_min, r_max)
              final_strategy_name = "GridPacking"
-        
+
         scene.metadata['packing_strategy'] = final_strategy_name
         return rocks
 
@@ -572,43 +580,92 @@ class FoulingWorker(Worker):
 
     def _generate_dispersed_particles(self, scene: SceneCheckpoint, y_min: float, y_max: float, 
                                      pvc_fraction: float, domain_x: float, domain_z: float) -> None:
-        """Generates dispersed fouling particles in the voids between rocks."""
-        if y_max <= y_min:
+        """Generates dispersed fouling particles using a Circle Growth algorithm (Quadtree optimized)."""
+        if y_max <= y_min or pvc_fraction <= 0:
             return
 
-        target_count = int(PC.FOULING_PARTICLE_COUNT_MULTIPLIER * pvc_fraction)
+        from .rock_packing import CircleQuadtree, PackingBounds, Rock
+        import math
+
+        bounds = PackingBounds(0, domain_x, y_min, y_max)
+        qt = CircleQuadtree(bounds, max_depth=7)
+
+        # 1. Insert existing rocks into the quadtree (they act as fixed obstacles)
+        for rock in scene.rock_positions:
+            # We only care about rocks that could intersect this zone
+            if rock.y + rock.radius >= y_min and rock.y - rock.radius <= y_max:
+                qt.insert(rock)
+
+        # 2. Determine target area for fouling particles
+        porosity = scene.metadata.get('used_porosity', 0.4)
+        zone_area = domain_x * (y_max - y_min)
+        void_area = zone_area * porosity
         
-        if target_count <= 0:
-            return
+        # We try to fill a fraction of the void area equivalent to the requested PVC fraction
+        # Note: 100% space-filling with circles is impossible (max is ~90%), so if PVC is very high
+        # this will just pack as densely as it geometrically can.
+        target_fill_area = void_area * pvc_fraction
 
+        radius_min = scene.config.fouling_particle_size_min
+        radius_max = scene.config.fouling_particle_size_max
+        grow_step = 0.0005  # 0.5 mm growth increments
+        min_gap = 0.0       # Fouling particles can touch
+
+        def _collides(cx: float, cy: float, cr: float) -> bool:
+            """Check if fouling particle overlaps bounds, rocks, or other fouling particles."""
+            if (cx - cr < bounds.x_min or cx + cr > bounds.x_max or
+                cy - cr < bounds.y_min or cy + cr > bounds.y_max):
+                return True
+            return qt.overlaps_any(cx, cy, cr, min_gap)
+
+        current_area = 0.0
         placed = 0
-        max_attempts = target_count * 10
-        
-        rocks_list = scene.rock_positions
-        
-        for _ in range(max_attempts):
-            if placed >= target_count: break
-            
-            x = random.uniform(0, domain_x)
-            y = random.uniform(y_min, y_max)
-            r = random.uniform(scene.config.fouling_particle_size_min, scene.config.fouling_particle_size_max)
-            
-            if self._is_in_void(x, y, r, rocks_list):
+        outer_tries = 0
+        max_outer_tries = 2000
+        place_attempts = 100
+
+        while current_area < target_fill_area and outer_tries < max_outer_tries:
+            outer_tries += 1
+            placed_this_round = False
+
+            for _ in range(place_attempts):
+                # Random candidate position
+                cx = random.uniform(bounds.x_min + radius_min, bounds.x_max - radius_min)
+                cy = random.uniform(bounds.y_min + radius_min, bounds.y_max - radius_min)
+
+                # Reject immediately if the minimum particle size overlaps something
+                if _collides(cx, cy, radius_min):
+                    continue
+
+                # Grow the particle until it hits an obstacle or max radius
+                r = radius_min
+                while r + grow_step <= radius_max:
+                    if _collides(cx, cy, r + grow_step):
+                        break
+                    r += grow_step
+
+                # Place it at its maximum collision-free size
+                particle = Rock(cx, cy, r)
+                qt.insert(particle)
+                
                 scene.add_geometry(CylinderCommand(
-                    x, y, 0, x, y, domain_z,
+                    cx, cy, 0, cx, cy, domain_z,
                     r, MC.FOULING
                 ))
+                
+                current_area += math.pi * r * r
                 placed += 1
+                placed_this_round = True
 
-    def _is_in_void(self, x: float, y: float, r: float, rocks: List[Any]) -> bool:
-        """Check if a particle at (x,y) with radius r overlaps any rock."""
-        for rock in rocks:
-            dist_sq = (x - rock.x)**2 + (y - rock.y)**2
-            min_dist = rock.radius + r
-            if dist_sq < min_dist**2:
-                return False 
-        return True
-            
+                if current_area >= target_fill_area:
+                    break
+
+            # If the zone is completely saturated, stop early
+            if not placed_this_round:
+                break
+                
+        print(f"      -> Zone [{y_min:.2f}-{y_max:.2f}]: Grown {placed} organic fouling particles")
+
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []
 

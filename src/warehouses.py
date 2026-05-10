@@ -162,6 +162,12 @@ class ToolWarehouse:
             elif algo == "triangle":
                 from .rock_packing import TrianglePacking
                 return TrianglePacking()
+            elif algo == "circlify":
+                from .rock_packing import CirclifyPacking
+                return CirclifyPacking()
+            elif algo == "growth":
+                from .rock_packing import GrowthPacking
+                return GrowthPacking(place_attempts=500, grow_step=0.001)
             elif algo == "shang_chu":
                 from .rock_packing import ShangChuPacking
                 return ShangChuPacking()

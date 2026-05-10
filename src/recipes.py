@@ -18,27 +18,40 @@ class RecipeBook:
     """
     
     @staticmethod
-    def get_base_recipe(product_type: str = "standard") -> List[Worker]:
+    def get_base_recipe(config, product_type: str = "standard") -> List[Worker]:
         """
         Get the sequence of workers for the base construction phase.
         
         Args:
-            product_type: Identifier for the recipe (e.g., 'standard')
+            config: GeneratorConfig object to check feature flags (like granular_mode).
+            product_type: Identifier for the recipe (e.g., 'standard').
             
         Returns:
             List of Worker instances in execution order.
         """
-        # TODO: Dynamic lookup or registry pattern
+        from .granular_worker import GranularMatrixWorker
+
         if product_type == "standard":
-            return [
-                AirWorker(),
-                SubgradeWorker(),
-                FormationWorker(),
-                BallastWorker(),
-                RockWorker(),
-                DegradationWorker(),  # Simulates aging/breakage (optional, controlled by config)
-                FoulingWorker()
-            ]
+            if getattr(config, 'granular_mode', False):
+                # New "Unified Mission" pipeline
+                return [
+                    AirWorker(),
+                    SubgradeWorker(),
+                    FormationWorker(),
+                    BallastWorker(),
+                    GranularMatrixWorker()
+                ]
+            else:
+                # Legacy / sequential pipeline
+                return [
+                    AirWorker(),
+                    SubgradeWorker(),
+                    FormationWorker(),
+                    BallastWorker(),
+                    RockWorker(),
+                    DegradationWorker(),
+                    FoulingWorker()
+                ]
         else:
             raise ValueError(f"Unknown recipe: {product_type}")
 

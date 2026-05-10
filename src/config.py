@@ -66,7 +66,16 @@ class GeneratorConfig:
     rock_layers: int = 3  # Number of vertical layers for rock placement
     rock_packing_target_fill: float = 0.6  # Target density (60% filled)
     rock_packing_max_attempts: int = 1000  # Max attempts for packing algorithm
+    # Minimum surface-to-surface gap between rocks (metres).
+    # Inspired by jagua-rs min_item_separation. 0.0 = rocks may touch.
+    # Realistic ballast: 0.002–0.005 m (2–5 mm).
+    rock_min_gap: float = 0.0
+    # Particle Size Distribution type for radius sampling.
+    # Inspired by ParticlePack/Distribution.cs (MosGeo, Geophysics 2019).
+    # Options: "uniform" (flat, default), "en13450" (EN 13450 railway ballast), "fuller" (max density)
+    rock_psd_type: str = "uniform"
     enable_rock_caching: bool = False  # If False, always generate fresh rocks
+
     
     # Moisture & Fouling Props
     moisture_min: float = 0.0
