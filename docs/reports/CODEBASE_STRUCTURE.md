@@ -1,11 +1,11 @@
 # Synth-GPR Codebase Structure (Post-Refactoring)
 
-## Active Production Code (`src/`)
+## Current Production Code (`src/`)
 
 ### Core Factory Pattern
 - **dataset_generator.py** - Public API wrapper for dataset generation
 - **production_line.py** - Orchestrates worker pipeline execution
-- **workers.py** - All 8 worker implementations (Air, Subgrade, Formation, Ballast, Rock, Fouling, Antenna, Assembler)
+- **workers.py** - All worker implementations (Air, Subgrade, Formation, Ballast, Rock, Fouling, Antenna, Assembler)
 - **worker.py** - Base worker interface and SceneCheckpoint
 - **recipes.py** - Predefined worker recipes (standard, custom)
 
@@ -25,37 +25,28 @@
 
 ### Algorithms & Utilities
 - **rock_packing.py** - Poisson disk sampling and rock packing algorithms
-- **wang_tiles.py** - Wang tiling for efficient pattern generation
-- **patterns/** - Pattern generation utilities
+- **rock_model.py** - Rock shape and material property models
+- **rock_packing.py** - Packing strategies and algorithms
+- **physics.py** - Electromagnetic and material physics calculations
+- **signal_processing.py** - GPR signal processing utilities
+- **sampling.py** - Parameter sampling and randomization
+- **scene_geometry.py** - Geometric calculations and transformations
+- **visualization/** - Visualization utilities
+- **domain/** - Domain-specific logic
+- **patterns/** - Design pattern implementations
+- **repositories/** - Data persistence and access patterns
 
-## Legacy Code (`legacy/`)
+### Additional Core Modules
+- **constants.py** - Project-wide constants
+- **data_loader.py** - Data loading utilities for HDF5 and CSV files
+- **feature_extraction.py** - Feature extraction from GPR signals
+- **granular_worker.py** - Granular material simulation worker
+- **lab_worker.py** - Laboratory-scale simulation worker
+- **degradation_worker.py** - Material degradation simulation
 
-### Old Generation System
-- **synthetic_data_generator.py** - Legacy BallastScenarioGenerator
-- **scene_builder.py** - Old scene construction
-- **geometry_composer.py** - Old layer-based composition
-- **granular_layers.py** - Old granular ballast logic
-- **scenario_factory.py** - Old factory (replaced by ProductionLine)
-- **scene_validator.py** - Old validation (now in workers)
-- **generate_dataset.py** - Old generation script
-- **generate_augmented_dataset.py** - Old augmentation script
+## Key Architecture Patterns
 
-### Old Utilities
-- **ballast_stats.py** - Statistical utilities
-- **gprmax_input_generator.py** - Old input generator
-- **scene_graph.py** - Old scene graph structure
-- **data_loader.py** - Old data loading
-- **feature_extraction.py** - Old feature extraction
-- **signal_processing.py** - Old signal processing
-
-## Key Architecture Changes
-
-**Before (Legacy)**:
-```
-BallastScenarioGenerator → SceneBuilder → GeometryComposer → Layers
-```
-
-**After (Factory Pattern)**:
+**Factory Pattern Implementation**:
 ```
 DatasetGenerator → ProductionLine → Workers → WarehouseKeeper → Warehouses
                                    ↓
@@ -69,3 +60,11 @@ DatasetGenerator → ProductionLine → Workers → WarehouseKeeper → Warehous
 - ✅ Dynamic Placement: Antenna height calculated at runtime
 - ✅ Literature-Based Limits: Domain height capped at 1.65m
 - ✅ Testability: Workers can be tested independently
+- ✅ Extensibility: New workers can be added without modifying existing code
+
+**Domain-Driven Design**:
+- **Entities**: Rock, Material, Antenna, Scene
+- **Value Objects**: PVC, Moisture, DielectricProperties
+- **Services**: Physics calculations, signal processing
+- **Repositories**: Data persistence patterns
+- **Factories**: Work order and scene creation

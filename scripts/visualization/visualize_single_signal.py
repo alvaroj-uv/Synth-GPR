@@ -75,19 +75,21 @@ def visualize_single_file(filename, target_signal=None, fields=['E', 'H']):
 
         print(f"--- Plotting {signal_name} ---")
         
-        # Generate output filename
+        # Generate output filename beside the .out file
+        out_dir   = os.path.dirname(os.path.abspath(filename))
         base_name = os.path.basename(filename).replace('.out', '')
-        output_png = f"{base_name}_{signal_name}_features.png"
+        output_png = os.path.join(out_dir, f"{base_name}_{signal_name}_features.png")
         
         save_feature_summary_plot(features_df, df, signal_name, output_filename=output_png)
 
 if __name__ == "__main__":
-    # Configuration
-    filename = "samples/A_Cle-A_0001.out"
-    target_signal = "rx1_Ez" # Set to None to plot all signals, e.g. target_signal = None
-    fields = ['E', 'H']
-    
-    print(f"Running visualization for: {filename}")
-    print(f"Target Signal: {target_signal if target_signal else 'All'}")
-    
-    visualize_single_file(filename, target_signal=target_signal, fields=fields)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out_file", nargs="?", default="output_test/angular_rocks_400MHz.out")
+    ap.add_argument("--signal", default="rx1_Ez")
+    args = ap.parse_args()
+
+    print(f"Running visualization for: {args.out_file}")
+    print(f"Target Signal: {args.signal}")
+
+    visualize_single_file(args.out_file, target_signal=args.signal, fields=['E', 'H'])

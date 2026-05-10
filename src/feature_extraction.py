@@ -187,7 +187,7 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
 
 def _extract_stft_features(signal: np.ndarray, dt: float) -> dict:
     """Calculates Time-Frequency features using STFT."""
-    f_stft, t_stft, Zxx = stft(signal, fs=1/dt, nperseg=SC.STFT_NPERSEG, noverlap=SC.STFT_NOVERLAP)
+    f_stft, _, Zxx = stft(signal, fs=1/dt, nperseg=SC.STFT_NPERSEG, noverlap=SC.STFT_NOVERLAP)
     stft_mag = np.abs(Zxx)
     
     mask_low = (f_stft < SC.FREQ_LOW_CUTOFF)

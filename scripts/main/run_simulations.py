@@ -61,6 +61,11 @@ def run_batch_simulations(input_folder, n_gpu=-1, n_jobs=4):
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_jobs) as executor:
         results = list(executor.map(run_single_simulation, files_to_run))
     
+    # Report results
+    successful = sum(results)
+    failed = len(results) - successful
+    print(f"Results: {successful} successful, {failed} failed")
+    
     duration = time.time() - start_total
     print(f"\nBatch completed in {duration:.2f} seconds.")
 

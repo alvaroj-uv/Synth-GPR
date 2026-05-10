@@ -112,9 +112,6 @@ def generate_dataset(output_dir, labels, n_per_label=50, start_id=10000, moistur
         gen = DatasetGenerator(cfg)
         
         # Generate batch
-        # We append the label to the metadata filename to avoid overwrites if running multiple batches
-        metadata_name = f"metadata_{label_upper}.csv"
-        
         files, _ = gen.generate_samples(
             output_dir=output_dir,
             n_samples=n_per_label,
