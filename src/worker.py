@@ -175,22 +175,8 @@ class SceneCheckpoint:
         return self._antenna_config.is_configured
 
     def get_domain_params(self) -> tuple:
-        """Return (domain_x, domain_y, domain_z) from WorkOrder typed_params or config."""
-        dx = self.config.domain_x
-        dy = self.config.domain_y
-        dz = self.config.domain_z
-        wo = self.work_order
-        if wo and hasattr(wo, '_work_order') and hasattr(wo._work_order, 'typed_params'):
-            p = wo._work_order.typed_params
-            dx = p.domain_x or dx
-            dy = p.domain_y or dy
-            dz = p.domain_z or dz
-        elif wo and hasattr(wo, 'typed_params'):
-            p = wo.typed_params
-            dx = p.domain_x or dx
-            dy = p.domain_y or dy
-            dz = p.domain_z or dz
-        return dx, dy, dz
+        """Return (domain_x, domain_y, domain_z) from config."""
+        return self.config.domain_x, self.config.domain_y, self.config.domain_z
 
     def find_top_y_from_geometry(self, ignore_material: str = "") -> float:
         """Scan placed geometry to find the highest Y coordinate."""

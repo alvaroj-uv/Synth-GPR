@@ -133,7 +133,8 @@ class TriangleCommand(GPRCommand):
     x1: float; y1: float; z1: float
     x2: float; y2: float; z2: float
     x3: float; y3: float; z3: float
-    material: str
+    thickness: float = 0.0
+    material: str = ""
     commented: bool = False
     
     @property
@@ -141,7 +142,7 @@ class TriangleCommand(GPRCommand):
         return 21 # Objects (Angular Rocks) - Render AFTER Box
     
     def get_cmd_string(self) -> str:
-        return f"#triangle: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.x3)} {fmt(self.y3)} {fmt(self.z3)} {self.material}"
+        return f"#triangle: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.x3)} {fmt(self.y3)} {fmt(self.z3)} {fmt(self.thickness)} {self.material}"
 
 
 @dataclass
@@ -213,12 +214,23 @@ class GeometryViewCommand(GPRCommand):
 
 @dataclass
 class AbsorbingBCCommand(GPRCommand):
-    """PML absorbing boundary: #pml_cells: n_cells (Benedetto et al. 2016)."""
+    """PML absorbing boundary: #pml_cells: xy_cells z_cells.
+
+    For 2D TMz simulations (domain Z = 1 cell), z_cells MUST be 0 —
+    otherwise gprMax raises 'CmdInputError: #pml_cells has too many cells
+    for the domain size'.  The default is z_cells=0 (safe for 2D).
+    For true 3D simulations, set z_cells equal to xy_cells.
+
+    Reference: Benedetto et al. (2016), gprMax v3 documentation.
+    """
     cells: int = 10
+    z_cells: int = 0          # 0 = 2D/TMz safe; set equal to cells for 3D
     commented: bool = False
 
     def get_cmd_string(self) -> str:
-        return f"#pml_cells: {self.cells}"
+        # gprMax v3 6-param order: x0  y0  z0  xmax  ymax  zmax
+        # z0 and zmax MUST be 0 for 2D TMz (nz=1) simulations.
+        return f"#pml_cells: {self.cells} {self.cells} {self.z_cells} {self.cells} {self.cells} {self.z_cells}"
 
 
 class RawCommand(GPRCommand):

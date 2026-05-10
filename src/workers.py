@@ -399,6 +399,7 @@ class RockWorker(Worker):
                 cx, cy, z_start,
                 v1[0], v1[1], z_start,
                 v2[0], v2[1], z_start,
+                z_end - z_start,
                 MC.BALLAST_ROCK
             )
             scene.add_geometry(cmd)
