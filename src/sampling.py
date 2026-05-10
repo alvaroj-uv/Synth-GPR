@@ -31,9 +31,14 @@ class ParameterSampler:
         
         # Sample PVC and moisture
         moisture = random.uniform(cfg.moisture_min, cfg.moisture_max)
+        
+        # Sample antenna height (Namdari et al. 2025)
+        antenna_clearance = random.uniform(cfg.min_antenna_clearance, cfg.max_antenna_clearance)
+
 
         if cfg.granular_mode and cfg.stratified_fouling:
-            return self._sample_stratified(ballast_thickness, moisture)
+            return self._sample_stratified(ballast_thickness, moisture, antenna_clearance)
+
 
         pvc = random.uniform(cfg.pvc_min, cfg.pvc_max) if cfg.granular_mode else 0.0
 
@@ -50,12 +55,14 @@ class ParameterSampler:
             'ballast_thickness': ballast_thickness,
             'pvc': pvc,
             'moisture': moisture,
-            'antenna_offset': 0.0,
+            'antenna_clearance': antenna_clearance,
             'FI': FI,
             'FI_class': FI_class
         }
 
-    def _sample_stratified(self, ballast_thickness: float, moisture: float) -> Dict[str, Any]:
+
+    def _sample_stratified(self, ballast_thickness: float, moisture: float, antenna_clearance: float) -> Dict[str, Any]:
+
         """
         Sample independent PVC values for top and bottom ballast halves.
 
@@ -79,12 +86,13 @@ class ParameterSampler:
             'pvc_bottom': pvc_bottom,
             'pvc_top':    pvc_top,
             'moisture':   moisture,
-            'antenna_offset': 0.0,
+            'antenna_clearance': antenna_clearance,
             'FI':         FI,
             'FI_bottom':  FI_bottom,
             'FI_top':     FI_top,
             'FI_class':   FI_class,
         }
+
 
     def _sample_heights(self) -> Tuple[float, float]:
         """Sample rock and fouling thicknesses for non-granular mode."""

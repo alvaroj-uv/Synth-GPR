@@ -352,17 +352,57 @@ class RockWorker(Worker):
         total_rocks = 0
         highest_rock_y = start_y
         for rock in all_rocks:
-            cmd = CylinderCommand(
-                rock.x, rock.y, z_start,
-                rock.x, rock.y, z_end,
-                rock.radius, MC.BALLAST_ROCK
-            )
-            scene.add_geometry(cmd)
+
+            if getattr(scene.config, 'angular_rocks', False):
+
+
+
+                self._add_angular_rock(scene, rock, z_start, z_end)
+            else:
+                cmd = CylinderCommand(
+                    rock.x, rock.y, z_start,
+                    rock.x, rock.y, z_end,
+                    rock.radius, MC.BALLAST_ROCK
+                )
+                scene.add_geometry(cmd)
+            
             scene.add_rock(rock)
             highest_rock_y = max(highest_rock_y, rock.y + rock.radius)
             total_rocks += 1
 
         return total_rocks, highest_rock_y
+
+    def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
+        """Render a rock as a faceted polygon using gprMax #triangle commands."""
+        import math
+        from src.gpr_commands import TriangleCommand
+        
+        n_sides = getattr(scene.config, 'rock_sides', 6)
+        cx, cy, r = rock.x, rock.y, rock.radius
+        
+        # Calculate vertices of a regular polygon
+        # Add a random rotation for realism
+        offset_angle = random.uniform(0, 2 * math.pi)
+        vertices = []
+        for i in range(n_sides):
+            angle = offset_angle + (2 * math.pi * i / n_sides)
+            # Add small stochastic perturbation to vertex radius for irregular shape
+            vr = r * random.uniform(0.85, 1.1)
+            vertices.append((cx + vr * math.cos(angle), cy + vr * math.sin(angle)))
+            
+        # Create triangles sharing the center point (Fan triangulation)
+        for i in range(n_sides):
+            v1 = vertices[i]
+            v2 = vertices[(i + 1) % n_sides]
+            
+            cmd = TriangleCommand(
+                cx, cy, z_start,
+                v1[0], v1[1], z_start,
+                v2[0], v2[1], z_start,
+                MC.BALLAST_ROCK
+            )
+            scene.add_geometry(cmd)
+
 
     def _settle_rocks(self, rocks: List[Any], floor_y: float) -> None:
         """Drop each rock under gravity until it rests on the floor or a lower rock.
@@ -737,9 +777,28 @@ class AntennaWorker(Worker):
             source = HertzianDipoleCommand("z", *tx_position.to_tuple(), "ricker_src")
             scene.add_source(source)
         
-        # 5. Add Receiver
-        receiver = RxCommand(*rx_position.to_tuple())
-        scene.add_receiver(receiver)
+        # 5. Add Receiver(s) - Supporting Multi-Offset Array (Roncoroni et al. 2025)
+        num_rx = scene.config.num_receivers
+        spacing = scene.config.receiver_spacing
+        
+        for i in range(num_rx):
+            curr_rx_x = rx_x + (i * spacing)
+            rx_pos = Point3D(curr_rx_x, tx_rx_y, tx_rx_z)
+            
+            # Domain Validation
+            if scene.coordinate_system:
+                if not scene.coordinate_system.validate_point(rx_pos):
+                    # For arrays, we might just skip the out-of-bounds receivers instead of crashing,
+                    # but for now, let's log a warning or fail if the first one is bad.
+                    if i == 0:
+                        raise ValueError(f"{self.name}: Primary RX Position {rx_pos} invalid")
+                    else:
+                        print(f"Warning: RX_{i} at {curr_rx_x} is outside domain. Skipping.")
+                        continue
+            
+            receiver = RxCommand(*rx_pos.to_tuple())
+            scene.add_receiver(receiver)
+
         
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         # Check if antennas were added

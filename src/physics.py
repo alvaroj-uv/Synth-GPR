@@ -371,3 +371,41 @@ def get_percent_passing(d_target: float, psd_points: list) -> float:
             )
             
     return 0.0
+def get_fdtd_recommendations(center_freq_hz: float, er_max: float = 14.4) -> dict:
+    """
+    Calculate FDTD simulation parameters based on IEEE 2025 guidelines.
+    
+    Ref: Khosravi Largani et al. (2025), "FDTD Medium Dimension Selection 
+         Guidelines for GPR Synthetic Data Generation"
+         
+    Guidelines:
+        1. Domain X/Y >= 1.5 * lambda_max (to minimize boundary reflections)
+        2. dx <= lambda_min / 10         (to avoid numerical dispersion)
+        3. Antenna Height > lambda_max/2 (to avoid near-field coupling)
+    """
+    c = 299792458.0
+    # Ricker bandwidth: f_min is roughly 0.5 * f_c, f_max is roughly 1.5 * f_c
+    f_min = 0.5 * center_freq_hz
+    f_max = 1.5 * center_freq_hz
+    
+    # lambda_max (longest wave in air)
+    lambda_max = c / f_min
+    # lambda_min (shortest wave in wet soil)
+    lambda_min = c / (f_max * math.sqrt(er_max))
+    
+    # 1. Domain Width (1.5 * lambda_max)
+    recommended_width = 1.5 * lambda_max
+    
+    # 2. Resolution (lambda_min / 10)
+    recommended_dx = lambda_min / 10.0
+    
+    # 3. Antenna Height (> lambda_max / 2)
+    recommended_height = (lambda_max / 2.0) + 0.1  # 10cm safety buffer
+    
+    return {
+        'domain_x': round(recommended_width, 3),
+        'dx': round(recommended_dx, 4),
+        'antenna_height': round(recommended_height, 3),
+        'lambda_max': round(lambda_max, 3),
+        'lambda_min': round(lambda_min, 4)
+    }

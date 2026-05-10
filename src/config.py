@@ -16,9 +16,11 @@ class GeneratorConfig:
     # This class holds all parameters governing the simulation.
     # Immutable: Changes require creating a new instance (e.g., using dataclasses.replace).
     # Domain size (Railway GPR standard)
-    domain_x: float = 0.5
+    # Domain size (IEEE 2025 / Khosravi Largani et al. Guideline: 1.5 * lambda_max)
+    # At 1.5 GHz, lambda_max=40cm -> domain_x=0.6m
+    domain_x: float = 0.6
     domain_y: float = 1.5
-    domain_z: float = 0.004   # 1 cell thick (2-D simulation)
+    domain_z: float = 0.003   # Matched to dx for cubic cells
 
     # Domain Height Limits (Railway Literature)
     # Typical GPR antenna: 30-100cm above ballast surface
@@ -27,34 +29,78 @@ class GeneratorConfig:
 
     # Spatial discretization — Khosravi Largani et al. (2025) FDTD guideline:
     #   dx <= lambda_min / 10,  lambda_min = c / (fmax * sqrt(er_max))
-    # At fc=1.5 GHz, fmax=2.317 GHz (Wang 2015 Ricker ratio):
-    #   er=10  (subgrade/formation) -> need dx <= 4.09 mm  -> 4 mm OK
-    #   er=14.4 (wet fouling max)   -> need dx <= 3.41 mm  -> 4 mm marginal (warns at runtime)
-    dx: float = 0.004
-    dy: float = 0.004
-    dz: float = 0.004
+    # At fc=1.5 GHz, fmax=2.317 GHz:
+    #   er=14.4 (wet fouling max) -> need dx <= 3.41 mm -> 3 mm for physical perfection
+    dx: float = 0.003
+    dy: float = 0.003
+    dz: float = 0.003
     
     # Time window — Mbubia Tchoua et al. (2026): 20 ns captures full ballast column + subgrade interface
     time_window: float = 2.0e-8
 
     # Waveform / antenna
     center_freq: float = 1.5e9
-    tx_x: float = 0.300
-    rx_x: float = 0.35
-    tx_rx_y: float = 1.4  # Raised to use domain efficiently (10cm below top, 50cm above max rocks)
-    tx_rx_z: float = 0.002  # centre of 4 mm domain_z
+    tx_x: float = 0.300 # Center of 0.6m domain
+    rx_x: float = 0.350 # 5cm offset (Bi-static)
+    tx_rx_y: float = 1.4  # 65cm above ballast surface (y=0.75)
+    tx_rx_z: float = 0.0015  # centre of 3 mm domain_z
     add_waveform: bool = True
     add_source: bool = True
     add_geometry_view: bool = False
     add_sleepers: bool = False
-    monostatic: bool = False  # True: RX co-located with TX (single-antenna reflection mode)
     subgrade_wet: bool = False  # True: saturated subgrade εr=21 (Xie et al. 2010), False: εr=10
 
     # PML absorbing boundary (Benedetto et al. 2016): 10 cells on all sides
     pml_layers: int = 10
 
+    # Multi-Offset Antenna Configuration (Roncoroni et al. 2025)
+    # Allows for AVO (Amplitude-Versus-Offset) analysis.
+    num_receivers: int = 1         # 1 = Single Offset, >1 = Linear Array
+    receiver_spacing: float = 0.05 # Distance between receivers in meters
+    monostatic: bool = False       # True: RX co-located with TX (single-antenna)
+
+    @classmethod
+    def create_physically_perfect(cls, center_freq_hz: float, er_max: float = 14.4, **kwargs):
+        """
+        Create a config instance with dimensions and resolution automatically scaled
+        to meet IEEE 2025 (Khosravi Largani et al.) research guidelines.
+        """
+        from .physics import get_fdtd_recommendations
+        recs = get_fdtd_recommendations(center_freq_hz, er_max=er_max)
+        
+        # Calculate antenna position (Center of new domain)
+        tx_x = recs['domain_x'] / 2.0
+        rx_x = tx_x + 0.05 # 5cm offset
+        
+        # Calculate total domain height needed
+        # We need to make sure the LayerStack in ProductionLine will accommodate this.
+        # ballast_top is usually around y = 0.75 (0.2 sub + 0.1 form + 0.45 bal)
+        antenna_clearance = recs['antenna_height']
+        domain_y = 0.75 + antenna_clearance + 0.1 # matching CoordinateSystem logic
+        
+        return cls(
+            center_freq=center_freq_hz,
+            domain_x=recs['domain_x'],
+            domain_y=domain_y,
+            max_domain_y=domain_y + 0.5,
+            domain_z=recs['dx'],
+            dx=recs['dx'],
+            dy=recs['dx'],
+            dz=recs['dx'],
+            tx_x=tx_x,
+            rx_x=rx_x,
+            tx_rx_y=0.75 + antenna_clearance,
+            tx_rx_z=recs['dx'] / 2.0,
+            antenna_clearance_above_ballast=antenna_clearance,
+            **kwargs
+        )
+
+
+
+
     # Granular & High-Fidelity Settings
     granular_mode: bool = False
+
     pvc_min: float = 0.0
     pvc_max: float = 100.0
     
@@ -95,9 +141,17 @@ class GeneratorConfig:
     # Rock gravity settlement (Benedetto et al. 2016 vertical compaction)
     rock_gravity_settle: bool = True
     
-    # Antenna Placement
-    antenna_clearance_above_ballast: float = 0.50  # 50cm above highest rock (railway standard)
+    # Antenna Placement (Namdari et al. 2025: Radar height influences resolution/sensitivity)
+    antenna_clearance_above_ballast: float = 0.50  # Default
+    min_antenna_clearance: float = 0.30
+    max_antenna_clearance: float = 0.80
     antenna_rock_clearance: float = 0.02  # 2cm minimum clearance from rocks
+    
+    # Angular Ballast (Realistic sharp rocks via triangulation - gprMax-Designer)
+    angular_rocks: bool = False  # If True, rocks are rendered as polygons instead of cylinders
+    rock_sides: int = 6         # Number of sides for the angular rock approximation (6=Hexagon)
+
+
     
     # Rock Z-Extent (Extrusion)
     rock_z_start: float = 0.0

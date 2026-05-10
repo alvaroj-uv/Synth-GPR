@@ -23,25 +23,41 @@ def main():
                         help="Percentage Voids Contaminated (PVC) 0-100")
     parser.add_argument("--moisture", type=float, default=0.0,
                         help="Moisture content 0.0-1.0")
+    parser.add_argument("--freq",     type=float, default=1.5e9,
+                        help="Center frequency in Hz (e.g., 400e6 or 1.5e9)")
+    parser.add_argument("--num_rx",   type=int,   default=1,
+                        help="Number of receivers for Multi-Offset Array")
+    parser.add_argument("--spacing",  type=float, default=0.05,
+                        help="Spacing between receivers in meters")
     parser.add_argument("--granular", action="store_true",
                         help="Enable the new Unified Mission-Based Granular Matrix generation")
+    parser.add_argument("--angular",  action="store_true",
+                        help="Render rocks as angular polygons instead of circles")
+    parser.add_argument("--sides",    type=int,   default=6,
+                        help="Number of sides for angular rocks")
     parser.add_argument("--render",   action="store_true",
                         help="Also render a PNG geometry figure after writing the .in file")
 
     args = parser.parse_args()
 
-    # 1. Setup config
-    cfg = GeneratorConfig(
-        add_waveform=True,
-        add_source=True,
+    # 1. Setup config using Research-Grade scaling
+    cfg = GeneratorConfig.create_physically_perfect(
+        center_freq_hz=args.freq,
+        num_receivers=args.num_rx,
+        receiver_spacing=args.spacing,
         rock_packing_algorithm=args.algo,
         rock_psd_type=args.psd,
         granular_mode=args.granular,
+        angular_rocks=args.angular,
+        rock_sides=args.sides,
         pvc_min=args.pvc,
         pvc_max=args.pvc,
         moisture_min=args.moisture,
-        moisture_max=args.moisture
+        moisture_max=args.moisture,
+        add_waveform=True,
+        add_source=True,
     )
+
 
     # 2. Setup Production Line
     pipeline = ProductionLine(cfg)

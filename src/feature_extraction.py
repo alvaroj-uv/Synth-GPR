@@ -67,8 +67,17 @@ def extract_features(df, dt=PC.DEFAULT_DT):
 
 def _extract_time_stats(signal: np.ndarray) -> dict:
     """Calculates basic statistical moments and quantiles."""
+    from scipy.signal import find_peaks
+    
     mean_val = np.mean(signal)
     rms_val = np.sqrt(np.mean(signal**2))
+    
+    # Peak Analysis (Namdari et al. 2025)
+    # Using height threshold to ignore low-level noise
+    peaks, properties = find_peaks(signal, height=np.std(signal)*0.5)
+    peak_heights = properties['peak_heights']
+    num_peaks = len(peaks)
+    mean_peak_height = np.mean(peak_heights) if num_peaks > 0 else 0
     
     stats = {
         'mean': mean_val,
@@ -82,6 +91,8 @@ def _extract_time_stats(signal: np.ndarray) -> dict:
         'percentile_75': np.percentile(signal, 75),
         'peak_max': np.max(signal),
         'peak_min': np.min(signal),
+        'peak_count': num_peaks,
+        'peak_mean_height': mean_peak_height,
         'crest_factor': (np.max(signal) / rms_val) if rms_val != 0 else 0,
         'number_zeros': len(np.where(np.diff(np.signbit(signal)))[0]),
         'area_signal': np.sum(np.abs(signal)),
@@ -93,6 +104,7 @@ def _extract_time_stats(signal: np.ndarray) -> dict:
     stats.update({f'decile_{i+1}0': d for i, d in enumerate(deciles)})
     
     return stats
+
 
 def _extract_hilbert_stats(signal: np.ndarray, dt: float) -> tuple:
     """Calculates statistics on the signal envelope and returns analytic signal."""
@@ -163,6 +175,7 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
     return {
         'area_fourier': area_fourier,
         'fourier_peak_max': max_power,
+        'fourier_standard_deviation': np.std(fft_spectrum),
         'dominant_frequency': freqs[np.argmax(fft_spectrum)],
         'bandwidth': bandwidth,
         'mean_frequency': mean_freq,
@@ -170,6 +183,7 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
         'spectral_entropy': spectral_entropy,
         'spectral_flatness': flatness
     }
+
 
 def _extract_stft_features(signal: np.ndarray, dt: float) -> dict:
     """Calculates Time-Frequency features using STFT."""

@@ -42,6 +42,12 @@ class LabWorker(Worker):
         ballast_top = ballast_bottom + ballast_thickness
         if scene.work_order:
             ballast_top = scene.work_order.get('ballast_top_y', ballast_top)
+            
+        # Dynamically adjust ballast_top to the highest settled rock to avoid 
+        # sampling empty air above the gravity-settled structure.
+        if scene.rock_positions:
+            physical_top = max(r.y + r.radius for r in scene.rock_positions)
+            ballast_top = min(ballast_top, physical_top)
         
         #  1. Get Domain and Layer Info
         # Get domain_x with proper fallback
@@ -253,6 +259,15 @@ class LabWorker(Worker):
 
         fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
         scene.metadata.update(fractions)
+        
+        # Log the Sieve Analysis bounds so the visualization script can draw the orange dashed box
+        scene.metadata['mc_y_min'] = round(y_min, 3)
+        scene.metadata['mc_y_max'] = round(y_max, 3)
+        
+        # Log the MC Global bounds and LDCP line
+        scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
+        scene.metadata['ballast_top_y'] = round(ballast_top, 3)
+        scene.metadata['ldcp_x'] = round(domain_x / 2.0, 3)
 
         # FR (Fouling Ratio, mass-based): FR = (Mf / Mb) × 100
         # Derived from MC fractions: mass ∝ volume × Gs, so

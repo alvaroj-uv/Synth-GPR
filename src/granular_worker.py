@@ -97,6 +97,29 @@ class GranularMatrixWorker(Worker):
             else:
                 # Demoted to void pool
                 void_pool.append(c)
+
+        # Apply Gravity Settle to assigned rocks to prevent them from floating
+        # where tiny "Air" circles used to support them.
+        print(f"[{self.name}] Applying Gravity Settle to {len(assigned_rocks)} rocks...")
+        assigned_rocks.sort(key=lambda r: r.y) # Sort bottom to top
+        settled_rocks = []
+        for r in assigned_rocks:
+            # Drop until collision
+            step = 0.002 # 2mm drop per step
+            while r.y - r.radius > start_y:
+                # Check collision with settled rocks
+                collision = False
+                for sr in settled_rocks:
+                    dist_sq = (r.x - sr.x)**2 + (r.y - step - sr.y)**2
+                    if dist_sq < (r.radius + sr.radius)**2:
+                        collision = True
+                        break
+                if collision:
+                    break
+                r.y -= step
+            settled_rocks.append(r)
+            
+        assigned_rocks = settled_rocks
                 
         achieved_density = current_rock_area / bounds.area
         porosity = 1.0 - achieved_density
@@ -105,54 +128,100 @@ class GranularMatrixWorker(Worker):
         scene.metadata['porosity'] = porosity
         scene.metadata['FI_class'] = classify_pvc(pvc, porosity=porosity)
 
-        # B. Assign Fouling
+        # C. Assign Fouling (AFTER Gravity Settle)
+        # Because rocks settling reduces the overall volume of the track, 
+        # we must recalculate the total available void area to get an accurate PVC.
+        if assigned_rocks:
+            physical_top = max(r.y + r.radius for r in assigned_rocks)
+        else:
+            physical_top = top_y
+            
+        settled_bounds_area = (physical_top - start_y) * domain_x
+        settled_void_area = settled_bounds_area - current_rock_area
+        
         pvc_fraction = min(max(pvc, 0.0), 100.0) / 100.0
-        void_area = bounds.area - current_rock_area
-        target_foul_area = void_area * pvc_fraction
-        
-        assigned_fouling = []
-        current_foul_area = 0.0
-        
-        # Fouling settles to the bottom under gravity
-        void_pool.sort(key=lambda c: c.y)
-        
-        for c in void_pool:
-            if current_foul_area < target_foul_area:
-                assigned_fouling.append(c)
-                current_foul_area += math.pi * c.radius**2
-                
-        # C. Emit Geometry Commands
-        # Instead of drawing thousands of tiny cylinders for the fouling (which causes
-        # FDTD grid aliasing and slows down the simulation), we find the highest 
-        # point the fouling settled to, draw a solid background box, and stamp the rocks on top.
+        target_foul_area = settled_void_area * pvc_fraction
         
         z_start = scene.config.rock_z_start
         z_end = scene.config.rock_z_end
-        
-        # Determine the top height of the settled fouling layer
-        if assigned_fouling:
-            fouling_top_y = max(f.y + f.radius for f in assigned_fouling)
+
+        # Determine the top height of the settled fouling layer using a solid box
+        fouling_top_y = start_y
+        if pvc > 0.0:
+            def foul_area_at_y(y_test: float) -> float:
+                box_area = (y_test - start_y) * domain_x
+                from .physics import circle_strip_intersection
+                rock_area_in_strip = 0.0
+                for r in assigned_rocks:
+                    if (r.y + r.radius) >= start_y and (r.y - r.radius) <= y_test:
+                        rock_area_in_strip += circle_strip_intersection(r.x, r.y, r.radius, start_y, y_test)
+                return box_area - rock_area_in_strip
+                
+            y_low = start_y
+            y_high = physical_top
+            for _ in range(30):
+                y_mid = (y_low + y_high) / 2.0
+                if foul_area_at_y(y_mid) < target_foul_area:
+                    y_low = y_mid
+                else:
+                    y_high = y_mid
+                    
+            fouling_top_y = (y_low + y_high) / 2.0
             
-            # Draw the homogenized background box for the fouling
             scene.add_geometry(BoxCommand(
                 0, start_y, z_start,
                 domain_x, fouling_top_y, z_end,
                 MC.FOULING
             ))
-            print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m")
+            print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m (Calculated for exact PVC)")
         
         # Stamp the structural rocks ON TOP of the background box (Painter's Algorithm)
         for r in assigned_rocks:
-            scene.add_geometry(CylinderCommand(
-                r.x, r.y, z_start, r.x, r.y, z_end,
-                r.radius, MC.BALLAST_ROCK
-            ))
+            if getattr(scene.config, 'angular_rocks', False):
+                self._add_angular_rock(scene, r, z_start, z_end)
+            else:
+                scene.add_geometry(CylinderCommand(
+                    r.x, r.y, z_start, r.x, r.y, z_end,
+                    r.radius, MC.BALLAST_ROCK
+                ))
             scene.add_rock(r) # For visualizer/lab worker
             
         print(f"[{self.name}] Master Pack: {len(all_circles)} total circles.")
         print(f"  -> Assigned Rocks   : {len(assigned_rocks)} (Density: {achieved_density:.3f})")
-        print(f"  -> Assigned Fouling : {len(assigned_fouling)} (PVC: {pvc:.1f}%) [Rendered as Box]")
-        print(f"  -> Assigned Air     : {len(void_pool) - len(assigned_fouling)}")
+        print(f"  -> Fouling Mode     : Solid Box (Target PVC: {pvc:.1f}%)")
+        print(f"  -> Physical Top     : {physical_top:.3f}m")
+
+    def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
+        """Render a rock as a faceted polygon using gprMax #triangle commands."""
+        import math
+        import random
+        from src.gpr_commands import TriangleCommand
+        
+        n_sides = getattr(scene.config, 'rock_sides', 6)
+        cx, cy, r = rock.x, rock.y, rock.radius
+        
+        # Use a deterministic-but-random rotation for this rock
+        random.seed(hash((cx, cy)))
+        offset_angle = random.uniform(0, 2 * math.pi)
+        vertices = []
+        for i in range(n_sides):
+            angle = offset_angle + (2 * math.pi * i / n_sides)
+            vr = r * random.uniform(0.85, 1.1)
+            vertices.append((cx + vr * math.cos(angle), cy + vr * math.sin(angle)))
+        
+        random.seed(None) # Reset
+            
+        for i in range(n_sides):
+            v1 = vertices[i]
+            v2 = vertices[(i + 1) % n_sides]
+            
+            cmd = TriangleCommand(
+                cx, cy, z_start,
+                v1[0], v1[1], z_start,
+                v2[0], v2[1], z_start,
+                MC.BALLAST_ROCK
+            )
+            scene.add_geometry(cmd)
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []

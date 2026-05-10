@@ -30,6 +30,14 @@ class CylinderGeom:
 
 
 @dataclass
+class TriangleGeom:
+    x1: float; y1: float
+    x2: float; y2: float
+    x3: float; y3: float
+    material: str
+
+
+@dataclass
 class AntennaPos:
     x: float
     y: float
@@ -42,8 +50,9 @@ class SceneData:
     title: str = ""
     boxes: list = field(default_factory=list)      # list[BoxGeom]
     cylinders: list = field(default_factory=list)  # list[CylinderGeom]
+    triangles: list = field(default_factory=list)  # list[TriangleGeom]
     tx: Optional[AntennaPos] = None
-    rx: Optional[AntennaPos] = None
+    receivers: list[AntennaPos] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
 
 
@@ -90,6 +99,14 @@ def parse_in_file(path: Path) -> SceneData:
                     x2=float(tokens[4]), y2=float(tokens[5]),
                     material=tokens[7],
                 ))
+            elif cmd == "#triangle:":
+                # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 material
+                scene.triangles.append(TriangleGeom(
+                    x1=float(tokens[1]), y1=float(tokens[2]),
+                    x2=float(tokens[4]), y2=float(tokens[5]),
+                    x3=float(tokens[7]), y3=float(tokens[8]),
+                    material=tokens[10],
+                ))
             elif cmd == "#cylinder:":
                 # #cylinder: x1 y1 z1 x2 y2 z2 radius material
                 scene.cylinders.append(CylinderGeom(
@@ -102,7 +119,7 @@ def parse_in_file(path: Path) -> SceneData:
                 scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]))
             elif cmd == "#rx:":
                 # #rx: x y z
-                scene.rx = AntennaPos(x=float(tokens[1]), y=float(tokens[2]))
+                scene.receivers.append(AntennaPos(x=float(tokens[1]), y=float(tokens[2])))
 
     return scene
 
@@ -166,6 +183,14 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ))
         seen_mats.add(box.material)
 
+    for tri in scene.triangles:
+        style = STYLES.get(tri.material, MaterialStyle("#AAAAAA", None, tri.material))
+        ax.add_patch(mpatches.Polygon(
+            [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
+            facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
+        ))
+        seen_mats.add(tri.material)
+
     for cyl in scene.cylinders:
         style = STYLES.get(cyl.material, MaterialStyle("#AAAAAA", None, cyl.material))
         ax.add_patch(mpatches.Circle(
@@ -174,21 +199,42 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ))
         seen_mats.add(cyl.material)
 
+
     if scene.tx:
         ax.plot(scene.tx.x, scene.tx.y, marker="v", color="#E82020",
-                markersize=7, zorder=5, linestyle="none")
-    if scene.rx:
-        ax.plot(scene.rx.x, scene.rx.y, marker="^", color="#1060D0",
-                markersize=7, zorder=5, linestyle="none")
+                markersize=7, zorder=5, linestyle="none", label="TX")
+    
+    # Plot all receivers (Multi-Offset support - Roncoroni 2025)
+    for i, rx in enumerate(scene.receivers):
+        label = "RX" if i == 0 else None  # Only first one for legend
+        ax.plot(rx.x, rx.y, marker="^", color="#1060D0",
+                markersize=7, zorder=5, linestyle="none", label=label)
 
+    # Virtual Sieve Layer Box (Orange dashed)
     mc_y_min = scene.meta.get("mc_y_min")
     mc_y_max = scene.meta.get("mc_y_max")
     if mc_y_min is not None and mc_y_max is not None:
         ax.add_patch(mpatches.Rectangle(
             (0, float(mc_y_min)), dx, float(mc_y_max) - float(mc_y_min),
-            linewidth=1.2, edgecolor="#FF6600", facecolor="none",
-            linestyle="--", zorder=6,
+            linewidth=1.5, edgecolor="#FF6600", facecolor="none",
+            linestyle="--", zorder=6, label="Sieve Box"
         ))
+
+    # MC Global Ballast Box (Green dotted)
+    b_bottom = scene.meta.get("ballast_bottom_y")
+    b_top = scene.meta.get("ballast_top_y")
+    if b_bottom is not None and b_top is not None:
+        ax.add_patch(mpatches.Rectangle(
+            (0, float(b_bottom)), dx, float(b_top) - float(b_bottom),
+            linewidth=1.5, edgecolor="#00AA00", facecolor="none",
+            linestyle=":", zorder=6, label="MC Ballast"
+        ))
+        
+    # Virtual LDCP Scan Line (Red solid line down the middle)
+    ldcp_x = scene.meta.get("ldcp_x")
+    if ldcp_x is not None and b_bottom is not None and b_top is not None:
+        ax.plot([float(ldcp_x), float(ldcp_x)], [float(b_bottom), float(b_top)],
+                color="#E82020", linewidth=2.0, linestyle="-", zorder=7, label="LDCP Scan")
 
     boundary_ys: set[float] = set()
     for box in scene.boxes:
@@ -261,9 +307,12 @@ def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str], mc_y_min) -> N
     if scene.tx:
         patches.append(plt.Line2D([0], [0], marker="v", color="#E82020",
                                   markersize=7, linestyle="none", label="TX"))
-    if scene.rx:
+    if scene.receivers:
+        label = "RX" if len(scene.receivers) == 1 else "RX Array"
         patches.append(plt.Line2D([0], [0], marker="^", color="#1060D0",
-                                  markersize=7, linestyle="none", label="RX"))
+                                  markersize=7, linestyle="none", label=label))
+
+
     if mc_y_min is not None:
         patches.append(mpatches.Patch(
             facecolor="none", edgecolor="#FF6600", linewidth=1.2,

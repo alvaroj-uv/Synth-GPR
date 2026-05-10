@@ -129,6 +129,22 @@ class CylinderCommand(GPRCommand):
         return f"#cylinder: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.radius)} {self.material}"
 
 @dataclass
+class TriangleCommand(GPRCommand):
+    x1: float; y1: float; z1: float
+    x2: float; y2: float; z2: float
+    x3: float; y3: float; z3: float
+    material: str
+    commented: bool = False
+    
+    @property
+    def priority(self) -> int:
+        return 21 # Objects (Angular Rocks) - Render AFTER Box
+    
+    def get_cmd_string(self) -> str:
+        return f"#triangle: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.x3)} {fmt(self.y3)} {fmt(self.z3)} {self.material}"
+
+
+@dataclass
 class WaveformCommand(GPRCommand):
     type_name: str
     amplitude: float
