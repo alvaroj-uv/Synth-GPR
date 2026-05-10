@@ -1,4 +1,4 @@
-﻿"""
+"""
 Concrete Worker implementations for the Factory Architecture.
 
 Each worker handles a specific layer or component of the GPR scene.
@@ -9,7 +9,7 @@ from .worker import Worker, SceneCheckpoint
 from .gpr_commands import BoxCommand, CylinderCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
 from .rock_packing import (
     PoissonDiskPacking, FrontChainPacking, PhysicsPacking, 
-    TrianglePacking, RandomPacking, PackingBounds
+    TrianglePacking, RandomPacking, PackingBounds, CirclifyPacking
 )
 from .physics import classify_pvc
 from .constants import MC, PC
@@ -268,6 +268,8 @@ class RockWorker(Worker):
                 strategy = TrianglePacking()
             elif algo_name == 'random':
                 strategy = RandomPacking()
+            elif algo_name == 'circlify':
+                strategy = CirclifyPacking()
             else:
                 strategy = PoissonDiskPacking()
                 

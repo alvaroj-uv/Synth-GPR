@@ -1306,4 +1306,148 @@ class ShangChuPacking(RockPackingStrategy):
             # Place them very high up where it's empty
             c.y = max_y + c.radius + random.uniform(0, max_L/2)
 
+class CirclifyPacking(RockPackingStrategy):
+    """
+    High-density circle packing using the A1.0 heuristic from Huang et al. (2006).
+    Ported from the `circlify` library (pure Python implementation).
+    Generates a tight circular pack and then crops to the rectangular bounds.
+    """
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS
+    ) -> List[Rock]:
+        import math
+        import itertools
+        import sys
+        
+        _eps = sys.float_info.epsilon
+        
+        def distance(c1, c2):
+            dx = c2.x - c1.x
+            dy = c2.y - c1.y
+            return math.sqrt(dx * dx + dy * dy) - c1.radius - c2.radius
+
+        def get_intersection(c1, c2):
+            dx = c2.x - c1.x
+            dy = c2.y - c1.y
+            d = math.sqrt(dx * dx + dy * dy)
+            try:
+                a = (c1.radius**2 - c2.radius**2 + d**2) / (2 * d)
+                h = math.sqrt(c1.radius**2 - a**2)
+            except (ValueError, ZeroDivisionError):
+                return None, None
+            xm = c1.x + a * dx / d
+            ym = c1.y + a * dy / d
+            xs1 = xm + h * dy / d
+            xs2 = xm - h * dy / d
+            ys1 = ym - h * dx / d
+            ys2 = ym + h * dx / d
+            if xs1 == xs2 and ys1 == ys2:
+                return (xs1, ys1), None
+            return (xs1, ys1), (xs2, ys2)
+
+        def get_placement_candidates(radius, c1, c2):
+            margin = radius * _eps * 10.0
+            ic1 = Rock(c1.x, c1.y, c1.radius + radius + margin)
+            ic2 = Rock(c2.x, c2.y, c2.radius + radius + margin)
+            i1, i2 = get_intersection(ic1, ic2)
+            if i1 is None:
+                return None, None
+            cand1 = Rock(i1[0], i1[1], radius)
+            if i2 is None:
+                return cand1, None
+            cand2 = Rock(i2[0], i2[1], radius)
+            return cand1, cand2
+
+        def get_hole_degree(candidate, circles):
+            return sum(distance(candidate, c) * c.radius for c in circles)
+
+        def place_new_circle(radius, placed_circles):
+            n_circles = len(placed_circles)
+            if n_circles <= 1:
+                x = radius if n_circles == 0 else -radius
+                return Rock(x, 0.0, radius)
+            
+            mhd = None
+            lead_candidate = None
+            
+            # Optimization: Checking all combinations is O(N^3).
+            # To speed up, we check only a subset of recently placed circles
+            # which form the "advancing front", plus some random ones.
+            import random
+            if n_circles < 30:
+                check_circles = placed_circles
+            else:
+                check_circles = placed_circles[-20:] + random.sample(placed_circles[:-20], min(10, len(placed_circles)-20))
+                
+            for c1, c2 in itertools.combinations(check_circles, 2):
+                other_circles = [c for c in check_circles if c not in (c1, c2)]
+                cand1, cand2 = get_placement_candidates(radius, c1, c2)
+                for cand in (cand1, cand2):
+                    if cand is None:
+                        continue
+                    if not other_circles:
+                        lead_candidate = cand
+                        break
+                    if any(distance(c, cand) < -1e-9 for c in placed_circles): # Full overlap check is still fast
+                        continue
+                    hd = get_hole_degree(cand, other_circles)
+                    if mhd is None or hd < mhd:
+                        mhd = hd
+                        lead_candidate = cand
+                    if abs(mhd) < radius * _eps * 10.0:
+                        break
+            
+            return lead_candidate
+
+        # 1. Generate random radii
+        import random
+        diag = math.hypot(bounds.width, bounds.height)
+        # We need enough area to cover the diagonal. Over-generate heavily to fill corners.
+        target_area = math.pi * (diag / 2)**2 * target_fill_ratio * 2.0
+        
+        radii = []
+        current_area = 0.0
+        while current_area < target_area:
+            r = random.uniform(radius_min, radius_max)
+            radii.append(r)
+            current_area += math.pi * r**2
+            
+        # Sort radii descending for best packing (Huang heuristic)
+        radii.sort(reverse=True)
+        
+        # 2. Pack them tightly around (0,0)
+        placed_rocks = []
+        for r in radii:
+            new_rock = place_new_circle(r, placed_rocks)
+            if new_rock:
+                placed_rocks.append(new_rock)
+                
+        # 3. Center the pack and crop to bounds
+        if not placed_rocks:
+            return []
+            
+        cx = (bounds.x_min + bounds.x_max) / 2
+        cy = (bounds.y_min + bounds.y_max) / 2
+        
+        final_rocks = []
+        current_fill = 0.0
+        
+        for rock in placed_rocks:
+            rx = rock.x + cx
+            ry = rock.y + cy
+            
+            if (rx - rock.radius >= bounds.x_min and
+                rx + rock.radius <= bounds.x_max and
+                ry - rock.radius >= bounds.y_min and
+                ry + rock.radius <= bounds.y_max):
+                
+                final_rocks.append(Rock(rx, ry, rock.radius))
+                    
+        return final_rocks
+
 

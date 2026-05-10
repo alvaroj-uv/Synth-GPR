@@ -10,7 +10,7 @@ import numpy as np
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from rock_packing import PoissonDiskPacking, FrontChainPacking, PhysicsPacking, TrianglePacking, ShangChuPacking, PackingBounds
+from rock_packing import PoissonDiskPacking, FrontChainPacking, PhysicsPacking, TrianglePacking, ShangChuPacking, CirclifyPacking, PackingBounds
 
 def visualize_strategy(ax, strategy, name, bounds, r_min, r_max):
     print(f"Running {name}...")
@@ -70,7 +70,8 @@ def main():
         (FrontChainPacking(), "Front-Chain (Advancing Front)"),
         (PhysicsPacking(), "Physics (Relaxation)"),
         (TrianglePacking(), "Triangle (Mesh)"),
-        (ShangChuPacking(), "Shang-Chu (Random Search)")
+        (ShangChuPacking(), "Shang-Chu (Random Search)"),
+        (CirclifyPacking(), "Circlify (A1.0 Heuristic)")
     ]
     
     for ax, (strat, name) in zip(axes, strategies):

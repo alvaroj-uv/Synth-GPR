@@ -165,6 +165,9 @@ class ToolWarehouse:
             elif algo == "shang_chu":
                 from .rock_packing import ShangChuPacking
                 return ShangChuPacking()
+            elif algo == "circlify":
+                from .rock_packing import CirclifyPacking
+                return CirclifyPacking()
             else:
                 from .rock_packing import RandomPacking
                 return RandomPacking()
