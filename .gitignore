@@ -36,3 +36,5 @@ docs/reports/vulture_report.txt
 # Old test directories (now in output/tests/)
 test_pipeline_output/
 test_run_mac/
+tools/
+

@@ -107,6 +107,12 @@ def apply_gain(signal, dt, type='power', alpha=1.0, window_std=None):
         gain_curve = np.exp(alpha * time_ns)
         return signal * gain_curve
         
+    elif type == 'sec':
+        # Spherical Exponential Compensation (SEC)
+        # Compensates for geometric spreading (t) and attenuation (exp(alpha * t))
+        gain_curve = (time_ns + 1.0) * np.exp(alpha * time_ns)
+        return signal * gain_curve
+        
     elif type == 'agc':
         # Automatic Gain Control (AGC)
         # Normalize by local RMS amplitude
