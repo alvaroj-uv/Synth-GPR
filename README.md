@@ -22,9 +22,37 @@ The codebase is organized as follows:
   - Repositories and data management: `repositories/`, `warehouses.py`, `warehouse_keeper.py`.
   - Visualization: `visualization/` subdirectory.
 
-- **`tests/`**: Comprehensive test suite with pytest configuration.
+- **`output/`**: Generated GPR data and simulation results.
+  - `single_test/`: Individual test runs and experiments.
+  - `test/`: Batch test outputs and validation data.
+
+- **`output_test/`**: Test examples and sample outputs for documentation.
+
+- **`scratch/`**: Temporary files and experimental code.
 
 - **`docs/`**: Detailed documentation including user guides, technical reports, and troubleshooting.
+
+- **`.claude/`**: AI-generated temporary files and analysis artifacts.
+
+## Output File Organization
+
+For consistent file placement across the project, see:
+- **[Output File Placement Rules](docs/OUTPUT_FILE_PLACEMENT_RULES.md)**: Comprehensive guidelines
+- **[Quick Reference](docs/OUTPUT_PLACEMENT_QUICKREF.md)**: Fast lookup guide
+
+**Key Locations:**
+- Generated GPR data (`.in`, `.out`): `output/{experiment_name}/`
+- Feature datasets: Same directory as source data
+- Visualizations: Same directory as input files
+- ML models: `ml/models/`
+- Reports: `docs/reports/`
+- Temporary files: `scratch/`
+
+## For AI/LLM Code Agents
+
+If you're an AI assistant working on this codebase, please follow:
+- **[LLM Agent Guidelines](docs/LLM_AGENT_GUIDELINES.md)**: Coding standards, file placement, and project conventions
+- Use the `scripts/tools/output_resolver.py` utility for consistent output file placement
 
 ## Getting Started
 
