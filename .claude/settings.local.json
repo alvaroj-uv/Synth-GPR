@@ -9,7 +9,9 @@
       "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe scripts/visualization/render_in_file.py output/test/s_0000.in)",
       "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -)",
       "Bash(/c/Users/barba/.conda/envs/gprMax/python.exe -W all -c ' *)",
-      "Bash(xargs grep -l \"\\\\.in\\\\\"|\"\\\\.png\\\\\"\" | head -15)"
+      "Bash(xargs grep -l \"\\\\.in\\\\\"|\"\\\\.png\\\\\"\" | head -15)",
+      "Bash(findstr /n \"triangle\" \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\Lib\\\\site-packages\\\\gprMax\\\\input_cmds_geometry.py\")",
+      "Bash(python -c ' *)"
     ]
   }
 }

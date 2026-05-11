@@ -376,19 +376,19 @@ class RockWorker(Worker):
         """Render a rock as a faceted polygon using gprMax #triangle commands."""
         import math
         from src.gpr_commands import TriangleCommand
-        
+
         n_sides = getattr(scene.config, 'rock_sides', 6)
         cx, cy, r = rock.x, rock.y, rock.radius
-        
-        # Calculate vertices of a regular polygon
-        # Add a random rotation for realism
+        domain_x, domain_y, _ = scene.get_domain_params()
+
         offset_angle = random.uniform(0, 2 * math.pi)
         vertices = []
         for i in range(n_sides):
             angle = offset_angle + (2 * math.pi * i / n_sides)
-            # Add small stochastic perturbation to vertex radius for irregular shape
             vr = r * random.uniform(0.85, 1.1)
-            vertices.append((cx + vr * math.cos(angle), cy + vr * math.sin(angle)))
+            vx = max(0.0, min(cx + vr * math.cos(angle), domain_x))
+            vy = max(0.0, min(cy + vr * math.sin(angle), domain_y))
+            vertices.append((vx, vy))
             
         # Create triangles sharing the center point (Fan triangulation)
         for i in range(n_sides):
@@ -617,6 +617,8 @@ class FoulingWorker(Worker):
                                 domain_x: float, domain_z: float,
                                 material: str = MC.FOULING) -> None:
         """Generates the solid block of settled fouling material."""
+        if y_end - y_start < scene.config.dx:
+            return
         scene.add_geometry(BoxCommand(0, y_start, 0, domain_x, y_end, domain_z, material))
 
     def _generate_dispersed_particles(self, scene: SceneCheckpoint, y_min: float, y_max: float, 

@@ -167,10 +167,11 @@ class GranularMatrixWorker(Worker):
                     y_high = y_mid
                     
             fouling_top_y = (y_low + y_high) / 2.0
-            
+            fouling_top_y = max(fouling_top_y, start_y + scene.config.dx)
+
             scene.add_geometry(BoxCommand(
-                0, start_y, z_start,
-                domain_x, fouling_top_y, z_end,
+                0, start_y, 0.0,
+                domain_x, fouling_top_y, domain_z,
                 MC.FOULING
             ))
             print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m (Calculated for exact PVC)")
@@ -199,15 +200,17 @@ class GranularMatrixWorker(Worker):
         
         n_sides = getattr(scene.config, 'rock_sides', 6)
         cx, cy, r = rock.x, rock.y, rock.radius
-        
-        # Use a deterministic-but-random rotation for this rock
+        domain_x, domain_y, _ = scene.get_domain_params()
+
         random.seed(hash((cx, cy)))
         offset_angle = random.uniform(0, 2 * math.pi)
         vertices = []
         for i in range(n_sides):
             angle = offset_angle + (2 * math.pi * i / n_sides)
             vr = r * random.uniform(0.85, 1.1)
-            vertices.append((cx + vr * math.cos(angle), cy + vr * math.sin(angle)))
+            vx = max(0.0, min(cx + vr * math.cos(angle), domain_x))
+            vy = max(0.0, min(cy + vr * math.sin(angle), domain_y))
+            vertices.append((vx, vy))
         
         random.seed(None) # Reset
             
