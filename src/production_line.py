@@ -79,7 +79,8 @@ class ProductionLine:
             subgrade_thickness=self.config.subgrade_thickness,
             formation_thickness=self.config.formation_thickness,
             ballast_thickness=ballast_thickness_val,
-            antenna_clearance=self.config.antenna_clearance_above_ballast
+            antenna_clearance=self.config.antenna_clearance_above_ballast,
+            air_buffer=1.5  # PML + clearance + safety margin
         )
         coords = CoordinateSystem(
             layer_stack=layer_stack,

@@ -72,11 +72,24 @@ class GeneratorConfig:
         tx_x = recs['domain_x'] / 2.0
         rx_x = tx_x + 0.05 # 5cm offset
         
-        # Calculate total domain height needed
-        # We need to make sure the LayerStack in ProductionLine will accommodate this.
-        # ballast_top is usually around y = 0.75 (0.2 sub + 0.1 form + 0.45 bal)
+        # Calculate total domain height needed with PML safety margins
+        # Layer stack: subgrade + formation + max ballast
+        # Antenna: ballast_top + antenna_clearance
+        # PML: 10 cells at top = 10 * dx
+        # Safety: antenna must be 15+ cells from PML = 15 * dx
+        # Extra: 20% safety buffer for numerical stability
         antenna_clearance = recs['antenna_height']
-        domain_y = 0.75 + antenna_clearance + 0.1 # matching CoordinateSystem logic
+        pml_thickness = 10 * recs['dx']          # PML cells at boundary
+        pml_clearance = 15 * recs['dx']          # Minimum clearance from PML
+        # Use actual min/max thicknesses from config
+        subgrade_h = kwargs.get('subgrade_thickness', 0.20)
+        formation_h = kwargs.get('formation_thickness', 0.10)
+        max_ballast_h = kwargs.get('max_ballast_thickness', 0.55)
+        layer_height = subgrade_h + formation_h + max_ballast_h
+        # Domain must accommodate: layers + antenna clearance + air buffer for PML and safety
+        # Air buffer = PML thickness + PML clearance + extra safety = 0.132 + 0.198 + 1.0 = 1.33m (use 1.5m)
+        air_buffer = 1.5
+        domain_y = layer_height + antenna_clearance + air_buffer
         
         return cls(
             center_freq=center_freq_hz,
