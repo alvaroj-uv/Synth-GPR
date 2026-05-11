@@ -22,8 +22,8 @@ class MockConfig:
     
     tx_x: float = 0.10
     rx_x: float = 0.15
-    tx_rx_y: float = 1.1
     tx_rx_z: float = 0.0025
+    antenna_clearance_above_ballast: float = 0.50
     center_freq: float = 400e6
     
     max_ballast_thickness: float = 0.40

@@ -7,7 +7,7 @@ from .work_order import WorkOrderSystem
 from .worker import SceneCheckpoint
 from .recipes import RecipeBook
 from .warehouses import MaterialWarehouse, ToolWarehouse
-from .domain.coordinates import CoordinateSystem, LayerStack
+from .domain.coordinates import CoordinateSystem, LayerStack, Anchor
 
 class ProductionLine:
     """
@@ -86,7 +86,25 @@ class ProductionLine:
             domain_x=self.config.domain_x,
             domain_z=self.config.domain_z
         )
-            
+
+        # PRE-FLIGHT CHECK: Ensure domain is tall enough for antenna
+        required_height = coords.get_y(Anchor.DOMAIN_TOP)
+        if self.config.domain_y < required_height:
+            msg = (
+                f"Domain height insufficient for layer stack:\n"
+                f"  Config domain_y: {self.config.domain_y:.4f} m\n"
+                f"  Required (computed): {required_height:.4f} m\n"
+                f"  Deficit: {required_height - self.config.domain_y:.4f} m\n"
+                f"  Layer breakdown:\n"
+                f"    - Subgrade: {self.config.subgrade_thickness:.4f} m\n"
+                f"    - Formation: {self.config.formation_thickness:.4f} m\n"
+                f"    - Ballast: {ballast_thickness_val:.4f} m\n"
+                f"    - Antenna clearance: {self.config.antenna_clearance_above_ballast:.4f} m\n"
+                f"    - Air buffer: {layer_stack.air_buffer:.4f} m\n"
+                f"Fix: Increase config.domain_y to at least {required_height:.4f} m"
+            )
+            raise RuntimeError(f"Production line configuration error: {msg}")
+
         # Create initial scene state
         scene = SceneCheckpoint(
             config=self.config,

@@ -2,6 +2,7 @@
 import configparser
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 
 
@@ -42,7 +43,6 @@ class GeneratorConfig:
     center_freq: float = 1.5e9
     tx_x: float = 0.300 # Center of 0.6m domain
     rx_x: float = 0.350 # 5cm offset (Bi-static)
-    tx_rx_y: float = 1.4  # 65cm above ballast surface (y=0.75)
     tx_rx_z: float = 0.0015  # centre of 3 mm domain_z
     add_waveform: bool = True
     add_source: bool = True
@@ -89,7 +89,6 @@ class GeneratorConfig:
             dz=recs['dx'],
             tx_x=tx_x,
             rx_x=rx_x,
-            tx_rx_y=0.75 + antenna_clearance,
             tx_rx_z=recs['dx'] / 2.0,
             antenna_clearance_above_ballast=antenna_clearance,
             **kwargs
@@ -162,9 +161,8 @@ class GeneratorConfig:
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
     
     # Ballast/subgrade nominal depths
-    subgrade_height: float = 0.3  # Increased to 0.3m for more realistic railway geometry
-    min_ballast_thickness: float = 0.35  # More realistic range now that antenna is higher
-    max_ballast_thickness: float = 0.55  # Max: subgrade(0.3) + formation(0.1) + ballast(0.55) = 0.95m > max_rock(0.9m) 
+    min_ballast_thickness: float = 0.35  # More realistic range
+    max_ballast_thickness: float = 0.55  # Max: subgrade(0.2) + formation(0.1) + ballast(0.55) = 0.85m 
 
     min_foul_thickness: float = 0.00
     max_foul_thickness: float = 0.10
@@ -254,7 +252,7 @@ class GeneratorConfig:
     show_plot: bool = False
     output_dpi: int = 150
 
-    base_seed: int | None = None
+    base_seed: Optional[int] = None
 
 
     def __post_init__(self):
@@ -365,7 +363,6 @@ class GeneratorConfig:
             args['center_freq'] = get_float('Simulation', 'center_freq')
             args['tx_x'] = get_float('Simulation', 'tx_x')
             args['rx_x'] = get_float('Simulation', 'rx_x')
-            args['tx_rx_y'] = get_float('Simulation', 'tx_rx_y')
             args['tx_rx_z'] = get_float('Simulation', 'tx_rx_z')
             args['add_waveform'] = get_bool('Simulation', 'add_waveform')
             args['add_source'] = get_bool('Simulation', 'add_source')

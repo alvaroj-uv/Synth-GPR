@@ -214,22 +214,31 @@ class GeometryViewCommand(GPRCommand):
 
 @dataclass
 class AbsorbingBCCommand(GPRCommand):
-    """PML absorbing boundary: #pml_cells: xy_cells z_cells.
+    """PML absorbing boundary: #pml_cells: x0 y0 z0 xmax ymax zmax
+
+    gprMax requires EXACTLY 1 parameter (all sides) or 6 parameters (per-side control).
+    This class generates the 6-parameter format for fine-grained PML control.
 
     For 2D TMz simulations (domain Z = 1 cell), z_cells MUST be 0 —
     otherwise gprMax raises 'CmdInputError: #pml_cells has too many cells
     for the domain size'.  The default is z_cells=0 (safe for 2D).
-    For true 3D simulations, set z_cells equal to xy_cells.
 
-    Reference: Benedetto et al. (2016), gprMax v3 documentation.
+    For true 3D simulations, set z_cells equal to cells (xy_cells).
+
+    Parameters:
+        cells: Number of PML cells on X and Y boundaries (left, right, top, bottom)
+        z_cells: Number of PML cells on Z boundaries (back, front). 0 for 2D TMz mode.
+
+    Reference: gprMax source (input_cmds_singleuse.py) and Benedetto et al. (2016).
     """
     cells: int = 10
     z_cells: int = 0          # 0 = 2D/TMz safe; set equal to cells for 3D
     commented: bool = False
 
     def get_cmd_string(self) -> str:
-        # gprMax v3 6-param order: x0  y0  z0  xmax  ymax  zmax
-        # z0 and zmax MUST be 0 for 2D TMz (nz=1) simulations.
+        # gprMax v3 validates: len(params) == 1 OR len(params) == 6
+        # Format: x0(left) y0(bottom) z0(back) xmax(right) ymax(top) zmax(front)
+        # For 2D TMz (nz=1): z0 and zmax MUST be 0, otherwise domain constraint fails
         return f"#pml_cells: {self.cells} {self.cells} {self.z_cells} {self.cells} {self.cells} {self.z_cells}"
 
 

@@ -12,7 +12,6 @@ class MockConfig:
     domain_z: float = 0.5
     tx_x: float = 0.5
     rx_x: float = 0.6
-    tx_rx_y: float = 0.0
     tx_rx_z: float = 0.25
 
 print("Initializing Foreman Test...")

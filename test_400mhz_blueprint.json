@@ -1,0 +1,162 @@
+{
+  "domain": {
+    "x": 2.248,
+    "y": 2.0
+  },
+  "title": "",
+  "materials": {},
+  "geometry": {
+    "boxes": [
+      {
+        "x1": 0.0,
+        "y1": 0.0,
+        "x2": 2.248,
+        "y2": 2.0,
+        "material": "free_space"
+      },
+      {
+        "x1": 0.0,
+        "y1": 0.0,
+        "x2": 2.248,
+        "y2": 0.2,
+        "material": "subgrade"
+      },
+      {
+        "x1": 0.0,
+        "y1": 0.2,
+        "x2": 2.248,
+        "y2": 0.3,
+        "material": "formation"
+      },
+      {
+        "x1": 0.0,
+        "y1": 0.3,
+        "x2": 2.248,
+        "y2": 0.7,
+        "material": "free_space"
+      },
+      {
+        "x1": 0.0,
+        "y1": 0.52,
+        "x2": 2.248,
+        "y2": 0.65,
+        "material": "bal_foul_granular"
+      }
+    ],
+    "cylinders": [
+      {
+        "x": 0.2,
+        "y": 0.35,
+        "radius": 0.02,
+        "material": "bal_rock"
+      },
+      {
+        "x": 0.6,
+        "y": 0.32,
+        "radius": 0.025,
+        "material": "bal_rock"
+      },
+      {
+        "x": 1.0,
+        "y": 0.38,
+        "radius": 0.022,
+        "material": "bal_rock"
+      },
+      {
+        "x": 1.4,
+        "y": 0.35,
+        "radius": 0.024,
+        "material": "bal_rock"
+      },
+      {
+        "x": 1.8,
+        "y": 0.4,
+        "radius": 0.021,
+        "material": "bal_rock"
+      },
+      {
+        "x": 0.4,
+        "y": 0.45,
+        "radius": 0.023,
+        "material": "bal_rock"
+      },
+      {
+        "x": 0.8,
+        "y": 0.42,
+        "radius": 0.02,
+        "material": "bal_rock"
+      },
+      {
+        "x": 1.2,
+        "y": 0.48,
+        "radius": 0.025,
+        "material": "bal_rock"
+      },
+      {
+        "x": 1.6,
+        "y": 0.44,
+        "radius": 0.022,
+        "material": "bal_rock"
+      },
+      {
+        "x": 2.0,
+        "y": 0.46,
+        "radius": 0.024,
+        "material": "bal_rock"
+      }
+    ],
+    "triangles": []
+  },
+  "antenna": {
+    "tx": {
+      "x": 1.124,
+      "y": 1.2
+    },
+    "rx": [
+      {
+        "x": 1.174,
+        "y": 1.2
+      }
+    ]
+  },
+  "metadata": {
+    "Scenario": "400MHz_Railway_Ballast_Test",
+    "Date": "2026-05-11",
+    "Git Version": "(generated test file)",
+    "Base Seed": "None",
+    "Purpose": "Test antenna validation with 400MHz config",
+    "Fouling_Level": "PVC=15%",
+    "Moisture": "15% (affects dielectric properties)",
+    "This file demonstrates all antenna validation layers": "",
+    "Layer 1": "Pre-Flight Check",
+    "- Ballast stack": "0.2 + 0.1 + 0.4 + 0.5 + 0.1 = 1.4m",
+    "Layer 2": "Antenna Y Validation",
+    "- Antenna Y": "1.2m < Domain Top: 1.9m \u2713",
+    "- Deficit": "-0.7m (well within bounds)",
+    "Layer 3": "Full Position Validation",
+    "- TX": "(1.124, 1.2, 0.0066) within [0, 2.248] \u00d7 [0, 2.0] \u00d7 [0, 0.0132] \u2713",
+    "- RX": "(1.174, 1.2, 0.0066) within [0, 2.248] \u00d7 [0, 2.0] \u00d7 [0, 0.0132] \u2713",
+    "Layer 4": "PML Clearance Validation",
+    "- PML thickness": "0.132m (10 cells \u00d7 0.0132m/cell)",
+    "- Safe X region": [
+      0.132,
+      2.116
+    ],
+    "- Safe Y region": [
+      0.132,
+      1.868
+    ],
+    "- TX X margin": "+0.992m (well outside PML) \u2713",
+    "- TX Y margin": "+1.068m (well outside PML) \u2713",
+    "Layer 5": "Free Space Above Antenna",
+    "- Available": "0.8m (60 cells)",
+    "- Required": "0.198m (15 cells minimum)",
+    "- Margin": "+0.602m \u2713",
+    "Center Frequency": "400 MHz",
+    "Domain": "2.248 \u00d7 2.0 \u00d7 0.0132 m (X \u00d7 Y \u00d7 Z)",
+    "Resolution": "0.0132m/cell (13.2mm)",
+    "Antenna Clearance": "0.5m above ballast top",
+    "Subgrade": "0.2m | Formation: 0.1m | Ballast: 0.4m",
+    "Fouling": "15% PVC (Percentage Voids Contaminated)"
+  }
+}
