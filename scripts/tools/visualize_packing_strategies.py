@@ -10,23 +10,42 @@ import numpy as np
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from rock_packing import PoissonDiskPacking, FrontChainPacking, PhysicsPacking, TrianglePacking, ShangChuPacking, CirclifyPacking, PackingBounds
+from rock_packing import (
+    RSAPacking, PoissonDiskPacking, FrontChainPacking, PhysicsPacking,
+    TrianglePacking, ShangChuPacking, CirclifyPacking, GrowthPacking,
+    GradingCurve, PackingBounds
+)
 
-def visualize_strategy(ax, strategy, name, bounds, r_min, r_max):
+def visualize_strategy(ax, strategy, name, bounds, r_min, r_max, grading=None):
     print(f"Running {name}...")
     start = time.time()
-    
-    # Run Generation
-    # Use reasonable target fill for each
-    if "Physics" in name:
+
+    # Use reasonable target fill for each strategy
+    if "RSA" in name:
+        target_fill = 0.58  # 1 - void_ratio (42%)
+    elif "Physics" in name:
         target_fill = 0.85
     elif "Triangle" in name:
-        target_fill = 0.0 # Ignored
+        target_fill = 0.55  # Low for triangle
     else:
-        target_fill = 0.75
-        
-    rocks = strategy.generate_rocks(bounds, r_min, r_max, target_fill_ratio=target_fill, max_attempts=150)
-    
+        target_fill = 0.60
+
+    # Try with grading_curve first (RSA, Poisson, Circlify support it)
+    try:
+        rocks = strategy.generate_rocks(
+            bounds, r_min, r_max,
+            target_fill_ratio=target_fill,
+            max_attempts=150,
+            grading_curve=grading
+        )
+    except TypeError:
+        # Fallback for strategies without grading_curve
+        rocks = strategy.generate_rocks(
+            bounds, r_min, r_max,
+            target_fill_ratio=target_fill,
+            max_attempts=150
+        )
+
     duration = time.time() - start
     
     # Calculate stats
@@ -55,23 +74,25 @@ def visualize_strategy(ax, strategy, name, bounds, r_min, r_max):
         ax.add_patch(circle)
 
 def main():
-    # Setup
-    bounds = PackingBounds(0.0, 1.0, 0.0, 0.5)
-    r_min = 0.02
+    # Setup (matching paper's dimensions: 1.5m × 0.5m)
+    bounds = PackingBounds(0.0, 1.5, 0.0, 0.5)
+    r_min = 0.0112
     r_max = 0.04
-    
-    # Increased to 4 subplots
-    # Increased to 2x3 grid for 5 strategies
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    grading = GradingCurve.en13450()
+
+    # 3x3 grid for 9 strategies (RSA + 8 others)
+    fig, axes = plt.subplots(3, 3, figsize=(18, 14))
     axes = axes.flatten()
-    
+
     strategies = [
-        (PoissonDiskPacking(), "Poisson Disk"),
-        (FrontChainPacking(), "Front-Chain (Advancing Front)"),
+        (ShangChuPacking(), "Shang-Chu (Recommended)"),
+        (PoissonDiskPacking(k_attempts=30), "Poisson Disk"),
+        (FrontChainPacking(), "Front-Chain"),
         (PhysicsPacking(), "Physics (Relaxation)"),
         (TrianglePacking(), "Triangle (Mesh)"),
-        (ShangChuPacking(), "Shang-Chu (Random Search)"),
-        (CirclifyPacking(), "Circlify (A1.0 Heuristic)")
+        (RSAPacking(void_ratio=0.42), "RSA (Sparse)"),
+        (CirclifyPacking(), "Circlify (Over-pack)"),
+        (GrowthPacking(), "Growth"),
     ]
     
     for ax, (strat, name) in zip(axes, strategies):

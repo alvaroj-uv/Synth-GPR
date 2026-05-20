@@ -273,8 +273,12 @@ class RockWorker(Worker):
                 strategy = CirclifyPacking()
             elif algo_name == 'growth':
                 strategy = GrowthPacking()
-            else:
+            elif algo_name == 'poisson':
                 strategy = PoissonDiskPacking()
+            else:
+                # Default to Shang-Chu: best empirical match for railway ballast
+                # See EXTENDED_EVALUATION_REPORT.md for detailed comparison
+                strategy = ShangChuPacking()
                 
         # No caching logic - always generate fresh
         print(f"[{self.name}] Generating fresh rocks (Strategy: {strategy.__class__.__name__})")

@@ -24,7 +24,7 @@ graph TD
     I --> J[Add Background Layer]
     J --> K[Add Subgrade & Formation]
     K --> L{Granular Mode?}
-    L -->|Yes| M[Placing Aggregates (RSA Pattern)]
+    L -->|Yes| M[Placing Aggregates (Shang-Chu Pattern)]
     L -->|No| N[Legacy Simple Box Model]
     M & N --> O[Add Sleepers & Antenna]
     end
@@ -69,7 +69,7 @@ classDiagram
     Layer <|-- SleeperLayer : 4. Concrete Ties
     Layer <|-- AntennaLayer : 5. Source/Rx
     
-    note for GranularBallastLayer "Handles complex logic:\n- RSA Master Pattern Application\n- Fouling Matrix Injection\n- Moisture gradation"
+    note for GranularBallastLayer "Handles complex logic:\n- Shang-Chu Pattern Application (primary)\n- Fouling Matrix Injection\n- Moisture gradation"
 ```
 
 ## 3. Granular Ballast Generation
