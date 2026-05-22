@@ -162,6 +162,14 @@ class GeneratorConfig:
     # Angular Ballast (Realistic sharp rocks via triangulation - gprMax-Designer)
     angular_rocks: bool = False  # If True, rocks are rendered as polygons instead of cylinders
     rock_sides: int = 6         # Number of sides for the angular rock approximation (6=Hexagon)
+    # Sphericity index ψ ∈ [0, 1]: 1.0 = perfect circle, 0.0 = maximally irregular.
+    # Controls coherent surface roughness amplitude via cosine-harmonic perturbation
+    # (Kerimov et al. 2018, JGR: lower ψ → wider pore size distribution, higher fouling sensitivity).
+    rock_sphericity: float = 0.8
+    # Number of fractal octaves for angular rock surface noise (Al Ibrahim et al. 2019, Geophysics).
+    # Higher octaves add small-scale roughness on top of large-scale shape variation.
+    # lacunarity=2 (freq doubles), persistence=0.5 (amp halves) per octave.
+    rock_noise_octaves: int = 3
 
 
     
