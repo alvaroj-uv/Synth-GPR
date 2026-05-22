@@ -175,8 +175,10 @@ class ToolWarehouse:
                 from .rock_packing import CirclifyPacking
                 return CirclifyPacking()
             else:
-                from .rock_packing import RandomPacking
-                return RandomPacking()
+                # Default to Shang-Chu: best realism for railway ballast
+                # (See EXTENDED_EVALUATION_REPORT.md for detailed comparison)
+                from .rock_packing import ShangChuPacking
+                return ShangChuPacking()
         
 
              

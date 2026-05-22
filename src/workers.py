@@ -3,7 +3,7 @@ Concrete Worker implementations for the Factory Architecture.
 
 Each worker handles a specific layer or component of the GPR scene.
 """
-from typing import List, Dict, Any, TYPE_CHECKING, Optional
+from typing import List, Dict, Any, TYPE_CHECKING, Optional, Tuple
 import random
 from .worker import Worker, SceneCheckpoint
 from .gpr_commands import BoxCommand, CylinderCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
@@ -273,8 +273,12 @@ class RockWorker(Worker):
                 strategy = CirclifyPacking()
             elif algo_name == 'growth':
                 strategy = GrowthPacking()
-            else:
+            elif algo_name == 'poisson':
                 strategy = PoissonDiskPacking()
+            else:
+                # Default to Shang-Chu: best empirical match for railway ballast
+                # See EXTENDED_EVALUATION_REPORT.md for detailed comparison
+                strategy = ShangChuPacking()
                 
         # No caching logic - always generate fresh
         print(f"[{self.name}] Generating fresh rocks (Strategy: {strategy.__class__.__name__})")
@@ -290,7 +294,7 @@ class RockWorker(Worker):
         # ---------------------------------------------------------------------
         self._store_results(scene, start_y, top_y, highest_rock_y)
         
-    def _calculate_ballast_bounds(self, scene: SceneCheckpoint) -> tuple[float, float] | None:
+    def _calculate_ballast_bounds(self, scene: SceneCheckpoint) -> Optional[Tuple[float, float]]:
         """Determines the vertical bounds of the ballast layer."""
         start_y = 0.5
         top_y = 0.9
@@ -721,49 +725,122 @@ class AntennaWorker(Worker):
     
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
         from src.domain import Point3D, Anchor
-        
-        # 1. Get Antenna Positions (Refactored to use CoordinateSystem)
-        # Try WorkOrder first (for variant support), else config
+
+        # 1. Get Antenna Positions (using CoordinateSystem)
+        # Antenna height is now always computed from LayerStack, not hardcoded
+        if not scene.coordinate_system:
+            raise RuntimeError("AntennaWorker requires CoordinateSystem to be initialized")
+
+        # Get antenna offset (for variant support)
         if scene.work_order:
             offset = scene.work_order.get_input('antenna_offset', 0.0)
         else:
             offset = params.get('antenna_offset', 0.0)
-            
-        # Determine Heights
-        if scene.coordinate_system:
-            # NEW: Use specific Anchor
-            tx_rx_y = scene.coordinate_system.get_y(Anchor.ANTENNA_LEVEL)
-        else:
-            # LEGACY: Fallback logic
-            if scene.work_order:
-                start_height = scene.work_order.get('highest_rock_y', 0.9)
-                clearance = scene.work_order.get_input('antenna_clearance_above_ballast', 0.05)
-                tx_rx_y = start_height + clearance
-            else:
-                tx_rx_y = scene.config.tx_rx_y
+
+        # Antenna Y is computed from layer stack: ballast_top + antenna_clearance
+        tx_rx_y = scene.coordinate_system.get_y(Anchor.ANTENNA_LEVEL)
+        domain_top = scene.coordinate_system.get_y(Anchor.DOMAIN_TOP)
+
+        # Check if antenna Y exceeds domain bounds (CRITICAL)
+        if tx_rx_y > domain_top:
+            # Provide diagnostic info
+            import warnings
+            ballast_top = scene.coordinate_system.get_y(Anchor.BALLAST_TOP)
+            ant_clearance = scene.config.antenna_clearance_above_ballast
+            msg = (
+                f"Antenna Y ({tx_rx_y:.4f}) exceeds domain height ({domain_top:.4f}).\n"
+                f"  Ballast top:      {ballast_top:.4f} m\n"
+                f"  Antenna clearance: {ant_clearance:.4f} m\n"
+                f"  Computed antenna Y: {ballast_top:.4f} + {ant_clearance:.4f} = {tx_rx_y:.4f} m\n"
+                f"  Domain height:     {domain_top:.4f} m\n"
+                f"  Deficit:           {tx_rx_y - domain_top:.4f} m\n"
+                f"Possible fixes:\n"
+                f"  1. Increase antenna_clearance_above_ballast or\n"
+                f"  2. Reduce antenna_clearance_above_ballast or\n"
+                f"  3. Increase domain_y in config"
+            )
+            raise ValueError(f"{self.name}: {msg}")
 
         # Determine Horizontal Positions
         tx_x = scene.config.tx_x + offset
         rx_x = tx_x if scene.config.monostatic else scene.config.rx_x + offset
         tx_rx_z = scene.config.tx_rx_z
-        
+
         # Create Point3D objects (fixing Primitive Obsession #2)
         tx_position = Point3D(tx_x, tx_rx_y, tx_rx_z)
         rx_position = Point3D(rx_x, tx_rx_y, tx_rx_z)
-        
-        # ENFORCE DOMAIN RESTRICTIONS (Fail Fast)
-        if scene.coordinate_system:
-             valid_tx = scene.coordinate_system.validate_point(tx_position)
-             valid_rx = scene.coordinate_system.validate_point(rx_position)
-             if not valid_tx:
-                 raise ValueError(f"{self.name}: TX Position {tx_position} invalid (outside domain)")
-             if not valid_rx:
-                 raise ValueError(f"{self.name}: RX Position {rx_position} invalid (outside domain)")
-        else:
-             # Legacy checks
-             domain_x, domain_y, domain_z = scene.get_domain_params()
-             if not (0 <= tx_x <= domain_x): raise ValueError(f"TX X out of bounds") 
-             # ... (simplified legacy checks)
+
+        # Validate TX/RX positions within domain (all dimensions)
+        valid_tx = scene.coordinate_system.validate_point(tx_position)
+        valid_rx = scene.coordinate_system.validate_point(rx_position)
+
+        if not valid_tx:
+            domain_x = scene.config.domain_x
+            domain_z = scene.config.domain_z
+            raise ValueError(
+                f"{self.name}: TX Position invalid (outside domain bounds).\n"
+                f"  TX position: ({tx_position.x:.4f}, {tx_position.y:.4f}, {tx_position.z:.4f}) m\n"
+                f"  Domain bounds: [0, {domain_x:.4f}] × [0, {domain_top:.4f}] × [0, {domain_z:.4f}] m\n"
+                f"  Issue: X={tx_position.x:.4f} (valid: 0-{domain_x:.4f})" if not (0 <= tx_x <= domain_x)
+                else f"  Issue: Y={tx_position.y:.4f} (valid: 0-{domain_top:.4f})" if not (0 <= tx_rx_y <= domain_top)
+                else f"  Issue: Z={tx_position.z:.4f} (valid: 0-{domain_z:.4f})"
+            )
+
+        if not valid_rx:
+            domain_x = scene.config.domain_x
+            domain_z = scene.config.domain_z
+            raise ValueError(
+                f"{self.name}: RX Position invalid (outside domain bounds).\n"
+                f"  RX position: ({rx_position.x:.4f}, {rx_position.y:.4f}, {rx_position.z:.4f}) m\n"
+                f"  Domain bounds: [0, {domain_x:.4f}] × [0, {domain_top:.4f}] × [0, {domain_z:.4f}] m\n"
+                f"  Issue: X={rx_position.x:.4f} (valid: 0-{domain_x:.4f})" if not (0 <= rx_position.x <= domain_x)
+                else f"  Issue: Y={rx_position.y:.4f} (valid: 0-{domain_top:.4f})" if not (0 <= rx_position.y <= domain_top)
+                else f"  Issue: Z={rx_position.z:.4f} (valid: 0-{domain_z:.4f})"
+            )
+
+        # Layer 4: PML Clearance Validation (gprMax Best Practice)
+        # Sources must be kept at least 15 cells away from PML boundaries
+        # See: https://docs.gprmax.com/en/latest/gprmodelling.html
+        pml_thickness = scene.config.pml_layers * scene.config.dx
+        pml_x_min = pml_thickness
+        pml_x_max = scene.config.domain_x - pml_thickness
+        pml_y_min = pml_thickness
+        pml_y_max = domain_top - pml_thickness
+
+        for pos, name in [(tx_position, "TX"), (rx_position, "RX")]:
+            if not (pml_x_min <= pos.x <= pml_x_max and pml_y_min <= pos.y <= pml_y_max):
+                raise ValueError(
+                    f"{self.name}: {name} too close to PML absorbing boundary.\n"
+                    f"  Position: ({pos.x:.4f}, {pos.y:.4f}, {pos.z:.4f}) m\n"
+                    f"  Safe region (outside PML): X=[{pml_x_min:.4f}, {pml_x_max:.4f}], "
+                    f"Y=[{pml_y_min:.4f}, {pml_y_max:.4f}]\n"
+                    f"  PML thickness: {pml_thickness:.4f} m ({scene.config.pml_layers} cells × {scene.config.dx:.4f} m/cell)\n"
+                    f"  Margin to PML: X_min={pos.x-pml_x_min:+.4f} m, X_max={pml_x_max-pos.x:+.4f} m, "
+                    f"Y_min={pos.y-pml_y_min:+.4f} m, Y_max={pml_y_max-pos.y:+.4f} m\n"
+                    f"Fix: Move antenna further from domain edges, or reduce pml_layers in config"
+                )
+
+        # Layer 5: Free Space Above Antenna (gprMax Best Practice - Warning)
+        # gprMax recommends 15-20 cells of free space above antenna
+        # See: https://docs.gprmax.com/en/latest/gprmodelling.html
+        min_cells_above = 15  # Conservative: 15 cells minimum
+        free_space_required = min_cells_above * scene.config.dy
+        actual_free_space = domain_top - tx_rx_y
+
+        if actual_free_space < free_space_required:
+            import warnings
+            warning_msg = (
+                f"Limited free space above antenna (gprMax recommends 15-20 cells).\n"
+                f"  Antenna Y: {tx_rx_y:.4f} m\n"
+                f"  Domain top: {domain_top:.4f} m\n"
+                f"  Available: {actual_free_space:.4f} m ({actual_free_space / scene.config.dy:.1f} cells)\n"
+                f"  Recommended: {free_space_required:.4f} m ({min_cells_above} cells)\n"
+                f"  Deficit: {free_space_required - actual_free_space:.4f} m\n"
+                f"Suggestion: Increase domain_y or reduce antenna_clearance_above_ballast"
+            )
+            warnings.warn(f"{self.name}: {warning_msg}", UserWarning)
+            if scene.work_order:
+                scene.work_order.log(f"[WARNING] {warning_msg}", self.name)
 
         # 3. Add Waveform
         if scene.config.add_waveform:
@@ -787,18 +864,15 @@ class AntennaWorker(Worker):
         for i in range(num_rx):
             curr_rx_x = rx_x + (i * spacing)
             rx_pos = Point3D(curr_rx_x, tx_rx_y, tx_rx_z)
-            
+
             # Domain Validation
-            if scene.coordinate_system:
-                if not scene.coordinate_system.validate_point(rx_pos):
-                    # For arrays, we might just skip the out-of-bounds receivers instead of crashing,
-                    # but for now, let's log a warning or fail if the first one is bad.
-                    if i == 0:
-                        raise ValueError(f"{self.name}: Primary RX Position {rx_pos} invalid")
-                    else:
-                        print(f"Warning: RX_{i} at {curr_rx_x} is outside domain. Skipping.")
-                        continue
-            
+            if not scene.coordinate_system.validate_point(rx_pos):
+                if i == 0:
+                    raise ValueError(f"{self.name}: Primary RX Position {rx_pos} invalid")
+                else:
+                    print(f"Warning: RX_{i} at {curr_rx_x} is outside domain. Skipping.")
+                    continue
+
             receiver = RxCommand(*rx_pos.to_tuple())
             scene.add_receiver(receiver)
 

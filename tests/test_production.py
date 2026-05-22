@@ -19,7 +19,6 @@ config = GeneratorConfig(
     domain_z=0.5,
     tx_x=0.25,
     rx_x=0.35,
-    tx_rx_y=0.904,
     tx_rx_z=0.25
 )
 # config.generate_antenna_variants is likely not a field but handled by ProductionLine logic derived from logic? 

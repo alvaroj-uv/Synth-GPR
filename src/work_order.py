@@ -55,7 +55,7 @@ class WorkOrder:
         typed_params = SceneParameters(
             pvc=params.get('pvc', 0.0),
             moisture=params.get('moisture', 0.0),
-            ballast_thickness=params.get('ballast_thickness', 0.45),
+            ballast_thickness=params.get('ballast_thickness', 0.55),  # Max ballast default (was hardcoded 0.45)
             pvc_top=params.get('pvc_top', None),
             pvc_bottom=params.get('pvc_bottom', None),
         )

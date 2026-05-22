@@ -25,7 +25,7 @@ Helper tools categorized by function.
 - **`read_gprmax_output.py`**: Helper functions for reading gprMax HDF5 outputs.
 
 #### `tools/generation/`
-- **`generate_master_pattern.py`**: Generates the RSA (Random Sequential Adsorption) master circle patterns.
+- **`generate_master_pattern.py`**: Generates rock packing patterns (Shang-Chu recommended).
 - **`generate_dummy_hdf5.py`**: Creates dummy HDF5 files for validaton testing.
 
 #### `tools/tests/`

@@ -127,7 +127,7 @@ class DatasetGenerator:
                 metadata.update({
                     'tx_x': self.config.tx_x,
                     'rx_x': self.config.rx_x,
-                    'tx_rx_y': self.config.tx_rx_y,
+                    'antenna_clearance_above_ballast': self.config.antenna_clearance_above_ballast,
                     'center_freq': self.config.center_freq,
                 })
                 

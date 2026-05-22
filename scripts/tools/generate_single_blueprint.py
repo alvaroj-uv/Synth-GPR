@@ -1,3 +1,15 @@
+"""
+DEPRECATED: Use generate_single_in_file.py instead.
+
+This script is kept for backwards compatibility but should not be used for new work.
+The name "blueprint" was confusing - this script creates .in files, not visualizations.
+
+Replacement:
+    python scripts/tools/generate_single_in_file.py --out test.in --pvc 20
+
+See: scripts/tools/generate_single_in_file.py
+"""
+
 import sys
 import argparse
 from pathlib import Path

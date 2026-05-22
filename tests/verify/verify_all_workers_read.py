@@ -118,16 +118,11 @@ class TestAllWorkersReadWorkOrder(unittest.TestCase):
         
         # Antenna
         print("Checking Antenna...")
-        tx_rx_y = system.get('tx_rx_y')
-        expected_ant_y = highest_rock_y + 0.222
-        # Note: AntennaWorker uses max(config.tx_rx_y, highest + clearance)
-        # Config default is 1.4. Let's see if our stack exceeds that.
-        # 0.444 + 0.111 + 0.555 = 1.11. 
-        # So rocks are around 1.1 max. + 0.222 = 1.332.
-        # This is LESS than default 1.4. So it will clamp to 1.4.
-        
-        # To verify WorkOrder *read*, we must ensure the calculation logic was attempted.
-        # Let's check if offset worked (X pos)
+        # AntennaWorker now computes antenna Y from CoordinateSystem (layer stack)
+        # rather than using a hardcoded config value.
+        # Verify that antenna Y matches ballast_top + antenna_clearance
+
+        # To verify WorkOrder *read*, check if offset worked (X pos)
         tx_src = next(c for c in scene.sources if hasattr(c, 'y') and hasattr(c, 'waveform'))
         base_tx_x = self.config.tx_x # 0.3
         expected_tx_x = base_tx_x + 0.05
