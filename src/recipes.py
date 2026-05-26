@@ -5,53 +5,36 @@ Defines the order of operations (workers) for different product types.
 """
 from typing import List
 from .worker import Worker
-from .workers import (
-    AirWorker, SubgradeWorker, FormationWorker, BallastWorker, 
-    RockWorker, FoulingWorker
-)
-from .degradation_worker import DegradationWorker
+from .workers import AirWorker, SubgradeWorker, FormationWorker, BallastWorker
 from .lab_worker import LabWorker
 
 class RecipeBook:
     """
     Catalog of standard production recipes.
     """
-    
+
     @staticmethod
     def get_base_recipe(config, product_type: str = "standard") -> List[Worker]:
         """
         Get the sequence of workers for the base construction phase.
-        
+
         Args:
-            config: GeneratorConfig object to check feature flags (like granular_mode).
+            config: GeneratorConfig (unused, kept for call-site compatibility).
             product_type: Identifier for the recipe (e.g., 'standard').
-            
+
         Returns:
             List of Worker instances in execution order.
         """
         from .granular_worker import GranularMatrixWorker
 
         if product_type == "standard":
-            if getattr(config, 'granular_mode', False):
-                # New "Unified Mission" pipeline
-                return [
-                    AirWorker(),
-                    SubgradeWorker(),
-                    FormationWorker(),
-                    BallastWorker(),
-                    GranularMatrixWorker()
-                ]
-            else:
-                # Legacy / sequential pipeline
-                return [
-                    AirWorker(),
-                    SubgradeWorker(),
-                    FormationWorker(),
-                    BallastWorker(),
-                    RockWorker(),
-                    DegradationWorker(),
-                    FoulingWorker()
-                ]
+            return [
+                AirWorker(),
+                SubgradeWorker(),
+                FormationWorker(),
+                BallastWorker(),
+                GranularMatrixWorker(),
+            ]
         else:
             raise ValueError(f"Unknown recipe: {product_type}")
 

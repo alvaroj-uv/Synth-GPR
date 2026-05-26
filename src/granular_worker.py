@@ -6,24 +6,35 @@ from .worker import Worker, SceneCheckpoint
 from .gpr_commands import CylinderCommand, BoxCommand
 from .constants import MC, PC
 from .physics import classify_pvc
-from .rock_model import Rock, PackingBounds
-from .rock_packing import GrowthPacking
+from .rock_model import PackingBounds
+
 
 class GranularMatrixWorker(Worker):
     """
-    Unified Mission-Based Granular Matrix generator.
-    
-    Replaces RockWorker and FoulingWorker when granular_mode=True.
-    1. Generates a dense space-filling geometry using GrowthPacking.
-    2. Sorts circles by size and position to assign "missions":
-       - Rocks (r >= 15mm)
-       - Fouling (leftovers, settled bottom-up)
-       - Air (remaining leftovers)
+    Unified rock + fouling worker.
+
+    1. Packs the full ballast volume using the strategy selected by
+       config.rock_packing_algorithm (via ToolWarehouse).
+    2. Classifies circles by size into rocks vs. fines.
+    3. Gravity-settles rocks.
+    4. Places fouling as a solid box (painter's algorithm) for exact PVC.
     """
     
     name = "GranularMatrixWorker"
 
     def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+        """Fill the ballast volume with rocks and fouling.
+
+        Steps:
+          1. Read ballast extents from CoordinateSystem (set by BallastWorker).
+          2. Run the packing strategy selected by config.rock_packing_algorithm
+             (via ToolWarehouse) to generate a master set of circles (radius 1 mm → r_max).
+          3. Classify circles: ≥ 2×fouling_particle_size_max → rock pool; rest discarded.
+          4. Gravity-settle rocks: drop each 2 mm at a time until floor or collision.
+          5. Place fouling: binary-search the y-height where void area below equals
+             PVC% of total void; draw a single #box up to that height.
+          6. Stamp rock geometry (#cylinder or #triangle) on top of the fouling box.
+        """
         # 1. Resolve geometry bounds
         if scene.coordinate_system:
             from src.domain import Layer
@@ -54,16 +65,19 @@ class GranularMatrixWorker(Worker):
         min_gap = getattr(scene.config, 'rock_min_gap', 0.0)
 
         # 3. Master Pack (Geometry Generation)
-        # Grow circles from 1.0mm up to r_max to completely fill the space
-        print(f"[{self.name}] Running Master GrowthPack...")
-        packer = GrowthPacking(place_attempts=500, grow_step=0.001)
+        algo = scene.config.rock_packing_algorithm
+        packer = tools.get_tool("rock_packer")
+        from .rock_packing import _grading_curve_from_config
+        grading_curve = _grading_curve_from_config(scene.config)
+        print(f"[{self.name}] Running Master Pack ({algo})...")
         all_circles = packer.generate_rocks(
             bounds=bounds,
             radius_min=0.001, # 1mm minimum grain size
             radius_max=r_max,
             target_fill_ratio=0.85, # Safely below max theoretical ~90%
             max_attempts=scene.config.rock_packing_max_attempts,
-            min_gap=min_gap
+            min_gap=min_gap,
+            grading_curve=grading_curve,
         )
         
         if not all_circles:
@@ -100,14 +114,21 @@ class GranularMatrixWorker(Worker):
 
         # Apply Gravity Settle to assigned rocks to prevent them from floating
         # where tiny "Air" circles used to support them.
-        print(f"[{self.name}] Applying Gravity Settle to {len(assigned_rocks)} rocks...")
+        try:
+            from tqdm import tqdm as _tqdm
+        except ImportError:
+            _tqdm = None
+
         assigned_rocks.sort(key=lambda r: r.y) # Sort bottom to top
         settled_rocks = []
-        for r in assigned_rocks:
-            # Drop until collision
+        rock_iter = (
+            _tqdm(assigned_rocks, desc="  Gravity settle", unit="rock",
+                  ncols=72, file=__import__('sys').stdout, leave=False)
+            if _tqdm else assigned_rocks
+        )
+        for r in rock_iter:
             step = 0.002 # 2mm drop per step
             while r.y - r.radius > start_y:
-                # Check collision with settled rocks
                 collision = False
                 for sr in settled_rocks:
                     dist_sq = (r.x - sr.x)**2 + (r.y - step - sr.y)**2
@@ -118,7 +139,7 @@ class GranularMatrixWorker(Worker):
                     break
                 r.y -= step
             settled_rocks.append(r)
-            
+
         assigned_rocks = settled_rocks
                 
         achieved_density = current_rock_area / bounds.area
@@ -187,45 +208,82 @@ class GranularMatrixWorker(Worker):
                 ))
             scene.add_rock(r) # For visualizer/lab worker
             
-        print(f"[{self.name}] Master Pack: {len(all_circles)} total circles.")
+        print(f"[{self.name}] Master Pack ({algo}): {len(all_circles)} total circles.")
         print(f"  -> Assigned Rocks   : {len(assigned_rocks)} (Density: {achieved_density:.3f})")
         print(f"  -> Fouling Mode     : Solid Box (Target PVC: {pvc:.1f}%)")
         print(f"  -> Physical Top     : {physical_top:.3f}m")
 
     def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
-        """Render a rock as a faceted polygon using gprMax #triangle commands."""
+        """Render one rock as a faceted polygon extruded in z via gprMax #triangle commands.
+
+        Shape generation (Al Ibrahim et al. 2019 + Kerimov 2018):
+          Pass 1 — Multi-octave fractal harmonic noise perturbs each vertex radius.
+                   lacunarity=2, persistence=0.5, golden-ratio phase offset per octave.
+          Pass 2 — Area-preserving normalization: scale = sqrt(πr² / A_raw) so the
+                   rendered EM cross-section equals the nominal circle area πr².
+          Fan triangulation: n_sides triangles share the rock centre as apex.
+        """
         import math
         import random
         from src.gpr_commands import TriangleCommand
-        
+
         n_sides = getattr(scene.config, 'rock_sides', 6)
         cx, cy, r = rock.x, rock.y, rock.radius
         domain_x, domain_y, _ = scene.get_domain_params()
 
-        random.seed(hash((cx, cy)))
+        sphericity  = getattr(scene.config, 'rock_sphericity', 0.8)
+        irregularity = 1.0 - sphericity
+        octaves     = getattr(scene.config, 'rock_noise_octaves', 3)
+
+        base_n      = random.randint(2, 4)
+        base_phase  = random.uniform(0, 2 * math.pi)
         offset_angle = random.uniform(0, 2 * math.pi)
+
+        # Pass 1: multi-octave fractal harmonic radii
+        # lacunarity=2, persistence=0.5, golden-ratio phase shift per octave
+        delta_angle = 2 * math.pi / n_sides
+        raw_radii = []
+        for i in range(n_sides):
+            angle = offset_angle + i * delta_angle
+            perturbation = 0.0
+            freq, amp = base_n, irregularity * 0.20
+            for k in range(octaves):
+                perturbation += amp * math.cos(freq * angle + base_phase + k * 1.618)
+                freq *= 2
+                amp  *= 0.5
+            raw_radii.append(r * (1.0 + perturbation))
+
+        # Pass 2: area-preserving normalization (Al Ibrahim et al. 2019)
+        # A = 0.5 * sin(Δθ) * Σ r_i * r_{i+1}  →  scale = sqrt(πr² / A_raw)
+        raw_area = 0.5 * math.sin(delta_angle) * sum(
+            raw_radii[i] * raw_radii[(i + 1) % n_sides] for i in range(n_sides)
+        )
+        scale = math.sqrt(math.pi * r * r / raw_area) if raw_area > 0.0 else 1.0
+
         vertices = []
         for i in range(n_sides):
-            angle = offset_angle + (2 * math.pi * i / n_sides)
-            vr = r * random.uniform(0.85, 1.1)
+            angle = offset_angle + i * delta_angle
+            vr = raw_radii[i] * scale
             vx = max(0.0, min(cx + vr * math.cos(angle), domain_x))
             vy = max(0.0, min(cy + vr * math.sin(angle), domain_y))
             vertices.append((vx, vy))
-        
-        random.seed(None) # Reset
-            
+
+        # Fan triangulation from centre
         for i in range(n_sides):
             v1 = vertices[i]
             v2 = vertices[(i + 1) % n_sides]
-            
-            cmd = TriangleCommand(
+            scene.add_geometry(TriangleCommand(
                 cx, cy, z_start,
                 v1[0], v1[1], z_start,
                 v2[0], v2[1], z_start,
                 z_end - z_start,
                 MC.BALLAST_ROCK
-            )
-            scene.add_geometry(cmd)
+            ))
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
-        return []
+        errors = []
+        if not scene.rock_positions:
+            errors.append("GranularMatrixWorker: no rocks placed")
+        elif scene.rock_count < 5:
+            errors.append(f"GranularMatrixWorker: suspiciously low rock count ({scene.rock_count})")
+        return errors

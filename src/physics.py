@@ -340,6 +340,58 @@ def attenuation_factor_npm(freq_hz: float, eps_real: float, sigma_eff: float) ->
     return omega * math.sqrt(max(inner, 0.0))
 
 
+def crim_fouling_eps(
+    moisture: float,
+    pvc: float,
+    zone: str = 'granular',
+    eps_mineral: float = 5.5,
+    eps_water: float = 81.0,
+) -> tuple:
+    """CRIM-derived bulk εr and σ for a fouling particle (three-phase mix).
+
+    Phases: solid mineral grains + pore water + pore air.
+    sqrt(ε_bulk) = Σ V_i * sqrt(ε_i)  — Complex Refractive Index Method.
+
+    Zone sets the internal porosity of the fines pack (gravity compaction):
+        dense    φ = 0.32  (settled zone 1)
+        granular φ = 0.40  (dispersed zone 2)
+        sparse   φ = 0.48  (near-surface zone 3)
+
+    Saturation: S = moisture / φ  (bulk water content → pore-space saturation)
+    PVC boost: high contamination retains capillary water → +0.35 × PVC/100.
+
+    Args:
+        moisture:    bulk volumetric water content (0–1)
+        pvc:         Percentage Void Contamination (0–100)
+        zone:        'dense' | 'granular' | 'sparse'
+        eps_mineral: εr of mineral grains (clay ≈ 5.5, Santamarina et al. 2002)
+        eps_water:   εr of free water (≈ 81)
+
+    Returns:
+        (eps_r, sigma) — bulk relative permittivity and conductivity [S/m]
+    """
+    phi = {'dense': 0.32, 'granular': 0.40, 'sparse': 0.48}.get(zone, 0.40)
+
+    # Bulk moisture → pore-space saturation, plus capillary retention from fouling
+    saturation = min(moisture / max(phi, 1e-6) + 0.35 * (pvc / 100.0), 0.95)
+    saturation = max(0.0, saturation)
+
+    v_mineral = 1.0 - phi
+    v_water   = saturation * phi
+    v_air     = max(0.0, (1.0 - saturation) * phi)
+
+    eps_r = crim_bulk_eps(
+        v_rock=v_mineral, eps_rock=eps_mineral,
+        v_fines=0.0,      eps_fines=1.0,
+        v_water=v_water,  eps_water=eps_water,
+        v_air=v_air,
+    )
+
+    # Surface conduction on grains + electrolytic transport through pore water
+    sigma = max(0.005 * v_mineral + 0.1 * v_water, 0.001)
+    return eps_r, sigma
+
+
 def get_percent_passing(d_target: float, psd_points: list) -> float:
     """
     Get Percent Passing at d_target using Log-Linear Interpolation on a PSD curve.

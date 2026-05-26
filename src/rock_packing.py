@@ -1352,16 +1352,16 @@ class ShangChuPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.78, # Can achieve high density
-        max_attempts: int = 5000
+        target_fill_ratio: float = 0.78,
+        max_attempts: int = 5000,
+        min_gap: float = 0.0,
+        grading_curve: "GradingCurve" = None,
     ) -> List[Rock]:
-        """
-        Run the Shang-Chu packing algorithm.
-        
-        Note: The original paper packs a specific set of circles. Here we:
-        1. Generate a target set of circles based on fill ratio.
-        2. Pack them using the algorithm.
-        3. Return those that fit.
+        """Run the Shang-Chu random-search unequal circle packing algorithm.
+
+        min_gap and grading_curve are accepted for interface compatibility.
+        grading_curve is used for radius sampling when provided; min_gap is ignored
+        (Shang-Chu enforces tangency, so gap control is not meaningful here).
         """
         # 1. Generate target rocks to pack
         # Sort desc by radius usually helps packing
@@ -1399,39 +1399,54 @@ class ShangChuPacking(RockPackingStrategy):
         # 3. Main Optimization Loop
         iteration = 0
         no_improv_count = 0
-        max_no_improv = 100 # Threshold to trigger disturbance
-        
+        disturbance_count = 0
+        max_no_improv = 100     # iterations without improvement → trigger disturbance
+        max_disturbances = 5    # disturbances without recovery → converged, exit early
+
+        try:
+            from tqdm import tqdm as _tqdm
+            _pbar = _tqdm(total=max_attempts, desc="  Shang-Chu pack", unit="iter",
+                          ncols=72, file=__import__('sys').stdout, leave=False)
+        except ImportError:
+            _pbar = None
+
         # Paper flow: Search -> Disturbance if needed
         while iteration < max_attempts:
             improved = False
-            
-            # Sort circles by distance from origin (or "bottom")
-            # Usually bottom-left or just Y coordinate. Paper says "distance from origin".
-            # optimization order matters.
-            search_order = sorted(circles, key=lambda c: c.y) 
-            
+
+            search_order = sorted(circles, key=lambda c: c.y)
+
             for c in search_order:
-                # Local Search in BS-Area
                 if self._bs_area_search(c, circles, domain_width):
                     improved = True
-                    # Re-calc L
                     L_current = max((k.y + k.radius for k in circles), default=0)
-            
+
             if improved:
                 no_improv_count = 0
+                disturbance_count = 0
             else:
                 no_improv_count += 1
-                
-            # Disturbance
+
             if no_improv_count > max_no_improv:
-                # Apply disturbance (Left-off or Bottom-off)
-                # "Left-off": Move quasi-stable circles (those tangent to boundary)
-                # "Bottom-off": Move circles near bottom
                 self._apply_disturbance(circles, domain_width, bounds.height)
-                no_improv_count = 0 # Reset
-                
+                no_improv_count = 0
+                disturbance_count += 1
+                if disturbance_count >= max_disturbances:
+                    iteration += 1
+                    if _pbar is not None:
+                        _pbar.update(max_attempts - iteration)
+                        _pbar.set_postfix_str(f"converged at iter {iteration}")
+                        _pbar.close()
+                    break
+
             iteration += 1
-            
+            if _pbar is not None:
+                _pbar.update(1)
+                _pbar.set_postfix_str(f"L={L_current:.3f}m  disturb={disturbance_count}")
+
+        if _pbar is not None:
+            _pbar.close()
+
         # 4. Convert back to Rock objects
         # Filter those that are fully inside bounds
         result_rocks = []

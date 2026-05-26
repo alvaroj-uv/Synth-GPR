@@ -31,12 +31,13 @@ class WarehouseKeeper:
         """
         Request a material from the warehouse.
         """
-        if material_name == "bal_foul_granular" and "moisture" in kwargs:
-            # Dynamic material - keeper handles complexity
-            return self.materials.get_fouled_material(kwargs["moisture"])
-        else:
-            # Standard material
-            return self.materials.get_material(material_name)
+        moisture = kwargs.get("moisture")
+        pvc      = kwargs.get("pvc", 0.0)
+        if material_name == "bal_foul_granular" and moisture is not None:
+            return self.materials.get_fouled_material(moisture, pvc)
+        if material_name == "bal_foul" and moisture is not None:
+            return self.materials.get_fouled_dense_material(moisture, pvc)
+        return self.materials.get_material(material_name)
     
     def get_tool(self, tool_name: str):
         """

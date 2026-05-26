@@ -59,17 +59,16 @@ class LabWorker(Worker):
             typed_params = scene.work_order.typed_params
             domain_x = typed_params.domain_x or domain_x
         
-        # Get layer height
-        layer_height = PC.STANDARD_LAYER_HEIGHT  # Default 15cm sampling layer
-        if scene.work_order:
-            layer_height = scene.work_order.get('lab_layer_height', layer_height)
-             
+        # Primary sieve: full ballast column (Selig & Waters bulk sample)
         y_min = ballast_bottom
-        y_max = ballast_bottom + layer_height
-        
-        layer_area_mm2 = (domain_x * PC.MM_TO_M) * (layer_height * PC.MM_TO_M)
-        
-        print(f"[{self.name}] Sampling Layer: Y=[{y_min:.3f}, {y_max:.3f}] (H={layer_height*100:.1f}cm)")
+        y_max = ballast_top
+
+        layer_area_mm2 = (domain_x * PC.MM_TO_M) * ((y_max - y_min) * PC.MM_TO_M)
+
+        # Secondary sieve: bottom 15 cm strip (local severity indicator)
+        local_strip_top = ballast_bottom + PC.STANDARD_LAYER_HEIGHT
+
+        print(f"[{self.name}] Sampling Layer: Y=[{y_min:.3f}, {y_max:.3f}] (full column, H={(y_max-y_min)*100:.1f}cm)")
 
         # 2. Collect Rock Area Intersecting Layer
         if not scene.rock_positions:
@@ -119,11 +118,20 @@ class LabWorker(Worker):
 
         if not fouling_boxes and not fouling_cyls:
             scene.metadata['Lab_FI'] = 0.0
+            scene.metadata['Lab_FI_local'] = 0.0
             scene.metadata['Lab_Class'] = "C"
             scene.metadata['Lab_FR'] = 0.0
             _leng_base = {'granite': 3.237, 'limestone': 3.732}
             rock_type = getattr(scene.config, 'rock_type', 'granite').lower()
             scene.metadata['Lab_er_bulk_leng'] = _leng_base.get(rock_type, 3.237)
+            fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
+            scene.metadata.update(fractions)
+            scene.metadata['mc_y_min'] = round(y_min, 3)
+            scene.metadata['mc_y_max'] = round(y_max, 3)
+            scene.metadata['mc_y_local_max'] = round(ballast_bottom + PC.STANDARD_LAYER_HEIGHT, 3)
+            scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
+            scene.metadata['ballast_top_y'] = round(ballast_top, 3)
+            scene.metadata['ldcp_x'] = round(domain_x / 2.0, 3)
             self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
             return
 
@@ -189,6 +197,26 @@ class LabWorker(Worker):
         scene.metadata['Lab_P200'] = P200
         scene.metadata['Lab_FI'] = FI
         scene.metadata['Lab_Porosity'] = local_porosity
+
+        # Secondary: bottom-strip FI (local severity at the most fouled zone)
+        local_rock_area_mm2 = sum(
+            circle_strip_intersection(r.x, r.y, r.radius, y_min, local_strip_top) * 1e6
+            for r in scene.rock_positions
+            if not ((r.y + r.radius) < y_min or (r.y - r.radius) > local_strip_top)
+        )
+        local_strip_porosity = max(0.0, min(1.0, 1.0 - local_rock_area_mm2 /
+                                             max((domain_x * PC.MM_TO_M) * (PC.STANDARD_LAYER_HEIGHT * PC.MM_TO_M), 1.0)))
+        local_foul_area_mm2 = 0.0
+        for box in fouling_boxes:
+            overlap_h = max(0.0, min(box.y2, local_strip_top) - max(box.y1, y_min))
+            local_foul_area_mm2 += (overlap_h * domain_x * 1e6) * local_strip_porosity
+        local_sample = local_rock_area_mm2 + local_foul_area_mm2
+        if local_sample > 0:
+            local_FI = (local_foul_area_mm2 * p4_fraction_foul / local_sample * 100.0 +
+                        local_foul_area_mm2 * p200_fraction_foul / local_sample * 100.0)
+        else:
+            local_FI = 0.0
+        scene.metadata['Lab_FI_local'] = round(local_FI, 2)
         
         # --- NEW: Calculate Full PSD Curve ---
         # Define standard sieve set (mm)
@@ -260,9 +288,10 @@ class LabWorker(Worker):
         fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
         scene.metadata.update(fractions)
         
-        # Log the Sieve Analysis bounds so the visualization script can draw the orange dashed box
+        # Log sieve bounds (full column) and local strip for visualizer
         scene.metadata['mc_y_min'] = round(y_min, 3)
         scene.metadata['mc_y_max'] = round(y_max, 3)
+        scene.metadata['mc_y_local_max'] = round(local_strip_top, 3)
         
         # Log the MC Global bounds and LDCP line
         scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
@@ -295,8 +324,8 @@ class LabWorker(Worker):
             f_foul_2d = min(total_fouling_area_mm2 / layer_area_mm2, 1.0)
             f_void_2d = max(0.0, 1.0 - f_rock_2d - f_foul_2d)
             er_rock = getattr(scene.config, 'bal_rock_eps', 5.5)
-            from src.physics import topp_mixing_model
-            er_foul = topp_mixing_model(scene.metadata.get('moisture', 0.0))
+            from src.physics import crim_fouling_eps
+            er_foul, _ = crim_fouling_eps(scene.metadata.get('moisture', 0.0), pvc, zone='dense')
             er_eff = (f_rock_2d * math.sqrt(er_rock) + f_foul_2d * math.sqrt(er_foul) + f_void_2d) ** 2
             scene.metadata['Lab_er_eff'] = round(er_eff, 3)
 
@@ -316,8 +345,8 @@ class LabWorker(Worker):
 
         self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
 
-        print(f"[{self.name}] Result (H={layer_height:.2f}m): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) "
-              f"Rb-f={rb_f:.2f}% FR={lab_fr:.2f}% -> Class: {fi_class}")
+        print(f"[{self.name}] Result (full column): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) "
+              f"FI_local={local_FI:.1f} | Rb-f={rb_f:.2f}% FR={lab_fr:.2f}% -> Class: {fi_class}")
         print(f"[{self.name}] MC Phase Fractions: Rock={fractions['mc_rock_fraction']:.3f}, "
               f"Fouling={fractions['mc_fouling_fraction']:.3f}, "
               f"Subgrade={fractions['mc_subgrade_fraction']:.3f}, "
@@ -366,10 +395,9 @@ class LabWorker(Worker):
 
         # --- Fouling phase — painter's algorithm priority ---
         # gprMax render order (last command per voxel wins):
-        #   priority-10 boxes: FOULING_DENSE boxes rendered before rocks
-        #   priority-20 cylinders: rock cylinders first (RockWorker),
-        #                          FOULING_GRANULAR cylinders after (FoulingWorker, later insertion)
-        # Result: rocks override FOULING_DENSE boxes; FOULING_GRANULAR cylinders override rocks.
+        #   priority-10 box:       FOULING solid box rendered first (background)
+        #   priority-20 triangles: rock triangles stamped on top, overwriting fouling
+        # Result: rocks override the fouling box in every voxel they occupy.
         _fouling_mats = {MC.FOULING, MC.FOULING_DENSE}
         fouling_cmds  = [c for c in scene.geometry
                          if getattr(c, 'material', None) in _fouling_mats]
@@ -547,7 +575,7 @@ class LabWorker(Worker):
           Lab_alpha_2GHz_npm    – attenuation coefficient at 2 GHz    (Np/m, Eq. 8)
           Lab_clean_ballast_mm  – clean ballast thickness: surface to topmost fouling (mm)
         """
-        from src.physics import crim_bulk_eps, surface_reflectivity_R, attenuation_factor_npm, topp_mixing_model
+        from src.physics import crim_bulk_eps, surface_reflectivity_R, attenuation_factor_npm, crim_fouling_eps
 
         n = len(ys)
         if n == 0:
@@ -564,11 +592,12 @@ class LabWorker(Worker):
 
         # Moisture: volumetric fraction of total volume that is water
         moisture = scene.metadata.get('moisture', 0.0)
+        pvc = scene.metadata.get('pvc', 0.0)
         v_water  = min(float(moisture), v_void)
         v_air    = v_void - v_water
 
         eps_rock  = float(getattr(scene.config, 'bal_rock_eps', 5.5))
-        eps_fines = topp_mixing_model(moisture)
+        eps_fines, _ = crim_fouling_eps(moisture, pvc, zone='granular')
         eps_water = 80.1
 
         bulk_eps = crim_bulk_eps(v_rock, eps_rock, v_fines, eps_fines, v_water, eps_water, v_air)

@@ -76,30 +76,28 @@ class MaterialWarehouse:
             return self.get_fouled_dense_material(kwargs["moisture"])
         return self._materials.get(name)
     
-    def get_fouled_material(self, moisture: float) -> MaterialCommand:
-        """
-        Generate fouled ballast material with moisture-dependent properties.
-        
-        Args:
-            moisture: Volumetric water content (0.0 - 1.0)
-            
-        Returns:
-            MaterialCommand for fouled ballast with computed dielectric properties
-        """
-        from .physics import topp_mixing_model
-        
-        # Compute dielectric properties based on moisture
-        foul_eps = topp_mixing_model(moisture)
-        foul_sigma = 0.001 + 0.2 * moisture
-        
-        return MaterialCommand(foul_eps, foul_sigma, 1.0, 0.0, MC.FOULING)
+    def get_fouled_material(self, moisture: float, pvc: float = 0.0) -> MaterialCommand:
+        """Granular dispersed fouling (zones 2-3): CRIM three-phase mix.
 
-    def get_fouled_dense_material(self, moisture: float) -> MaterialCommand:
-        """Dense settled fouling (zone 1): fully void-filled, higher εr."""
-        from .physics import topp_mixing_model
-        dense_eps = topp_mixing_model(min(moisture + 0.15, 0.6))
-        dense_sigma = 0.002 + 0.3 * moisture
-        return MaterialCommand(dense_eps, dense_sigma, 1.0, 0.0, MC.FOULING_DENSE)
+        εr derived from mineral grains + pore water + pore air using the
+        Complex Refractive Index Method (Bruggeman 1935; Barrett et al. 2019).
+        PVC boosts pore-space saturation via capillary retention.
+        """
+        from .physics import crim_fouling_eps
+        eps, sigma = crim_fouling_eps(
+            moisture, pvc, zone='granular',
+            eps_mineral=getattr(self.config, 'fouling_mineral_eps', 5.5),
+        )
+        return MaterialCommand(eps, sigma, 1.0, 0.0, MC.FOULING)
+
+    def get_fouled_dense_material(self, moisture: float, pvc: float = 0.0) -> MaterialCommand:
+        """Dense settled fouling (zone 1): CRIM with compacted-fines porosity (φ=0.32)."""
+        from .physics import crim_fouling_eps
+        eps, sigma = crim_fouling_eps(
+            moisture, pvc, zone='dense',
+            eps_mineral=getattr(self.config, 'fouling_mineral_eps', 5.5),
+        )
+        return MaterialCommand(eps, sigma, 1.0, 0.0, MC.FOULING_DENSE)
 
     def mix_material(self, base_name: str, additive_name: str, fraction: float) -> MaterialCommand:
         """
@@ -171,15 +169,11 @@ class ToolWarehouse:
             elif algo == "shang_chu":
                 from .rock_packing import ShangChuPacking
                 return ShangChuPacking()
-            elif algo == "circlify":
-                from .rock_packing import CirclifyPacking
-                return CirclifyPacking()
+            elif algo == "rsa":
+                from .rock_packing import RSAPacking
+                return RSAPacking()
             else:
-                # Default to Shang-Chu: best realism for railway ballast
-                # (See EXTENDED_EVALUATION_REPORT.md for detailed comparison)
-                from .rock_packing import ShangChuPacking
-                return ShangChuPacking()
-        
+                from .rock_packing import RSAPacking
+                return RSAPacking()
 
-             
         raise ValueError(f"Unknown tool requested: {name}")

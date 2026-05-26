@@ -13,7 +13,9 @@
       "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_encap_test --labels MF -n 1 --start_id 0 2>&1 | Select-String -Pattern \"RockWorker|LabWorker|Rocks:|Antennas|Error|Traceback|CRITICAL\")",
       "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_encap_test2 --labels MF -n 1 --start_id 0 2>&1 | Select-String -Pattern \"RockWorker|LabWorker|Rocks:|Antennas|Error|Traceback|CRITICAL\")",
       "PowerShell($py = \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\python.exe\"; Set-Location \"d:\\\\Codigo\\\\Synth-GPR.bck\\\\Synth-GPR-1\"; & $py scripts/main/generate_dataset.py d:/tmp/gpr_struct_test --labels MF -n 1 --start_id 0 2>&1)",
-      "Read(//c//**)"
+      "Read(//c//**)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

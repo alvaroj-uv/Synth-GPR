@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Tuple
 
 from .config import GeneratorConfig
-from .physics import compute_fouling_index, classify_fouling_index, convert_pvc_to_fi, classify_pvc
+from .physics import classify_fouling_index, convert_pvc_to_fi
 
 class ParameterSampler:
     """
@@ -36,20 +36,12 @@ class ParameterSampler:
         antenna_clearance = random.uniform(cfg.min_antenna_clearance, cfg.max_antenna_clearance)
 
 
-        if cfg.granular_mode and cfg.stratified_fouling:
+        if cfg.stratified_fouling:
             return self._sample_stratified(ballast_thickness, moisture, antenna_clearance)
 
-
-        pvc = random.uniform(cfg.pvc_min, cfg.pvc_max) if cfg.granular_mode else 0.0
-
-        # Calculate Fouling Index (FI)
-        if cfg.granular_mode:
-            FI = convert_pvc_to_fi(pvc)
-            FI_class = classify_fouling_index(FI)
-        else:
-            rock_h, foul_h = self._sample_heights()
-            FI = compute_fouling_index(rock_h + foul_h, foul_h)
-            FI_class = classify_fouling_index(FI)
+        pvc = random.uniform(cfg.pvc_min, cfg.pvc_max)
+        FI = convert_pvc_to_fi(pvc)
+        FI_class = classify_fouling_index(FI)
 
         return {
             'ballast_thickness': ballast_thickness,
@@ -94,11 +86,3 @@ class ParameterSampler:
         }
 
 
-    def _sample_heights(self) -> Tuple[float, float]:
-        """Sample rock and fouling thicknesses for non-granular mode."""
-        cfg = self.config
-        total = random.uniform(cfg.min_ballast_thickness, cfg.max_ballast_thickness)
-        foul = random.uniform(cfg.min_foul_thickness, cfg.max_foul_thickness)
-        foul = min(foul, total)
-        rock = total - foul
-        return rock, foul

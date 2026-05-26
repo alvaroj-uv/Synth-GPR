@@ -15,19 +15,20 @@ class ProductionLine:
     
     Layer Structure (bottom → top):
     - Subgrade: base soil layer (0-0.5m)
-    - Formation (Subballast): transition layer (0.5-0.6m, ~100mm)
-    - Ballast: crushed rock layer (0.6-1.0m, 250-500mm)
-      └─ Rocks: individual particles (cylinders)
-      └─ Fouling: fine material filling voids (PVC-controlled)
-    - Air: free space above
-    
-    Responsibilities:
-    1. Instantiates the SceneCheckpoint.
-    2. Runs Base Workers (Construction Phase) - builds layers bottom-up.
-    3. Manages Checkpointing.
-    4. Runs Variant Workers (Customization Phase).
-    5. Runs Assembler (Finalization Phase).
-    6. Writes Output Files - includes FI_class in headers.
+    Layer stack (bottom → top):
+    - Subgrade    : base soil
+    - Formation   : transition / subballast (~100 mm)
+    - Ballast     : crushed rock + fouling (250–500 mm)
+                    GranularMatrixWorker fills this zone with a configurable
+                    packing strategy, gravity settle, and a solid fouling box
+                    at the base (painter's algorithm).
+    - Air         : free space above ballast
+
+    Pipeline phases:
+    1. Base construction  — AirWorker → SubgradeWorker → FormationWorker →
+                            BallastWorker → GranularMatrixWorker
+    2. Checkpoint         — scene state cloned for potential variant support
+    3. Finalization       — AntennaWorker → AssemblerWorker → LabWorker
     """
     
     def __init__(self, config: GeneratorConfig):
@@ -52,11 +53,11 @@ class ProductionLine:
         Returns the finalized SceneCheckpoint. The caller is responsible
         for persistence (file, database, memory, etc.).
         
-        Architecture:
-        1. Base Phase: Build layers (Air → Subgrade → Formation → Ballast → Rocks → Degradation → Fouling)
-        2. Checkpoint: Save state for potential variants
-        3. Finalization Phase: Antenna → Assembler → LabWorker
-        4. Return: Finalized scene (caller handles persistence)
+        Phases:
+        1. Base       — AirWorker → SubgradeWorker → FormationWorker →
+                        BallastWorker → GranularMatrixWorker
+        2. Checkpoint — scene cloned (future variant support)
+        3. Finalization — AntennaWorker → AssemblerWorker → LabWorker
         
         Returns:
             Finalized SceneCheckpoint ready for persistence

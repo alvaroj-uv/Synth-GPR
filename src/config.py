@@ -110,9 +110,6 @@ class GeneratorConfig:
 
 
 
-    # Granular & High-Fidelity Settings
-    granular_mode: bool = False
-
     pvc_min: float = 0.0
     pvc_max: float = 100.0
     
@@ -146,6 +143,10 @@ class GeneratorConfig:
     fouling_granular_fraction: float = 0.3  # zone 2: granular transition (bal_foul_granular)
     fouling_particle_size_min: float = 0.002  # 2mm
     fouling_particle_size_max: float = 0.008  # 8mm
+    # Mineral grain permittivity for CRIM fouling material model.
+    # Clay minerals (kaolinite/illite): ~5.5 (Santamarina et al. 2002, Table 3.1).
+    # Sand/quartz fines: ~4.5. Use higher value for clay-dominated fouling.
+    fouling_mineral_eps: float = 5.5
 
     # Fouling PSD type: "standard" (coarser, 30% P200) or "a4" (Benedetto et al. 2016, 84.7% P200)
     fouling_psd_type: str = "standard"
@@ -178,7 +179,7 @@ class GeneratorConfig:
     rock_z_end: float = 0.004  # full z extent = domain_z (2-D simulation)
     
     # Rock Packing Strategy
-    rock_packing_algorithm: str = "circlify"  # "random", "poisson", "front_chain", "physics", "triangle"
+    rock_packing_algorithm: str = "rsa"  # "rsa", "shang_chu", "random", "poisson", "front_chain", "physics", "triangle", "circlify", "growth", "wang"
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
     
     # Ballast/subgrade nominal depths
@@ -190,14 +191,6 @@ class GeneratorConfig:
 
     formation_thickness: float = 0.10
     subgrade_thickness: float = 0.20
-
-    # Degradation Parameters (Realistic ballast aging simulation)
-    enable_degradation: bool = False
-    degradation_level: float = 0.0  # 0-100% (0=fresh, 100=heavily degraded)
-    breakage_probability_large: float = 0.15  # 15% of >40mm rocks break
-    breakage_probability_medium: float = 0.05  # 5% of 20-40mm rocks break
-    fines_threshold: float = 0.010  # 10mm - particles below this migrate
-    fines_accumulation_zone: float = 0.3  # Bottom 30% of ballast
 
     # Material ranges
     # Clean ballast
@@ -253,7 +246,6 @@ class GeneratorConfig:
     # ============================================================
     # Stratified Fouling — Bianchini Ciampoli et al. (2019)
     # Top and bottom halves of the ballast column get independent PVC values.
-    # Only active when granular_mode=True.
     # ============================================================
     stratified_fouling: bool = False
     
@@ -387,7 +379,6 @@ class GeneratorConfig:
             args['tx_rx_z'] = get_float('Simulation', 'tx_rx_z')
             args['add_waveform'] = get_bool('Simulation', 'add_waveform')
             args['add_source'] = get_bool('Simulation', 'add_source')
-            args['add_source'] = get_bool('Simulation', 'add_source')
             args['add_geometry_view'] = get_bool('Simulation', 'add_geometry_view')
             args['add_sleepers'] = get_bool('Simulation', 'add_sleepers')
             
@@ -401,12 +392,6 @@ class GeneratorConfig:
 
         # [Granular]
         if 'Granular' in config:
-            granular_mode = config.get('Granular', 'granular_mode', fallback='False')
-            # Handle boolean string
-            if isinstance(granular_mode, str):
-                 granular_mode = granular_mode.lower() == 'true'
-            args['granular_mode'] = granular_mode
-            
             args['pvc_min'] = get_float('Granular', 'pvc_min')
             args['pvc_max'] = get_float('Granular', 'pvc_max')
             args['rock_radius_min'] = get_float('Granular', 'rock_radius_min')
@@ -414,7 +399,6 @@ class GeneratorConfig:
             args['max_pockets'] = get_int('Granular', 'max_pockets')
             
             # Rock Packing
-            args['rock_packing_algorithm'] = config.get('Granular', 'rock_packing_algorithm', fallback='wang')
             args['rock_packing_algorithm'] = config.get('Granular', 'rock_packing_algorithm', fallback='wang')
             args['enable_rock_caching'] = get_bool('Granular', 'enable_rock_caching')
             args['wang_tile_size'] = get_float('Granular', 'wang_tile_size')

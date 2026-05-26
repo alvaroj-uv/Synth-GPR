@@ -29,7 +29,6 @@ from .scene_geometry import GeometryCollection, AntennaConfiguration, DomainSett
 if TYPE_CHECKING:
     from .config import GeneratorConfig
     from .work_order import WorkOrderSystem
-    from .scene_descriptor import SceneDefinition
 
 
 @dataclass
