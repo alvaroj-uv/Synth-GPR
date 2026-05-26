@@ -10,6 +10,9 @@
 
 # Data files
 *.csv
+*.rar
+*.zip
+*.parquet
 
 # Images (keep output/test_images tracked)
 test_*.png
