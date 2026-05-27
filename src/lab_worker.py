@@ -74,8 +74,7 @@ class LabWorker(Worker):
         if not scene.rock_positions:
             print(f"[{self.name}] No rocks found. FI=0.")
             scene.metadata['Lab_FI'] = 0.0
-            scene.metadata['Lab_Class'] = "C"
-            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_FI_est': 0.0, 'Lab_LDCP_qs_mean': 0.0})
+            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_qs_mean': 0.0})
             return
 
         total_rock_area_mm2 = 0.0
@@ -119,19 +118,10 @@ class LabWorker(Worker):
         if not fouling_boxes and not fouling_cyls:
             scene.metadata['Lab_FI'] = 0.0
             scene.metadata['Lab_FI_local'] = 0.0
-            scene.metadata['Lab_Class'] = "C"
-            scene.metadata['Lab_FR'] = 0.0
-            _leng_base = {'granite': 3.237, 'limestone': 3.732}
-            rock_type = getattr(scene.config, 'rock_type', 'granite').lower()
-            scene.metadata['Lab_er_bulk_leng'] = _leng_base.get(rock_type, 3.237)
             fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
             scene.metadata.update(fractions)
-            scene.metadata['mc_y_min'] = round(y_min, 3)
-            scene.metadata['mc_y_max'] = round(y_max, 3)
-            scene.metadata['mc_y_local_max'] = round(ballast_bottom + PC.STANDARD_LAYER_HEIGHT, 3)
             scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
             scene.metadata['ballast_top_y'] = round(ballast_top, 3)
-            scene.metadata['ldcp_x'] = round(domain_x / 2.0, 3)
             self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
             return
 
@@ -267,9 +257,6 @@ class LabWorker(Worker):
         scene.metadata['Lab_PSD'] = json.dumps(psd_data)
 
         
-        from src.physics import classify_fouling_index
-        fi_class = classify_fouling_index(FI)
-        scene.metadata['Lab_Class'] = fi_class
 
         # δ = radius / depth-from-ballast-surface (Xie et al. 2010)
         # Detectability threshold: δ < 0.08 → hyperbolic signature fades out
@@ -287,66 +274,17 @@ class LabWorker(Worker):
 
         fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
         scene.metadata.update(fractions)
-        
-        # Log sieve bounds (full column) and local strip for visualizer
-        scene.metadata['mc_y_min'] = round(y_min, 3)
-        scene.metadata['mc_y_max'] = round(y_max, 3)
-        scene.metadata['mc_y_local_max'] = round(local_strip_top, 3)
-        
-        # Log the MC Global bounds and LDCP line
+
+        # Log geometry reference bounds
         scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
         scene.metadata['ballast_top_y'] = round(ballast_top, 3)
-        scene.metadata['ldcp_x'] = round(domain_x / 2.0, 3)
 
-        # FR (Fouling Ratio, mass-based): FR = (Mf / Mb) × 100
-        # Derived from MC fractions: mass ∝ volume × Gs, so
-        #   FR = (mc_fouling_fraction × Gs_f) / (mc_rock_fraction × Gs_b) × 100
-        # Reference: Feldman & Nissen (2002); also used in Koohmishi et al. (2025).
-        if fractions['mc_rock_fraction'] > 0:
-            lab_fr = (fractions['mc_fouling_fraction'] * PHC.DEFAULT_FOULING_DENSITY /
-                      (fractions['mc_rock_fraction'] * PHC.DEFAULT_BALLAST_DENSITY)) * 100.0
-        else:
-            lab_fr = 0.0
-        scene.metadata['Lab_FR'] = round(lab_fr, 3)
 
-        # Rb-f (Indraratna et al. 2011): volume-based ratio independent of moisture
-        # Rb-f = (Vf / Gs_f) / (Vb / Gs_b) × 100  ≈ (area_foul / Gs_f) / (area_rock / Gs_b) × 100
-        Gs_f = PHC.DEFAULT_FOULING_DENSITY   # 2.58 — Koohmishi et al. (2025)
-        Gs_b = PHC.DEFAULT_BALLAST_DENSITY   # 2.72 — Koohmishi et al. (2025)
-        rb_f = ((total_fouling_area_mm2 / Gs_f) / (total_rock_area_mm2 / Gs_b) * 100.0
-                if total_rock_area_mm2 > 0 else 0.0)
-        scene.metadata['Lab_Rb_f'] = round(rb_f, 3)
-
-        # CRIM effective permittivity (Birchak 1974, α=0.5 — Benedetto et al. 2016)
-        # εr_eff = (f_rock·√εr_rock + f_foul·√εr_foul + f_void·1)²
-        if layer_area_mm2 > 0:
-            f_rock_2d = min(total_rock_area_mm2 / layer_area_mm2, 1.0)
-            f_foul_2d = min(total_fouling_area_mm2 / layer_area_mm2, 1.0)
-            f_void_2d = max(0.0, 1.0 - f_rock_2d - f_foul_2d)
-            er_rock = getattr(scene.config, 'bal_rock_eps', 5.5)
-            from src.physics import crim_fouling_eps
-            er_foul, _ = crim_fouling_eps(scene.metadata.get('moisture', 0.0), pvc, zone='dense')
-            er_eff = (f_rock_2d * math.sqrt(er_rock) + f_foul_2d * math.sqrt(er_foul) + f_void_2d) ** 2
-            scene.metadata['Lab_er_eff'] = round(er_eff, 3)
-
-        # Leng & Al-Qadi (2010) bulk ballast εr — empirical linear model from lab-controlled testing.
-        # εr = intercept_f + slope_f × (pvc/100) + slope_m × moisture
-        # where pvc/100 = fraction of air void filled by fouling (0–0.5 tested range),
-        # and moisture = volumetric water content as fraction of air void (0–0.15 tested range).
-        # Source: Fig. 7 (dry fouling) + Fig. 8 (moisture) of Leng & Al-Qadi, TRB 2010, Paper 10-0562.
-        _leng = {
-            'granite':   (3.237, 1.038, 31.893),
-            'limestone': (3.732, 1.634, 39.883),
-        }
-        rock_type = getattr(scene.config, 'rock_type', 'granite').lower()
-        b, sf, sm = _leng.get(rock_type, _leng['granite'])
-        er_bulk_leng = b + sf * (pvc / 100.0) + sm * scene.metadata.get('moisture', 0.0)
-        scene.metadata['Lab_er_bulk_leng'] = round(er_bulk_leng, 3)
 
         self._run_ldcp_profiler(scene, ballast_bottom, ballast_top, domain_x)
 
         print(f"[{self.name}] Result (full column): FI={FI:.1f} (P4={P4:.1f}%, P200={P200:.1f}%) "
-              f"FI_local={local_FI:.1f} | Rb-f={rb_f:.2f}% FR={lab_fr:.2f}% -> Class: {fi_class}")
+              f"FI_local={local_FI:.1f}")
         print(f"[{self.name}] MC Phase Fractions: Rock={fractions['mc_rock_fraction']:.3f}, "
               f"Fouling={fractions['mc_fouling_fraction']:.3f}, "
               f"Subgrade={fractions['mc_subgrade_fraction']:.3f}, "
@@ -518,10 +456,9 @@ class LabWorker(Worker):
         quasi-static point resistance (qs) per material and derives:
 
           Lab_LDCP_FH      – %FH: % of ballast depth classified as fouling material
-          Lab_LDCP_FI_est  – FI estimate = %FH / F_clay  (Rojas-Vivanco 2025, eq. 9)
           Lab_LDCP_qs_mean – mean synthetic qs across the ballast column (MPa)
 
-        Also triggers Barrett et al. (2019) CRIM and clean-thickness computation.
+        Also triggers clean-thickness computation.
         """
         ys, material_labels = self._scan_ballast_column(
             scene, ballast_bottom, ballast_top, domain_x
@@ -529,7 +466,7 @@ class LabWorker(Worker):
         n = len(ys)
 
         if n == 0:
-            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_FI_est': 0.0, 'Lab_LDCP_qs_mean': 0.0})
+            scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_qs_mean': 0.0})
             return
 
         is_rock    = np.array([m.startswith("bal_rock") for m in material_labels])
@@ -544,15 +481,12 @@ class LabWorker(Worker):
         qs[is_form]    = PHC.LDCP_QS_FORMATION
 
         fh_pct  = float(np.mean(is_fouling)) * 100.0
-        fi_est  = fh_pct / PHC.LDCP_FH_FACTOR_CLAY
         qs_mean = float(np.mean(qs))
 
         scene.metadata['Lab_LDCP_FH']      = round(fh_pct, 2)
-        scene.metadata['Lab_LDCP_FI_est']  = round(fi_est, 2)
         scene.metadata['Lab_LDCP_qs_mean'] = round(qs_mean, 2)
 
-        print(f"[{self.name}] LDCP Profile ({n} steps @ 1mm): "
-              f"FH={fh_pct:.1f}% -> FI_est={fi_est:.1f}  qs_mean={qs_mean:.1f} MPa")
+        print(f"[{self.name}] LDCP Profile ({n} steps @ 1mm): FH={fh_pct:.1f}%  qs_mean={qs_mean:.1f} MPa")
 
         self._compute_crim_and_thickness(
             scene, ys, material_labels, ballast_bottom, ballast_top
@@ -566,39 +500,16 @@ class LabWorker(Worker):
         ballast_bottom: float,
         ballast_top: float,
     ) -> None:
-        """Barrett et al. (2019) derived metrics from the 1-D column scan.
+        """Compute clean ballast thickness from 1-D column scan.
 
         Stores:
-          Lab_bulk_eps          – CRIM bulk dielectric constant (Eq. 5)
           Lab_clean_ballast_mm  – clean ballast thickness: surface to topmost fouling (mm)
         """
-        from src.physics import crim_bulk_eps, crim_fouling_eps
-
         n = len(ys)
         if n == 0:
             return
 
-        is_rock    = np.array([m.startswith("bal_rock") for m in material_labels])
         is_fouling = np.array([m.startswith("bal_foul")  for m in material_labels])
-        is_solid   = np.array([m in {MC.SUBGRADE, MC.FORMATION} for m in material_labels])
-        is_void    = ~is_rock & ~is_fouling & ~is_solid
-
-        v_rock  = float(np.mean(is_rock))
-        v_fines = float(np.mean(is_fouling))
-        v_void  = float(np.mean(is_void))
-
-        # Moisture: volumetric fraction of total volume that is water
-        moisture = scene.metadata.get('moisture', 0.0)
-        pvc = scene.metadata.get('pvc', 0.0)
-        v_water  = min(float(moisture), v_void)
-        v_air    = v_void - v_water
-
-        eps_rock  = float(getattr(scene.config, 'bal_rock_eps', 5.5))
-        eps_fines, _ = crim_fouling_eps(moisture, pvc, zone='granular')
-        eps_water = 80.1
-
-        bulk_eps = crim_bulk_eps(v_rock, eps_rock, v_fines, eps_fines, v_water, eps_water, v_air)
-        scene.metadata['Lab_bulk_eps'] = round(bulk_eps, 3)
 
         # Clean ballast thickness: from ballast_top down to topmost fouling encounter
         fouling_ys = ys[is_fouling]
@@ -608,7 +519,7 @@ class LabWorker(Worker):
             clean_mm = (ballast_top - ballast_bottom) * 1000.0
         scene.metadata['Lab_clean_ballast_mm'] = round(max(0.0, clean_mm), 1)
 
-        print(f"[{self.name}] CRIM: bulk_eps={bulk_eps:.2f}  clean_ballast={scene.metadata['Lab_clean_ballast_mm']:.0f} mm")
+        print(f"[{self.name}] Clean ballast: {scene.metadata['Lab_clean_ballast_mm']:.0f} mm")
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []
