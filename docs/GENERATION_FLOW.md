@@ -1,6 +1,6 @@
 # Visualizing the Generation Process
 
-This document explains the internal logic of the `generate_dataset` pipeline using visual diagrams.
+This document explains the internal logic of the `generate_in_files` pipeline using visual diagrams.
 
 ## 1. High-Level Process Flow
 
@@ -8,8 +8,8 @@ The generation script acts as an orchestrator that converts configuration and ra
 
 ```mermaid
 graph TD
-    A([Start: generate_dataset.py]) --> B{Load Config}
-    B -->|CLI Args + .ini file| C[Initialize Generator]
+    A([Start: generate_in_files.py]) --> B{Load Config}
+    B -->|CLI Args| C[Initialize Generator]
     C --> D[Loop: For each Label (CL, MC...)]
     D --> E[Loop: For each Sample (1..N)]
     

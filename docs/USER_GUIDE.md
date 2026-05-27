@@ -32,27 +32,30 @@ The standard pipeline consists of four main stages:
 
 ## 3. Step 1: Synthetic Data Generation
 
-Use `scripts/main/generate_dataset.py` to create gprMax input files.
+Use `scripts/main/generate_in_files.py` to create gprMax input files in batch or single-file mode.
 
-**Basic Usage:**
+**Batch Generation (Multiple samples):**
 ```bash
-# Generate 50 'Clean' (CL) samples
-python scripts/main/generate_dataset.py output_folder --labels CL -n 50
+# Generate 50 samples per class
+python scripts/main/generate_in_files.py output_folder --mode batch --labels CL MC MF -n 50
 ```
 
-**Advanced Usage (Granular Mode):**
-To use the high-fidelity granular physics model (random aggregate packing):
+**Single File Generation:**
 ```bash
-# Enable granular mode in config or ensure config.ini has granular_mode=True
-python scripts/main/generate_dataset.py output_folder --labels CL MC -n 25 --granular
+# Generate one file with custom parameters
+python scripts/main/generate_in_files.py single_file.in --mode single --pvc 25 --moisture 0.10 --freq 400e6
 ```
 
-**Arguments:**
-*   `output_dir`: Target folder for `.in` files.
-*   `--labels`: List of classes to generate (`CL`, `MC`, `MF`, `F`, `HF`).
-*   `-n`, `--n_samples`: Number of samples per label.
-*   `--start_id`: Starting integer ID for filenames (e.g., `s_0100`).
-*   `--config`: Path to custom `.ini` configuration (default: `simulation_config.ini`).
+**Available Options:**
+*   `--mode`: `batch` (multiple samples) or `single` (one file with custom params)
+*   `--labels`: Fouling classes (`CL`, `MC`, `MF`, `F`, `HF`) for batch mode
+*   `-n`, `--n_samples`: Number of samples per label (batch mode)
+*   `--pvc`: Percentage void contamination (single mode, 0-100)
+*   `--moisture`: Moisture content (single mode, 0-1)
+*   `--freq`: Center frequency in Hz (default: 1.5e9 for 1.5 GHz)
+*   `--packing-algo`: Rock packing algorithm (default: shang_chu) — see [PACKING_ALGORITHMS.md](PACKING_ALGORITHMS.md)
+*   `--angular`: Use angular rocks instead of circular
+*   `--render`: Generate PNG visualization of the output
 
 ---
 
@@ -80,7 +83,7 @@ Convert raw HDF5 outputs into a CSV dataset suitable for Machine Learning.
 
 **Usage:**
 ```bash
-python scripts/main/create_feature_dataset.py output_folder -o features_batch1.csv
+python scripts/main/extract_features.py output_folder -o features_batch1.csv
 ```
 This script will:
 1.  Read every `.out` file in the folder.
@@ -122,10 +125,14 @@ The `scripts/tools/` directory contains helper utilities categorised by function
 
 ---
 
-## 7. Configuration (`simulation_config.ini`)
+## 7. Configuration
 
-The behavior of the generator is controlled by `simulation_config.ini`. Key sections:
+Configuration is controlled via command-line arguments to `generate_in_files.py`. Key parameters:
 
-*   **[Geometry]**: Domain size (`domain_x`, `domain_y`, `domain_z`) and spatial resolution (`dx`, `dy`, `dz`).
-*   **[Materials]**: Dielectric properties (`eps`, `sigma`) for ballast, fouling, subgrade, etc.
-*   **[Granular]**: Parameters for the physics-based aggregate generator (radius ranges, filling strategies).
+*   **Frequency** (`--freq`): Center frequency in Hz (default: 1.5e9 for 1.5 GHz). Determines domain size via frequency-aware scaling.
+*   **Geometry** (`--angular`, `--sides`): Rock shape and complexity. Angular rocks simulate realistic particle shapes.
+*   **Packing** (`--packing-algo`): Rock placement algorithm (default: shang_chu). See [PACKING_ALGORITHMS.md](PACKING_ALGORITHMS.md).
+*   **Material** (`--pvc`, `--moisture`): Percentage Void Contamination and moisture content.
+*   **Receivers** (`--num-receivers`, `--receiver-spacing`): Antenna array configuration.
+
+For programmatic control, modify the `GeneratorConfig` class in `src/config.py`.

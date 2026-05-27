@@ -18,7 +18,7 @@ Before running anything, ensure your terminal is ready.
 
 *   **Command**:
     ```bash
-    python scripts/main/generate_dataset.py test_gen --labels CL -n 5
+    python scripts/main/generate_in_files.py test_gen --mode batch --labels CL -n 5
     ```
 *   **Checklist**:
     1.  [ ] **Console Output**: Should say "Generated 5 samples". No "traceback" errors.
@@ -54,7 +54,7 @@ Before running anything, ensure your terminal is ready.
 
 *   **Command**:
     ```bash
-    python scripts/main/create_feature_dataset.py test_gen -o features_test.csv
+    python scripts/main/extract_features.py test_gen -o features_test.csv
     ```
 *   **Checklist**:
     1.  [ ] **Console Output**: "Processing s_1000.out... Done".

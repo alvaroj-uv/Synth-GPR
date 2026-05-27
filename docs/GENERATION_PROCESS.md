@@ -15,7 +15,7 @@ The system uses a **Factory Pattern** metaphor to generate GPR input files (`.in
 
 ```mermaid
 graph TD
-    A[generate_dataset.py] -->|Config + Loop| B[DatasetGenerator]
+    A[generate_in_files.py] -->|Config + Loop| B[DatasetGenerator]
     B -->|Create WorkOrder| C[ProductionLine]
     C -->|Phase 1: Base| D[Base Workers]
     D --> E[AirWorker]
@@ -32,8 +32,8 @@ graph TD
 ## Step-by-Step Process
 
 ### 1. Initialization
-The process starts in `scripts/main/generate_dataset.py`.
-1.  **Configuration**: Loads parameters from `config.ini` or command line arguments.
+The process starts in `scripts/main/generate_in_files.py` (unified generator).
+1.  **Configuration**: Loads parameters from command line arguments or config file.
 2.  **Sampling**: For each sample to be generated, `DatasetGenerator` samples parameters (like specific PVC or rock distribution) and creates a `WorkOrder`.
 
 ### 2. Base Construction Phase

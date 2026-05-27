@@ -483,18 +483,6 @@ Ensure:
 
 ---
 
-## Legacy Scripts (Backward Compatibility)
-
-The old scripts still work but are deprecated. They delegate to `generate_in_files.py`:
-
-```bash
-# Old style (still works, shows deprecation warning)
-python scripts/main/generate_dataset.py output/ --labels CL MC -n 50
-
-# New style (recommended)
-python scripts/main/generate_in_files.py output/ --mode batch --labels CL MC -n 50
-```
-
 ---
 
 ## Advanced: Custom Configurations
@@ -539,7 +527,7 @@ Once you've generated `.in` files:
 
 2. **Extract features:**
    ```bash
-   python scripts/main/create_feature_dataset.py output/
+   python scripts/main/extract_features.py output/ features.csv
    ```
 
 3. **Train ML models:**
