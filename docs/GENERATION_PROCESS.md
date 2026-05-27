@@ -43,10 +43,12 @@ The `ProductionLine` spins up and runs the "Base Recipe" of workers in order:
 2.  **SubgradeWorker**: Adds the bottom soil layer.
 3.  **FormationWorker**: Adds the sub-ballast layer (transition layer).
 4.  **BallastWorker**: Defines the ballast layer boundaries (but not the rocks yet).
-5.  **RockWorker**:
+5.  **GranularMatrixWorker** (Rock Packing):
     *   Generates thousands of individual rock particles (cylinders).
-    *   Uses packing algorithms (e.g., `FrontChainPacking`) to simulate realistic aggregate distribution.
+    *   Uses one of 12 pluggable packing algorithms (ShangChu, Growth, RSA, Poisson, etc.) to simulate realistic aggregate distribution.
+    *   All algorithms unified to support `min_gap` and `grading_curve` parameters.
     *   Calculates achieved density and porosity.
+    *   See [PACKING_ALGORITHMS.md](PACKING_ALGORITHMS.md) for algorithm comparison and selection guide.
 6.  **DegradationWorker** (Optional): Simulates rock breakage or wear if enabled.
 7.  **FoulingWorker**:
     *   Calculates the volume of fouling material needed based on the requested PVC (Percentage Void Contamination).

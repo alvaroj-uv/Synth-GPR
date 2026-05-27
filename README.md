@@ -112,6 +112,13 @@ python scripts/main/generate_in_files.py replicated.in --mode replicate --source
 
 **Note on reproducibility:** Each generated `.in` file embeds its configuration parameters as `CONFIG_*` comments in the header. This makes files self-documenting and enables exact replication using the `--mode replicate` command. For full documentation on generation options and config persistence, see [docs/IN_FILE_GENERATION.md](docs/IN_FILE_GENERATION.md).
 
+**Packing Algorithms:** The system provides 12 rock packing algorithms with different speed/quality tradeoffs:
+- **Fast (< 1s):** RSA, Grid, PoissonDisk, Random — for development
+- **Medium (1-10s):** Circlify, SimulatedAnnealing — for testing  
+- **Production (15s+):** ShangChu (best quality, FI~24), Growth — for final datasets
+
+For detailed comparison and algorithm selection guidance, see [docs/PACKING_ALGORITHMS.md](docs/PACKING_ALGORITHMS.md).
+
 #### 2. Running Simulations
 To run gprMax simulations on generated input files:
 ```bash
