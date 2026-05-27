@@ -570,12 +570,9 @@ class LabWorker(Worker):
 
         Stores:
           Lab_bulk_eps          – CRIM bulk dielectric constant (Eq. 5)
-          Lab_surface_R         – normal-incidence reflectivity at air/ballast surface (Eq. 7)
-          Lab_alpha_400MHz_npm  – attenuation coefficient at 400 MHz  (Np/m, Eq. 8)
-          Lab_alpha_2GHz_npm    – attenuation coefficient at 2 GHz    (Np/m, Eq. 8)
           Lab_clean_ballast_mm  – clean ballast thickness: surface to topmost fouling (mm)
         """
-        from src.physics import crim_bulk_eps, surface_reflectivity_R, attenuation_factor_npm, crim_fouling_eps
+        from src.physics import crim_bulk_eps, crim_fouling_eps
 
         n = len(ys)
         if n == 0:
@@ -603,25 +600,6 @@ class LabWorker(Worker):
         bulk_eps = crim_bulk_eps(v_rock, eps_rock, v_fines, eps_fines, v_water, eps_water, v_air)
         scene.metadata['Lab_bulk_eps'] = round(bulk_eps, 3)
 
-        R = surface_reflectivity_R(1.0, bulk_eps)
-        scene.metadata['Lab_surface_R'] = round(R, 4)
-
-        # Volume-weighted effective conductivity
-        sigma_rock  = float(getattr(scene.config, 'bal_rock_sigma', 1e-4))
-        sigma_fines = moisture * 0.1    # wet clay contribution ~ 0.1 S/m × moisture
-        sigma_water = 0.05              # typical groundwater conductivity
-        sigma_eff = max(
-            v_rock * sigma_rock + v_fines * sigma_fines + v_water * sigma_water,
-            1e-9,
-        )
-
-        scene.metadata['Lab_alpha_400MHz_npm'] = round(
-            attenuation_factor_npm(400e6, bulk_eps, sigma_eff), 4
-        )
-        scene.metadata['Lab_alpha_2GHz_npm'] = round(
-            attenuation_factor_npm(2e9, bulk_eps, sigma_eff), 4
-        )
-
         # Clean ballast thickness: from ballast_top down to topmost fouling encounter
         fouling_ys = ys[is_fouling]
         if len(fouling_ys) > 0:
@@ -630,9 +608,7 @@ class LabWorker(Worker):
             clean_mm = (ballast_top - ballast_bottom) * 1000.0
         scene.metadata['Lab_clean_ballast_mm'] = round(max(0.0, clean_mm), 1)
 
-        print(f"[{self.name}] Barrett(2019): bulk_eps={bulk_eps:.2f}  R={R:.4f}  "
-              f"alpha_400MHz={scene.metadata['Lab_alpha_400MHz_npm']:.4f} Np/m  "
-              f"clean_ballast={scene.metadata['Lab_clean_ballast_mm']:.0f} mm")
+        print(f"[{self.name}] CRIM: bulk_eps={bulk_eps:.2f}  clean_ballast={scene.metadata['Lab_clean_ballast_mm']:.0f} mm")
 
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         return []
