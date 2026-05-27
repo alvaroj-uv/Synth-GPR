@@ -50,30 +50,36 @@ python scripts/main/generate_in_files.py out.in --mode single --pvc 30 --moistur
 - One `.in` file: `out.in`
 - Optional PNG: `out.png` (if `--render`)
 
-### 3. Replicate Mode (`--mode replicate`)
+### 3. Parameter-Based Replication
 
-Regenerate an exact copy of an existing `.in` file using its embedded configuration and random seed.
+Regenerate files using parameters extracted from existing `.in` files. No special mode needed—just use `--mode single` with the `--params-from` flag.
 
-**Why use replicate mode?**
+**Why use parameter extraction?**
 - You have an old `.in` file and want to generate more samples with identical configuration
 - You want to verify reproducibility (same seed produces same geometry)
 - You lost the metadata CSV but still have the .in file with embedded config
+- You want to regenerate with mostly the same config but override one or two parameters
 
 **Typical usage:**
 ```bash
-python scripts/main/generate_in_files.py replicated.in --mode replicate --source original.in
+# Regenerate exact copy
+python scripts/main/generate_in_files.py replicated.in --mode single --params-from original.in
+
+# Regenerate with parameter override
+python scripts/main/generate_in_files.py modified.in --mode single --params-from original.in --pvc 35
 ```
 
 **Result:**
-- New `.in` file: `replicated.in` with identical config to `original.in`
+- New `.in` file with identical config to original (or with specified overrides)
 - Same random seed ensures identical rock packing geometry
 - All config parameters (frequency, packing algorithm, rock shape, etc.) preserved
 
 **How it works:**
 1. Extracts `CONFIG_*` parameters from original .in file header
-2. Reconstructs `GeneratorConfig` from extracted parameters
-3. Regenerates geometry using same seed (produces identical rock positions)
-4. Writes new .in file with embedded config
+2. Uses extracted parameters for new generation
+3. Command-line args override extracted parameters if provided
+4. Regenerates geometry using same seed (produces identical rock positions)
+5. Writes new .in file with embedded config
 
 ---
 
@@ -89,7 +95,7 @@ python scripts/main/generate_in_files.py replicated.in --mode replicate --source
 
 | Flag | Values | Default | Meaning |
 |------|--------|---------|---------|
-| `--mode` | `batch`, `single`, `replicate` | `batch` | Which generation mode to use |
+| `--mode` | `batch`, `single` | `batch` | Which generation mode to use |
 
 ### Batch-Specific Options
 
@@ -109,11 +115,11 @@ python scripts/main/generate_in_files.py replicated.in --mode replicate --source
 | `--moisture` | float (0–1) | None | Moisture fraction. If None, sampled randomly |
 | `--render` | flag | False | Generate PNG visualization of geometry |
 
-### Replicate-Specific Options
+### Parameter Extraction (Single Mode)
 
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
-| `--source` | str (path) | None | **Required.** Source .in file to replicate from |
+| `--params-from` | str (path) | None | Extract generation parameters from existing .in file (single mode) |
 
 ### Common Options (All Modes)
 
@@ -223,17 +229,27 @@ Open the PNG in any image viewer to inspect rock placement, layer structure, ant
 
 ### 5. Reproducible Generation (Seeded)
 
+**Single file with seed:**
 ```bash
-python scripts/main/generate_in_files.py data/seed42/ --mode batch \
-    --labels CL MC MF \
-    -n 100 \
+python scripts/main/generate_in_files.py my_ballast.in --mode single \
+    --pvc 25 \
+    --moisture 0.10 \
     --seed 42
 ```
 
-**Note:** Running the same command again with `--seed 42` generates identical files. Useful for:
-- Verifying pipeline behavior
-- Sharing reproducible datasets
-- Benchmarking
+**Reproduce from existing file:**
+```bash
+python scripts/main/generate_in_files.py copy.in --mode single --params-from my_ballast.in
+```
+
+**Note:** 
+- Running with the same `--seed` generates identical files (rock placement is deterministic)
+- Using `--params-from` extracts all parameters including seed for exact reproduction
+- Useful for:
+  - Verifying pipeline behavior
+  - Sharing reproducible datasets
+  - Benchmarking
+  - Archiving files with full reproducibility metadata
 
 ---
 
@@ -379,11 +395,11 @@ Seed: 100
 
 ### Replicate a File
 
-Generate an exact copy using the embedded config:
+Generate an exact copy using the embedded config. Just use `--mode single --params-from`:
 
 ```bash
 # Basic replication
-python scripts/main/generate_in_files.py replicated.in --mode replicate --source s_0100.in
+python scripts/main/generate_in_files.py replicated.in --mode single --params-from s_0100.in
 
 # The replicated file will have:
 # - Identical configuration (frequency, rock algorithm, PSD, etc.)
@@ -395,13 +411,13 @@ python scripts/main/generate_in_files.py replicated.in --mode replicate --source
 
 1. **Lost metadata, have .in file?**
    ```bash
-   python scripts/main/generate_in_files.py duplicate.in --mode replicate --source archival_file.in
+   python scripts/main/generate_in_files.py duplicate.in --mode single --params-from archival_file.in
    ```
 
 2. **Verify reproducibility:**
    ```bash
-   python scripts/main/generate_in_files.py test1.in --mode single --pvc 25
-   python scripts/main/generate_in_files.py test2.in --mode replicate --source test1.in
+   python scripts/main/generate_in_files.py test1.in --mode single --pvc 25 --seed 42
+   python scripts/main/generate_in_files.py test2.in --mode single --params-from test1.in
    # test1.in and test2.in will have identical geometry (rock positions, layer heights, etc.)
    ```
 
