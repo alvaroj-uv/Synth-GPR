@@ -75,6 +75,30 @@ class GPRMaxFileWriter:
     # Assembles gprMax input file content with validation and structure using Command Pattern.
     
     @staticmethod
+    def _format_defaults_section(config) -> str:
+        """Generate a human-readable DEFAULTS section from config."""
+        lines = []
+        lines.append(Header("=" * 60).render())
+        lines.append(Header("DEFAULTS (Fixed Configuration)").render())
+
+        # Format frequency in MHz for readability
+        freq_mhz = config.center_freq / 1e6
+        lines.append(Header(f"Frequency: {freq_mhz:.0f} MHz").render())
+
+        # Rock shape
+        rock_shape = f"Angular ({config.rock_sides}-sided)" if config.angular_rocks else "Circular"
+        lines.append(Header(f"Rock Shape: {rock_shape}").render())
+
+        # Packing
+        lines.append(Header(f"Packing: {config.rock_packing_algorithm} ({config.rock_psd_type} PSD)").render())
+
+        # Antenna
+        lines.append(Header(f"Antenna: {config.num_receivers} RX @ {config.receiver_spacing}m spacing").render())
+
+        lines.append(Header("=" * 60).render())
+        return "\n".join(lines)
+
+    @staticmethod
     def write_scene(
         scene: SceneDefinition,
         scenario_type: str,
@@ -82,21 +106,24 @@ class GPRMaxFileWriter:
     ) -> str:
         # Render a SceneDefinition to a string.
         lines = []
-        
+
         # 1. Header
         lines.append(Header("=" * 60).render())
         lines.append(Header("Generated gprMax Input File").render())
         lines.append(Header(f"Scenario: {scenario_type}").render())
         lines.append(Header(f"Date: {date.today().isoformat()}").render())
-        
+
         # Git Version
         git_hash = get_git_revision_hash()
         if git_hash:
             lines.append(Header(f"Git Version: {git_hash}").render())
-        
+
         if scene.config.base_seed is not None:
              lines.append(Header(f"Base Seed: {scene.config.base_seed}").render())
-             
+
+        # DEFAULTS section
+        lines.append(GPRMaxFileWriter._format_defaults_section(scene.config))
+
         # Metadata
         for k, v in scene.metadata.items():
             val_str = fmt(v) if isinstance(v, float) else str(v)
