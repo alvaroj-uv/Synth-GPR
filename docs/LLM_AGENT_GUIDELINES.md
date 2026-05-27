@@ -249,17 +249,32 @@ def process_files(file_list: List[str]) -> None:
 
 ## 9. Configuration Management
 
-### Config Files
-- User configs: Project root (e.g., `config.ini`)
-- Use INI format for user-editable settings
-- Document all configuration options
+### Configuration Approach
+The system uses **CLI-driven configuration** via `GeneratorConfig` class:
+
+```python
+from src.config import GeneratorConfig
+
+# Create configuration with frequency-aware scaling
+config = GeneratorConfig.create_physically_perfect(
+    center_freq_hz=400e6,  # 400 MHz
+    rock_packing_algorithm="shang_chu",
+    angular_rocks=True,
+    base_seed=42
+)
+```
+
+See [PACKING_ALGORITHMS.md](PACKING_ALGORITHMS.md) for algorithm options.
 
 ### Environment Variables
 ```python
 import os
 
-# GPRMAX_PATH = os.getenv('GPRMAX_PATH', '/usr/local/bin/gprmax')
+# Optional: override default output directory
 DATA_DIR = os.getenv('SYNTH_GPR_DATA_DIR', 'output')
+
+# Optional: gprMax installation path
+GPRMAX_PATH = os.getenv('GPRMAX_PATH', 'gprmax')
 ```
 
 ## 10. Security and Data Handling
