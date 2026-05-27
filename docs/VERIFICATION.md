@@ -66,20 +66,16 @@ Before running anything, ensure your terminal is ready.
 
 ---
 
-## 4. Visual Verification (The "Smell Test")
-**Goal**: Ensure the data "looks" right physically.
+## 4. Manual Verification
+**Goal**: Review generated files to ensure the data "looks" right.
 
-*   **Command**:
-    ```bash
-    python scripts/tools/visualization/visualize_gprmax_blueprint.py test_gen/s_1000.in
-    ```
 *   **Checklist**:
-    1.  [ ] **Geometry Window**:
-        *   Are the rocks (circles) contained within the ballast box?
-        *   Is the Subgrade below the Ballast?
-    2.  [ ] **Signal Window**:
-        *   Is there a signal pulse? (A flat line means the source didn't fire or everything is absorbing).
-        *   Does the Envelope (Red) look reasonable?
+    1.  [ ] **Examine .in file** in a text editor:
+        *   Do you see material definitions (`#material: ...`)?
+        *   Are there rock cylinders (`#cylinder: ...`)?
+        *   Is there an antenna definition (`#tx_rx_seperation ...`, `#rx ...`)?
+    2.  [ ] **Check .out file exists** and has non-zero size (>100 KB typically).
+    3.  [ ] **Review metadata CSV**: Does it contain expected samples with PVC and FI values?
 
 ---
 

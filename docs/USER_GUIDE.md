@@ -94,35 +94,6 @@ For a complete list of extracted statistics (Time-Domain, Frequency, STFT, etc.)
 
 ---
 
-## 6. Tool Reference
-
-The `scripts/tools/` directory contains helper utilities categorised by function:
-
-### Visualization (`scripts/tools/visualization/`)
-*   **`visualize_gprmax_blueprint.py`**: Creates a PNG image of the simulation geometry.
-    ```bash
-    python scripts/tools/visualization/visualize_gprmax_blueprint.py sample.in -o blueprint.png
-    ```
-    See the **[Blueprint Interpretation Guide](BLUEPRINT_GUIDE.md)** for details.
-*   **`read_gprmax_output.py`**: Helper library for inspecting `.out` files.
-
-### Data Management (`scripts/tools/data_management/`)
-*   **`merge_datasets.py`**: Combines multiple feature CSVs.
-    ```bash
-    python scripts/tools/data_management/merge_datasets.py batch1.csv batch2.csv -o combined.csv
-    ```
-*   **`validate_dataset.py`**: Checks a dataset folder for consistency (missing inputs/outputs).
-    ```bash
-    python scripts/tools/data_management/validate_dataset.py output_folder
-    ```
-*   **`update_hdf5_titles.py`**: Fixes internal metadata if needed.
-
-### Generation (`scripts/tools/generation/`)
-*   **`generate_master_pattern.py`**: Generates the "Master Pattern" of rocks using Random Sequential Adsorption. Used by the granular generator to speed up aggregate placement.
-
-### Research (`scripts/tools/research/`)
-*   **`analyze_selected_pdfs.py`**: Utility to extracting text from specific academic papers for review.
-
 ---
 
 ## 7. Configuration
