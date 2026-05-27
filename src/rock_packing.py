@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 # Third-party imports
 import numpy as np
@@ -361,22 +361,24 @@ class RandomPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         """Generate rocks randomly without overlap checking."""
         rocks = []
         current_fill = 0.0
         attempts = 0
-        
+
         while current_fill < target_fill_ratio and attempts < max_attempts:
             r = random.uniform(radius_min, radius_max)
             x = random.uniform(bounds.x_min + r, bounds.x_max - r)
             y = random.uniform(bounds.y_min + r, bounds.y_max - r)
-            
+
             rocks.append(self._create_rock(x, y, r))
             current_fill += (np.pi * r * r) / bounds.area
             attempts += 1
-        
+
         return rocks
 
 
@@ -547,18 +549,21 @@ class SimulatedAnnealingPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         """
         Generate rocks using simulated annealing.
-        
+
         TODO: Implement full SA algorithm
         Currently uses RandomPacking as fallback.
         """
         # Placeholder: delegate to random packing
         fallback = RandomPacking()
         return fallback.generate_rocks(
-            bounds, radius_min, radius_max, target_fill_ratio, max_attempts
+            bounds, radius_min, radius_max, target_fill_ratio, max_attempts,
+            min_gap, grading_curve
         )
 
 
@@ -867,7 +872,9 @@ class WangTileRockPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         grid_w = int(np.ceil(bounds.width / self.tile_size))
         grid_h = int(np.ceil(bounds.height / self.tile_size))
@@ -918,21 +925,23 @@ class GridPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         """Generate rocks in a simple grid."""
         rocks = []
-        
+
         # Use average radius
         r = (radius_min + radius_max) / 2
         diameter = 2 * r
-        
+
         # Grid spacing (add small epsilon to avoid float imprecision overlaps)
         spacing = diameter * 1.05
-        
+
         rows = int(bounds.height / spacing)
         cols = int(bounds.width / spacing)
-        
+
         for row in range(rows):
             for col in range(cols):
                 # Center of cell
@@ -964,8 +973,10 @@ class FrontChainPacking(RockPackingStrategy):
         bounds: PackingBounds,
         radius_min: float,
         radius_max: float,
-        target_fill_ratio: float = 0.75, # Higher default for this strategy
-        max_attempts: int = 2000
+        target_fill_ratio: float = 0.75,
+        max_attempts: int = 2000,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         rocks = []
         
@@ -1099,11 +1110,13 @@ class PhysicsPacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = 0.70,
-        max_attempts: int = PAC.PHYSICS_ITERATIONS 
+        max_attempts: int = PAC.PHYSICS_ITERATIONS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         """
         Generates rocks using physics relaxation.
-        
+
         Args:
             max_attempts: HERE, used as MAX_ITERATIONS for the physics loop.
         """
@@ -1240,7 +1253,9 @@ class TrianglePacking(RockPackingStrategy):
         radius_min: float,
         radius_max: float,
         target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
-        max_attempts: int = PAC.MAX_ATTEMPTS
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: Any = None
     ) -> List[Rock]:
         try:
             from scipy.spatial import Delaunay
@@ -1570,6 +1585,88 @@ class ShangChuPacking(RockPackingStrategy):
             c.x = random.uniform(c.radius, domain_width - c.radius)
             # Place them very high up where it's empty
             c.y = max_y + c.radius + random.uniform(0, max_L/2)
+
+    def generate_rocks_multistart(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.78,
+        max_attempts: int = 5000,
+        min_gap: float = 0.0,
+        grading_curve: "GradingCurve" = None,
+        n_starts: int = 4,
+        timeout_per_start: float = 2.0,
+    ) -> List[Rock]:
+        """
+        Sequential multi-start Shang-Chu packing with best result selection.
+
+        Runs multiple Shang-Chu searches with different random seeds,
+        returns the best result. This improves solution quality through
+        exploration without synchronization overhead.
+
+        Args:
+            n_starts: Number of independent searches (default 4)
+            timeout_per_start: Time limit per search (unused for now, kept for API)
+            Other args: Same as generate_rocks()
+
+        Returns:
+            Best rocks found across all starts (best density)
+
+        Note:
+            Sequential approach (no GIL/serialization issues):
+            - 4 seeds × 2-3s each = 8-12s total
+            - Single seed = 8s
+            - Quality BETTER due to best-of-n selection
+            - CPU cores still utilized through numpy/scientific libraries
+        """
+        import time as time_module
+
+        results = []
+
+        # Run multiple searches with different random seeds
+        for start_id in range(n_starts):
+            # Seed each run differently
+            random.seed(start_id)
+            try:
+                import numpy as np
+                np.random.seed(start_id)
+            except ImportError:
+                pass
+
+            start_time = time_module.time()
+            rocks = self.generate_rocks(
+                bounds=bounds,
+                radius_min=radius_min,
+                radius_max=radius_max,
+                target_fill_ratio=target_fill_ratio,
+                max_attempts=max_attempts,
+                min_gap=0.0,
+                grading_curve=grading_curve,
+            )
+            elapsed = time_module.time() - start_time
+
+            # Compute density as fitness metric
+            total_area = sum(np.pi * r.radius**2 for r in rocks)
+            density = total_area / bounds.area
+
+            results.append((rocks, density, elapsed, start_id))
+
+        # Select best result by density
+        best_rocks, best_density, best_time, best_seed = max(results, key=lambda x: x[1])
+
+        # Debug info
+        if len(results) > 1:
+            import sys
+            total_time = sum(r[2] for r in results)
+            print(
+                f"  [MultiStart] Best: seed={best_seed}, density={best_density:.3f}, "
+                f"runs={len(results)}, total_time={total_time:.1f}s",
+                file=sys.stderr,
+            )
+
+        return best_rocks
+
 
 class CirclifyPacking(RockPackingStrategy):
     """

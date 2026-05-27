@@ -8,8 +8,11 @@ Consolidates functionality of:
 - generate_single_in_file.py (single file creation)
 
 Supports two modes:
-1. Batch: Generate N samples per fouling class with metadata CSVs
+1. Batch: Generate N samples per fouling class
 2. Single: Generate one .in file with optional PNG visualization
+
+Rendering is delegated to scripts/visualization/render_in_file.py.
+All .in files contain embedded CONFIG_* and SOURCE_* headers for replication.
 
 Usage Examples:
 
@@ -18,14 +21,17 @@ Usage Examples:
 
     # Batch: 400 MHz angular rocks, 1000 per class
     python scripts/main/generate_in_files.py output/ --mode batch --labels CL MC MF F HF \\
-        -n 1000 --freq 400e6 --angular --packing-algo circlify
+        -n 1000 --freq 400e6 --angular --packing-algo shang_chu
 
     # Single: Custom PVC, 1.5 GHz, with PNG
     python scripts/main/generate_in_files.py test.in --mode single --pvc 25 --render
 
-    # Single: 400 MHz, angular octagonal rocks
+    # Single: 400 MHz, angular triangular rocks with Shang-Chu packing
     python scripts/main/generate_in_files.py out.in --mode single --freq 400e6 --pvc 50 \\
-        --angular --sides 8 --render
+        --angular --sides 3 --packing-algo shang_chu --render
+
+    # Render existing .in file as PNG (dedicated renderer)
+    python scripts/visualization/render_in_file.py output.in -o output.png --dpi 200
 """
 
 import sys
@@ -252,20 +258,28 @@ def generate_single(
 
     print(f"✓ Wrote .in file: {written_path}")
 
-    # Optionally render PNG
+    # Optionally render PNG using dedicated render_in_file.py script
     if render:
         try:
-            from src.visualization.scene import parse_in_file, render_geometry_figure
-
+            import subprocess
             png_path = output_path.with_suffix('.png')
-            scene_data = parse_in_file(str(written_path))
-            render_geometry_figure(
-                scene_data,
-                output_path=str(png_path),
-                dpi=150,
-                show=False,
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/visualization/render_in_file.py",
+                    str(written_path),
+                    "-o", str(png_path),
+                    "--no-show",
+                    "--dpi", "150",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(Path(__file__).resolve().parent.parent.parent),
             )
-            print(f"✓ Rendered visualization: {png_path}")
+            if result.returncode == 0:
+                print(f"✓ Rendered visualization: {png_path}")
+            else:
+                print(f"[WARN] Rendering failed: {result.stderr}")
         except Exception as e:
             print(f"[WARN] Could not render PNG: {e}")
 
