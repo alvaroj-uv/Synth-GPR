@@ -12,7 +12,7 @@ import numpy as np
 from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
 from .constants import PC, MC, PHC
-from .physics import circle_strip_intersection
+from .physics import circle_strip_intersection, classify_fouling_index
 import math
 import json
 
@@ -74,6 +74,7 @@ class LabWorker(Worker):
         if not scene.rock_positions:
             print(f"[{self.name}] No rocks found. FI=0.")
             scene.metadata['Lab_FI'] = 0.0
+            scene.metadata['Lab_Class'] = "C"
             scene.metadata.update({'Lab_LDCP_FH': 0.0, 'Lab_LDCP_qs_mean': 0.0})
             return
 
@@ -118,6 +119,7 @@ class LabWorker(Worker):
         if not fouling_boxes and not fouling_cyls:
             scene.metadata['Lab_FI'] = 0.0
             scene.metadata['Lab_FI_local'] = 0.0
+            scene.metadata['Lab_Class'] = "C"
             fractions = self._compute_phase_fractions(scene, ballast_bottom, ballast_top, domain_x)
             scene.metadata.update(fractions)
             scene.metadata['ballast_bottom_y'] = round(ballast_bottom, 3)
@@ -187,6 +189,7 @@ class LabWorker(Worker):
         scene.metadata['Lab_P200'] = P200
         scene.metadata['Lab_FI'] = FI
         scene.metadata['Lab_Porosity'] = local_porosity
+        scene.metadata['Lab_Class'] = classify_fouling_index(FI)
 
         # Secondary: bottom-strip FI (local severity at the most fouled zone)
         local_rock_area_mm2 = sum(
