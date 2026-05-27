@@ -1390,8 +1390,10 @@ class ShangChuPacking(RockPackingStrategy):
         # 2. Initialization: Random placement
         # Place circles randomly in a large bounding box, ensuring no overlap
         # Paper says "Randomly place i-th circle... if overlap, retry"
+        import time
+        start_time = time.time()
         L_current = 0.0
-        
+
         for c in circles:
             c.x, c.y = self._find_random_non_overlapping_pos(c, circles, domain_width, bounds.height)
             L_current = max(L_current, c.y + c.radius)
@@ -1400,8 +1402,8 @@ class ShangChuPacking(RockPackingStrategy):
         iteration = 0
         no_improv_count = 0
         disturbance_count = 0
-        max_no_improv = 100     # iterations without improvement → trigger disturbance
-        max_disturbances = 5    # disturbances without recovery → converged, exit early
+        max_no_improv = 30      # iterations without improvement → trigger disturbance (reduced from 100)
+        max_disturbances = 2    # disturbances without recovery → converged, exit early (reduced from 5)
 
         try:
             from tqdm import tqdm as _tqdm
@@ -1411,7 +1413,18 @@ class ShangChuPacking(RockPackingStrategy):
             _pbar = None
 
         # Paper flow: Search -> Disturbance if needed
+        max_time_seconds = 15  # Safety timeout for triangular rocks
         while iteration < max_attempts:
+            # Time-based exit for slow algorithms (e.g., triangular rocks)
+            elapsed = time.time() - start_time
+            if elapsed > max_time_seconds:
+                iteration += 1
+                if _pbar is not None:
+                    _pbar.update(max_attempts - iteration)
+                    _pbar.set_postfix_str(f"timeout after {elapsed:.1f}s")
+                    _pbar.close()
+                break
+
             improved = False
 
             search_order = sorted(circles, key=lambda c: c.y)
