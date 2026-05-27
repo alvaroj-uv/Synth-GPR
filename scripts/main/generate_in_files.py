@@ -259,86 +259,35 @@ def generate_single(
     return Path(written_path)
 
 
-def replicate_in_file(
-    source_path: Path,
-    output_path: Path,
-) -> Path:
-    """Replicate an .in file using its embedded config and seed."""
+def extract_parameters(source_path: Path) -> dict:
+    """Extract generation parameters from an existing .in file.
 
-    print(f"\n{'='*70}")
-    print("REPLICATE MODE: Regenerate .in File from Config")
-    print(f"{'='*70}")
-    print(f"Source File: {source_path}")
-    print(f"Output File: {output_path}")
-    print(f"{'='*70}\n")
-
-    # Extract config and display summary
-    from src.file_reader import reconstruct_generator_config, get_config_summary
+    Returns dict with keys: pvc, moisture, seed, freq, angular, sides,
+                           packing_algo, psd_type, num_rx, rx_spacing
+    """
+    from src.file_reader import extract_config_from_in_file
 
     try:
-        config, sampled_params = reconstruct_generator_config(str(source_path))
-        print("✓ Extracted config from source file:")
-        print(get_config_summary(str(source_path)))
-        print()
+        config_dict = extract_config_from_in_file(str(source_path))
+
+        # Map CONFIG_ keys to command-line parameter names
+        params = {
+            'pvc': float(config_dict.get('pvc_sampled')) if 'pvc_sampled' in config_dict else None,
+            'moisture': float(config_dict.get('moisture_sampled')) if 'moisture_sampled' in config_dict else None,
+            'seed': int(config_dict.get('actual_seed')) if 'actual_seed' in config_dict else int(config_dict.get('base_seed')) if 'base_seed' in config_dict else None,
+            'freq': float(config_dict.get('center_freq_hz', 1.5e9)),
+            'angular': config_dict.get('angular_rocks', False),
+            'sides': int(config_dict.get('rock_sides', 6)),
+            'packing_algo': config_dict.get('rock_packing_algorithm', 'circlify'),
+            'psd_type': config_dict.get('packing_psd_type', 'uniform'),
+            'num_rx': int(config_dict.get('num_receivers', 1)),
+            'rx_spacing': float(config_dict.get('receiver_spacing', 0.05)),
+        }
+
+        return params
     except Exception as e:
-        print(f"✗ Failed to extract config from {source_path}: {e}")
+        print(f"✗ Failed to extract parameters from {source_path}: {e}")
         return None
-
-    # Regenerate using extracted config
-    # Apply seed if present (for exact geometry replication)
-    apply_seed(config.base_seed)
-
-    gen = DatasetGenerator(config)
-
-    # Use extracted parameters if available (exact replication), otherwise sample new
-    if sampled_params:
-        pvc = sampled_params.get('pvc')
-        moisture = sampled_params.get('moisture')
-        if pvc is not None and moisture is not None:
-            # Use exact sampled parameters for replication
-            params = {
-                'pvc': pvc,
-                'moisture': moisture,
-                'pvc_bottom': pvc,
-                'pvc_top': pvc,
-                'FI_bottom': pvc,
-                'FI_top': pvc,
-            }
-        else:
-            params = gen.sampler.sample()
-    else:
-        params = gen.sampler.sample()
-
-    work_order = WorkOrder.from_sampled_params(1, params)
-    wos = WorkOrderSystem(work_order)
-
-    # Run production line
-    checkpoint = gen.pipeline.run(wos)
-
-    # Validate
-    validation_errors = checkpoint.validate_all()
-    if validation_errors:
-        print(f"[!] Validation warnings: {len(validation_errors)} issue(s)")
-        for err in validation_errors[:3]:
-            print(f"  - {err}")
-    else:
-        print(f"✓ Geometry validation passed")
-
-    # Write .in file with config
-    from src.file_writer import GPRMaxFileWriter
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    written_path = GPRMaxFileWriter.save_scene_checkpoint(
-        checkpoint,
-        output_path=str(output_path),
-        scenario_type="Sim",
-        config=config,
-    )
-
-    print(f"✓ Wrote replicated .in file: {written_path}")
-    print(f"\n{'='*70}\n")
-
-    return Path(written_path)
 
 
 def main():
@@ -355,23 +304,26 @@ Examples:
   %(prog)s output/ --mode batch --labels CL MC MF F HF -n 1000 \\
     --freq 400e6 --angular --packing-algo circlify
 
-  # Single: Custom PVC, with visualization
-  %(prog)s test.in --mode single --pvc 25 --moisture 0.10 --render
+  # Single: Custom PVC with seed (reproducible)
+  %(prog)s test.in --mode single --pvc 25 --moisture 0.10 --seed 42
 
   # Single: 400 MHz, octagonal rocks
   %(prog)s out.in --mode single --freq 400e6 --pvc 50 --angular --sides 8 --render
 
-  # Replicate: Regenerate exact copy of existing .in file
-  %(prog)s replicated.in --mode replicate --source original.in
+  # Reproduce from existing file parameters
+  %(prog)s copy.in --mode single --params-from original.in
+
+  # Extract and override one parameter
+  %(prog)s modified.in --mode single --params-from original.in --pvc 35
         """,
     )
 
     # Mode selection
     parser.add_argument(
         "--mode",
-        choices=["batch", "single", "replicate"],
+        choices=["batch", "single"],
         default="batch",
-        help="Generation mode: batch (per-class dataset), single (one file), or replicate (from existing)",
+        help="Generation mode: batch (per-class dataset) or single (one file)",
     )
 
     # Positional argument (interpreted based on mode)
@@ -426,12 +378,12 @@ Examples:
         help="Generate PNG visualization (single mode)",
     )
 
-    # Replicate-specific
+    # Parameter extraction (for reproducibility)
     parser.add_argument(
-        "--source",
+        "--params-from",
         type=str,
         default=None,
-        help="Source .in file to replicate from (replicate mode)",
+        help="Extract generation parameters from existing .in file and use them (single mode only)",
     )
 
     # Common options
@@ -506,29 +458,61 @@ Examples:
 
     elif args.mode == "single":
         output_path = Path(args.output)
+
+        # Extract parameters from existing file if --params-from is provided
+        if args.params_from:
+            print(f"\n{'='*70}")
+            print("EXTRACTING PARAMETERS FROM EXISTING FILE")
+            print(f"{'='*70}")
+            print(f"Source File: {args.params_from}\n")
+
+            params = extract_parameters(Path(args.params_from))
+            if params is None:
+                return 1
+
+            print("Extracted parameters:")
+            for k, v in params.items():
+                if v is not None:
+                    print(f"  {k}: {v}")
+            print()
+
+            # Use extracted parameters (can be overridden by explicit command-line args)
+            freq_hz = args.freq if args.freq != 1.5e9 else params.get('freq', 1.5e9)
+            pvc = args.pvc if args.pvc is not None else params.get('pvc')
+            moisture = args.moisture if args.moisture is not None else params.get('moisture')
+            angular = args.angular if args.angular else params.get('angular', False)
+            sides = args.sides if args.sides != 6 else params.get('sides', 6)
+            packing_algo = args.packing_algo if args.packing_algo != 'circlify' else params.get('packing_algo', 'circlify')
+            psd_type = args.psd if args.psd != 'uniform' else params.get('psd_type', 'uniform')
+            num_rx = args.num_rx if args.num_rx != 1 else params.get('num_rx', 1)
+            rx_spacing = args.rx_spacing if args.rx_spacing != 0.05 else params.get('rx_spacing', 0.05)
+            seed = args.seed if args.seed is not None else params.get('seed')
+        else:
+            freq_hz = args.freq
+            pvc = args.pvc
+            moisture = args.moisture
+            angular = args.angular
+            sides = args.sides
+            packing_algo = args.packing_algo
+            psd_type = args.psd
+            num_rx = args.num_rx
+            rx_spacing = args.rx_spacing
+            seed = args.seed
+
         generate_single(
             output_path=output_path,
-            freq_hz=args.freq,
-            pvc=args.pvc,
-            moisture=args.moisture,
-            angular=args.angular,
-            sides=args.sides,
-            packing_algo=args.packing_algo,
-            psd_type=args.psd,
-            num_rx=args.num_rx,
-            rx_spacing=args.rx_spacing,
+            freq_hz=freq_hz,
+            pvc=pvc,
+            moisture=moisture,
+            angular=angular,
+            sides=sides,
+            packing_algo=packing_algo,
+            psd_type=psd_type,
+            num_rx=num_rx,
+            rx_spacing=rx_spacing,
             render=args.render,
-            seed=args.seed,
+            seed=seed,
         )
-        return 0
-
-    elif args.mode == "replicate":
-        if not args.source:
-            print("Error: --source file required for replicate mode")
-            return 1
-        source_path = Path(args.source)
-        output_path = Path(args.output)
-        replicate_in_file(source_path=source_path, output_path=output_path)
         return 0
 
     else:
