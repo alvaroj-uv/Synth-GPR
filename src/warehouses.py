@@ -169,6 +169,9 @@ class ToolWarehouse:
             elif algo == "shang_chu":
                 from .rock_packing import ShangChuPacking
                 return ShangChuPacking()
+            elif algo == "hybris_shang":
+                from .rock_packing import HybridShangPacking
+                return HybridShangPacking()
             elif algo == "rsa":
                 from .rock_packing import RSAPacking
                 return RSAPacking()

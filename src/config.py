@@ -179,7 +179,7 @@ class GeneratorConfig:
     rock_z_end: float = 0.004  # full z extent = domain_z (2-D simulation)
     
     # Rock Packing Strategy
-    rock_packing_algorithm: str = "rsa"  # "rsa", "shang_chu", "random", "poisson", "front_chain", "physics", "triangle", "circlify", "growth", "wang"
+    rock_packing_algorithm: str = "rsa"  # "rsa", "shang_chu", "hybris_shang", "random", "poisson", "front_chain", "physics", "triangle", "circlify", "growth", "wang"
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
     
     # Ballast/subgrade nominal depths
