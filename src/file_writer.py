@@ -263,6 +263,7 @@ class GPRMaxFileWriter:
         config=None,  # GeneratorConfig for config embedding
         extra_headers: Optional[Dict[str, Any]] = None,
         sample_id: Optional[int] = None,  # Sample ID for computing actual seed in batch mode
+        param_sources: Optional[Dict[str, str]] = None,  # Track parameter sources (CLI_OVERRIDE, SAMPLED, etc.)
     ) -> str:
         """
         Save a SceneCheckpoint to a .in file with optional config embedding.
@@ -271,7 +272,8 @@ class GPRMaxFileWriter:
         The production line doesn't need to know about file formats or paths.
 
         If config is provided, critical parameters are embedded in the .in file header
-        as CONFIG_* comments for replication purposes.
+        as CONFIG_* comments for replication purposes. SOURCE_* comments track where
+        each parameter came from (CLI_OVERRIDE, SAMPLED, BATCH_AUTO, DEFAULT).
 
         Args:
             checkpoint: SceneCheckpoint to save
@@ -280,6 +282,7 @@ class GPRMaxFileWriter:
             config: Optional GeneratorConfig to embed in .in file headers
             extra_headers: Optional additional metadata for headers
             sample_id: Optional sample ID for computing actual seed (batch mode)
+            param_sources: Optional dict mapping param names to sources (CLI_OVERRIDE, SAMPLED, BATCH_AUTO, DEFAULT)
 
         Returns:
             Path to written file
@@ -292,8 +295,10 @@ class GPRMaxFileWriter:
         # Prepare config embedding if provided
         if config:
             extra_headers = extra_headers or {}
+            param_sources = param_sources or {}
+
             # Add critical config fields for replication
-            extra_headers.update({
+            config_pairs = {
                 "CONFIG_center_freq_hz": config.center_freq,
                 "CONFIG_rock_packing_algorithm": config.rock_packing_algorithm,
                 "CONFIG_angular_rocks": str(config.angular_rocks),
@@ -301,23 +306,35 @@ class GPRMaxFileWriter:
                 "CONFIG_packing_psd_type": config.rock_psd_type,
                 "CONFIG_num_receivers": config.num_receivers,
                 "CONFIG_receiver_spacing": config.receiver_spacing,
-            })
+            }
+            extra_headers.update(config_pairs)
+
+            # Add SOURCE_* markers for config parameters
+            for key in config_pairs.keys():
+                param_name = key.replace("CONFIG_", "")
+                source = param_sources.get(param_name, "DEFAULT")
+                extra_headers[f"SOURCE_{param_name}"] = source
+
             # Add base seed if set (essential for exact replication)
             if config.base_seed is not None:
                 extra_headers["CONFIG_base_seed"] = config.base_seed
+                extra_headers["SOURCE_base_seed"] = param_sources.get("base_seed", "DEFAULT")
 
             # Add PVC and moisture from metadata if available (for exact parameter replication)
             if hasattr(checkpoint, 'metadata') and checkpoint.metadata:
                 if 'pvc' in checkpoint.metadata:
                     extra_headers["CONFIG_pvc_sampled"] = checkpoint.metadata['pvc']
+                    extra_headers["SOURCE_pvc_sampled"] = param_sources.get("pvc", "SAMPLED")
                 if 'moisture' in checkpoint.metadata:
                     extra_headers["CONFIG_moisture_sampled"] = checkpoint.metadata['moisture']
+                    extra_headers["SOURCE_moisture_sampled"] = param_sources.get("moisture", "SAMPLED")
 
                 # Compute and embed the actual seed used for this sample
                 # For batch mode: actual_seed = base_seed + sample_id
                 if sample_id is not None and config.base_seed is not None:
                     actual_seed = config.base_seed + sample_id
                     extra_headers["CONFIG_actual_seed"] = actual_seed
+                    extra_headers["SOURCE_actual_seed"] = "BATCH_AUTO"
 
         # Convert SceneCheckpoint to SceneDefinition
         # Combine sources and receivers into one list for the source_commands field

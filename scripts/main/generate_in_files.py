@@ -194,6 +194,9 @@ def generate_single(
     # For single file, use simple sample ID
     sample_id = 1
 
+    # Track parameter sources for SOURCE_* headers
+    param_sources = {}
+
     # If specific PVC/moisture given, use exact values (no sampling)
     if pvc is not None and moisture is not None:
         params = {
@@ -204,14 +207,24 @@ def generate_single(
             'FI_bottom': pvc,
             'FI_top': pvc,
         }
+        param_sources['pvc'] = 'CLI_OVERRIDE'
+        param_sources['moisture'] = 'CLI_OVERRIDE'
         work_order = WorkOrder.from_sampled_params(sample_id, params)
         wos = WorkOrderSystem(work_order)
     else:
         # Sample parameters
         gen.sampler = gen.sampler  # Use default sampler from config
         params = gen.sampler.sample()
+        param_sources['pvc'] = 'SAMPLED'
+        param_sources['moisture'] = 'SAMPLED'
         work_order = WorkOrder.from_sampled_params(sample_id, params)
         wos = WorkOrderSystem(work_order)
+
+    # Track seed source
+    if seed is not None:
+        param_sources['base_seed'] = 'CLI_OVERRIDE'
+    else:
+        param_sources['base_seed'] = 'DEFAULT'
 
     # Run production line
     pipeline = gen.pipeline
@@ -234,6 +247,7 @@ def generate_single(
         output_path=str(output_path),
         scenario_type="Sim",
         config=config,  # Embed config for replication
+        param_sources=param_sources,  # Track parameter sources
     )
 
     print(f"✓ Wrote .in file: {written_path}")

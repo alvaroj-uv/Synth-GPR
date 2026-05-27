@@ -132,6 +132,54 @@ def reconstruct_generator_config(in_path: str):
     return config, sampled_params
 
 
+def extract_sources_from_in_file(in_path: str) -> Dict[str, str]:
+    """
+    Extract SOURCE_* markers indicating where parameters came from.
+
+    Parses lines starting with "## SOURCE_" and maps parameter names to their sources.
+
+    Source types:
+    - CLI_OVERRIDE: explicitly set via command-line flag
+    - SAMPLED: randomized from distribution
+    - BATCH_AUTO: automatically assigned in batch mode
+    - DEFAULT: using hardcoded/config default
+
+    Args:
+        in_path: Path to .in file
+
+    Returns:
+        Dict mapping parameter names to source type
+        Example: {"pvc": "CLI_OVERRIDE", "moisture": "SAMPLED", "actual_seed": "BATCH_AUTO"}
+    """
+    sources = {}
+
+    try:
+        with open(in_path) as f:
+            for line in f:
+                # Stop at first non-header line
+                if line.strip() and not line.startswith("##"):
+                    break
+
+                if "SOURCE_" in line and ":" in line:
+                    parts = line.split(":", 1)
+                    key_part = parts[0].strip()
+
+                    # Extract key (remove ## and SOURCE_)
+                    if key_part.startswith("##"):
+                        key_part = key_part[2:].strip()
+                    if key_part.startswith("SOURCE_"):
+                        param_name = key_part[7:].lower()  # Remove SOURCE_ prefix
+                        source_type = parts[1].strip()
+                        sources[param_name] = source_type
+                    else:
+                        continue
+
+    except FileNotFoundError:
+        return {}
+
+    return sources
+
+
 def get_config_summary(in_path: str) -> str:
     """
     Generate a human-readable summary of config from .in file.
