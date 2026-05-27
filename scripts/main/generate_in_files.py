@@ -117,7 +117,7 @@ def generate_batch(
         cfg = create_per_label_config(base_config, label_upper)
 
         gen = DatasetGenerator(cfg)
-        files, metadata = gen.generate_samples(
+        files = gen.generate_samples(
             output_dir=output_dir,
             n_samples=n_per_label,
             start_id=current_id,

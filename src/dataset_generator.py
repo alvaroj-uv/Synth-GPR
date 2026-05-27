@@ -15,8 +15,7 @@ for GPR while enabling efficient large-scale dataset generation.
 """
 import random
 from pathlib import Path
-from typing import List, Dict
-import pandas as pd
+from typing import List
 
 from .config import GeneratorConfig
 from .work_order import WorkOrder, WorkOrderSystem
@@ -47,10 +46,12 @@ class DatasetGenerator:
         output_dir: Path | str,
         n_samples: int,
         start_id: int = 0,
-        save_metadata: bool = True
-    ) -> tuple[List[str], List[Dict]]:
+    ) -> list[str]:
         """
         Generate n samples to output directory.
+
+        All metadata is embedded in .in file CONFIG_* headers.
+        Each generated .in file is self-contained with complete configuration.
 
         Args:
             output_dir: Directory to save .in files
@@ -58,7 +59,7 @@ class DatasetGenerator:
             start_id: Starting sample ID
 
         Returns:
-            Tuple of (list of written file paths, list of metadata dicts)
+            List of written file paths
         """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -73,7 +74,6 @@ class DatasetGenerator:
                 pass
 
         generated_files = []
-        metadata_rows = []
 
         for i in range(n_samples):
             sample_id = start_id + i
@@ -133,10 +133,6 @@ class DatasetGenerator:
                     'center_freq': self.config.center_freq,
                 })
                 
-                # Store metadata for CSV export
-                metadata['sample_id'] = wos.work_order.id
-                metadata_rows.append(metadata)
-                
                 print(f"[OK] Sample {sample_id}: 1 file generated")
                 
             except Exception as e:
@@ -144,29 +140,4 @@ class DatasetGenerator:
                 import traceback
                 traceback.print_exc()
         
-        # Save metadata CSV
-        if save_metadata and metadata_rows:
-            self._save_metadata(metadata_rows, output_dir)
-        
-        return generated_files, metadata_rows
-    
-
-    
-    def _save_metadata(self, metadata_rows: List[Dict], output_dir: Path):
-        """
-        Save metadata to CSV.
-        
-        Args:
-            metadata_rows: List of metadata dictionaries
-            output_dir: Output directory
-        """
-        df = pd.DataFrame(metadata_rows)
-        
-        # Format floats
-        float_cols = df.select_dtypes(include=['float64', 'float32']).columns
-        for col in float_cols:
-            df[col] = df[col].apply(lambda x: float(f'{x:.5g}') if pd.notna(x) else x)
-        
-        csv_path = output_dir / 'metadata.csv'
-        df.to_csv(csv_path, index=False, float_format='%.5g')
-        print(f"[OK] Metadata saved to {csv_path}")
+        return generated_files
