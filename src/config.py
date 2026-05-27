@@ -478,5 +478,36 @@ class GeneratorConfig:
 
         # Filter None values (use defaults)
         filtered_args = {k: v for k, v in args.items() if v is not None}
-        
+
         return cls(**filtered_args)
+
+
+# ============================================================
+# Config Utilities
+# ============================================================
+
+def create_per_label_config(base_config: GeneratorConfig, label: str) -> GeneratorConfig:
+    """
+    Create label-specific config by modifying PVC range.
+
+    Takes a base GeneratorConfig and creates a new config with PVC range
+    set to the range for the given fouling class (e.g., 'CL', 'MC', 'F').
+
+    Args:
+        base_config: Base GeneratorConfig to modify
+        label: Fouling class label (CL, MC, MF, F, HF)
+
+    Returns:
+        New GeneratorConfig with PVC range set for the label
+
+    Raises:
+        ValueError: If label is not a recognized fouling class
+    """
+    from .fouling import get_pvc_range
+
+    pvc_min, pvc_max = get_pvc_range(label)
+    return GeneratorConfig(**{
+        **base_config.__dict__,
+        'pvc_min': pvc_min,
+        'pvc_max': pvc_max,
+    })

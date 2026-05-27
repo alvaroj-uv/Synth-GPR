@@ -79,11 +79,38 @@ Testing dependencies:
 
 ### Key Workflows
 
-#### 1. Data Generation
-To generate synthetic GPR input files (`.in`):
+#### 1. Generate Synthetic GPR Data (`.in` files)
+
+The unified generator supports batch and single-file modes with full frequency and geometry flexibility:
+
+**Batch generation** — 50 files per fouling class (1.5 GHz):
 ```bash
-python scripts/main/generate_dataset.py output_folder --labels CL MC MF F HF -n 50
+python scripts/main/generate_in_files.py output/ --mode batch --labels CL MC MF F HF -n 50
 ```
+
+**Batch generation** — 1000 files per class, 400 MHz, angular rocks:
+```bash
+python scripts/main/generate_in_files.py output/ --mode batch --labels CL MC MF F HF \
+    -n 1000 --freq 400e6 --angular --packing-algo circlify
+```
+
+**Single file** — Custom parameters, with PNG visualization:
+```bash
+python scripts/main/generate_in_files.py test.in --mode single --pvc 25 --moisture 0.10 --render
+```
+
+**Single file** — 400 MHz, octagonal rocks:
+```bash
+python scripts/main/generate_in_files.py out.in --mode single --freq 400e6 --pvc 50 \
+    --angular --sides 8 --render
+```
+
+**Replicate an existing file** — Extract config and regenerate with same geometry:
+```bash
+python scripts/main/generate_in_files.py replicated.in --mode replicate --source original.in
+```
+
+**Note on reproducibility:** Each generated `.in` file embeds its configuration parameters as `CONFIG_*` comments in the header. This makes files self-documenting and enables exact replication using the `--mode replicate` command. For full documentation on generation options and config persistence, see [docs/IN_FILE_GENERATION.md](docs/IN_FILE_GENERATION.md).
 
 #### 2. Running Simulations
 To run gprMax simulations on generated input files:
@@ -94,7 +121,7 @@ python scripts/main/run_simulations.py input_folder
 #### 3. Feature Extraction
 To extract features from GPR simulation outputs (`.out` files):
 ```bash
-python scripts/main/create_feature_dataset.py input_folder
+python scripts/main/extract_features.py input_folder output.csv
 ```
 
 #### 4. Visualization

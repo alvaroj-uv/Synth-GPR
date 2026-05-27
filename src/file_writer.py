@@ -233,32 +233,69 @@ class GPRMaxFileWriter:
         checkpoint,  # SceneCheckpoint type (avoiding circular import)
         output_path: str,
         scenario_type: str = "Sim",
-        extra_headers: Optional[Dict[str, Any]] = None
+        config=None,  # GeneratorConfig for config embedding
+        extra_headers: Optional[Dict[str, Any]] = None,
+        sample_id: Optional[int] = None,  # Sample ID for computing actual seed in batch mode
     ) -> str:
         """
-        Save a SceneCheckpoint to a .in file.
-        
+        Save a SceneCheckpoint to a .in file with optional config embedding.
+
         Handles all conversion from SceneCheckpoint → SceneDefinition → file.
         The production line doesn't need to know about file formats or paths.
-        
+
+        If config is provided, critical parameters are embedded in the .in file header
+        as CONFIG_* comments for replication purposes.
+
         Args:
             checkpoint: SceneCheckpoint to save
             output_path: Full path to output file (including .in extension)
             scenario_type: Scenario identifier for header
+            config: Optional GeneratorConfig to embed in .in file headers
             extra_headers: Optional additional metadata for headers
-            
+            sample_id: Optional sample ID for computing actual seed (batch mode)
+
         Returns:
             Path to written file
-            
+
         Raises:
             IOError: If file write fails
         """
         from .scene_descriptor import SceneDefinition
-        
+
+        # Prepare config embedding if provided
+        if config:
+            extra_headers = extra_headers or {}
+            # Add critical config fields for replication
+            extra_headers.update({
+                "CONFIG_center_freq_hz": config.center_freq,
+                "CONFIG_rock_packing_algorithm": config.rock_packing_algorithm,
+                "CONFIG_angular_rocks": str(config.angular_rocks),
+                "CONFIG_rock_sides": config.rock_sides,
+                "CONFIG_packing_psd_type": config.rock_psd_type,
+                "CONFIG_num_receivers": config.num_receivers,
+                "CONFIG_receiver_spacing": config.receiver_spacing,
+            })
+            # Add base seed if set (essential for exact replication)
+            if config.base_seed is not None:
+                extra_headers["CONFIG_base_seed"] = config.base_seed
+
+            # Add PVC and moisture from metadata if available (for exact parameter replication)
+            if hasattr(checkpoint, 'metadata') and checkpoint.metadata:
+                if 'pvc' in checkpoint.metadata:
+                    extra_headers["CONFIG_pvc_sampled"] = checkpoint.metadata['pvc']
+                if 'moisture' in checkpoint.metadata:
+                    extra_headers["CONFIG_moisture_sampled"] = checkpoint.metadata['moisture']
+
+                # Compute and embed the actual seed used for this sample
+                # For batch mode: actual_seed = base_seed + sample_id
+                if sample_id is not None and config.base_seed is not None:
+                    actual_seed = config.base_seed + sample_id
+                    extra_headers["CONFIG_actual_seed"] = actual_seed
+
         # Convert SceneCheckpoint to SceneDefinition
         # Combine sources and receivers into one list for the source_commands field
         all_source_commands = list(checkpoint.sources) + list(checkpoint.receivers)
-        
+
         domain_cmds = [
             checkpoint.domain_cmd,
             checkpoint.dx_dy_dz_cmd,
@@ -273,11 +310,11 @@ class GPRMaxFileWriter:
             source_commands=all_source_commands,
             metadata=checkpoint.metadata
         )
-        
+
         # Delegate to write_to_file
         return GPRMaxFileWriter.write_to_file(
             scene_def,
             output_path=output_path,
             scenario_type=scenario_type,
-            extra_headers=extra_headers
+            extra_headers=extra_headers or {}
         )

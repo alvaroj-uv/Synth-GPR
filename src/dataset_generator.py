@@ -115,11 +115,13 @@ class DatasetGenerator:
                 from .file_writer import GPRMaxFileWriter
                 filename = f"s_{sample_id:04d}.in"
                 filepath = output_dir / filename
-                
+
                 written_path = GPRMaxFileWriter.save_scene_checkpoint(
                     checkpoint,
                     output_path=str(filepath),
-                    scenario_type="Sim"
+                    scenario_type="Sim",
+                    config=self.config,  # Embed config for replication
+                    sample_id=sample_id  # For computing actual seed in batch mode
                 )
                 generated_files.append(written_path)
                 
