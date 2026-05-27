@@ -73,9 +73,72 @@ Finally, the `ProductionLine` serializes the scene into a gprMax input file (`.i
 
 ## Key Logic Locations
 
-| component | File | Responsibility |
-|or |---|---|
+| Component | File | Responsibility |
+|-----------|------|---|
 | **Orchestrator** | `src/production_line.py` | Manages the worker sequence and shared state. |
 | **Worker Logic** | `src/workers.py` | Implementation of individual workers (Air, Rock, Antenna, etc.). |
 | **Rock Packing** | `src/rock_packing.py` | Algorithms for placing rocks without overlap. |
 | **Data Packet** | `src/work_order.py` | Carries parameters and results between workers. |
+
+## Detailed Architecture: Scene Painter Pattern
+
+The generator uses a "Painter's Algorithm" approach, building the gprMax model layer by layer from bottom to top. This ensures that objects drawn later (like sleepers) correctly "overwrite" or sit on top of previous layers (like ballast).
+
+```mermaid
+classDiagram
+    class ScenePainter {
+        +add_layer(Layer)
+        +paint() -> .in content
+    }
+    
+    class Layer {
+        <<Abstract>>
+        +apply(Config)
+    }
+    
+    class BackgroundLayer
+    class SubgradeLayer
+    class GranularBallastLayer
+    class SleeperLayer
+    class AntennaLayer
+    
+    ScenePainter o-- Layer : contains ordered list
+    Layer <|-- BackgroundLayer : 1. Air/PML
+    Layer <|-- SubgradeLayer : 2. Soil Base
+    Layer <|-- GranularBallastLayer : 3. Rocks + Fouling
+    Layer <|-- SleeperLayer : 4. Concrete Ties
+    Layer <|-- AntennaLayer : 5. Source/Rx
+    
+    note for GranularBallastLayer "Handles complex logic:\n- Shang-Chu Pattern Application (primary)\n- Fouling Matrix Injection\n- Moisture gradation"
+```
+
+## Granular Ballast Generation Sequence
+
+When granular mode is active, the geometry is constructed physically with individual rocks rather than dielectric blocks.
+
+```mermaid
+sequenceDiagram
+    participant Gen as Generator
+    participant Layer as GranularLayer
+    participant Algo as Packing Algorithm
+    
+    Gen->>Layer: apply(pvc=15%, moisture=10%)
+    Layer->>Layer: Calculate Fouling Height (Horizon)
+    
+    rect rgb(240, 240, 240)
+    Note over Layer: Step 1: Fouling Matrix
+    Layer->>Layer: Create 'Box' representing fines/mud
+    end
+    
+    rect rgb(230, 240, 255)
+    Note over Layer: Step 2: Aggregates
+    Layer->>Algo: Generate rock coordinates and radii
+    Algo-->>Layer: Return Rock list (x, y, r)
+    loop For each Rock
+        Layer->>Layer: Check bounds & intersections
+        Layer->>Layer: Write #cylinder command
+    end
+    end
+    
+    Layer-->>Gen: Return gprMax commands
+```
