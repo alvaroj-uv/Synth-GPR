@@ -33,10 +33,10 @@ class SceneParameters:
     pvc_top: Optional[float] = None     # Top-half PVC; None = uniform mode
     pvc_bottom: Optional[float] = None  # Bottom-half PVC; None = uniform mode
     
-    # Layer Geometry
-    ballast_thickness: float = 0.45     # Ballast layer thickness (meters)
-    formation_thickness: float = 0.1    # Formation layer thickness (meters)
-    subgrade_thickness: float = 0.5     # Subgrade layer thickness (meters)
+    # Layer Geometry (matches src/config.py and src/layer_config.py)
+    ballast_thickness: float = 0.25     # Ballast layer thickness: [0.3, 0.55] (was 0.45, outdated)
+    formation_thickness: float = 0.1    # Formation layer thickness: [0.2, 0.3]
+    subgrade_thickness: float = 0.2     # Subgrade layer thickness: [0.0, 0.2] (was 0.5, outdated)
     
     # Antenna Configuration
     antenna_offset: float = 0.0         # Horizontal antenna offset (meters)

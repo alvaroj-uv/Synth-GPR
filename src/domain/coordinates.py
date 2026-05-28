@@ -29,12 +29,17 @@ class Anchor(Enum):
 class LayerStack:
     """
     Configuration for vertical layer thicknesses.
-    
+
     This is the Single Source of Truth for "How thick is X?".
+
+    Values match src/config.py defaults:
+    - subgrade_thickness: 0.20 (was 0.5, outdated)
+    - formation_thickness: 0.10 (correct)
+    - ballast_thickness: 0.25 (was 0.45, now max_ballast_thickness is 0.55)
     """
-    subgrade_thickness: float = 0.5
-    formation_thickness: float = 0.1
-    ballast_thickness: float = 0.45
+    subgrade_thickness: float = 0.20
+    formation_thickness: float = 0.10
+    ballast_thickness: float = 0.25
     antenna_clearance: float = 0.5   # Space above ballast for antenna
     air_buffer: float = 0.1          # Extra air above antenna
     

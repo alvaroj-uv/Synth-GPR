@@ -7,6 +7,7 @@ from .gpr_commands import CylinderCommand, BoxCommand
 from .constants import MC, PC
 from .physics import classify_pvc
 from .rock_model import PackingBounds
+from .layer_config import LayerStack
 
 
 class GranularMatrixWorker(Worker):
@@ -41,8 +42,9 @@ class GranularMatrixWorker(Worker):
             bounds_obj = scene.coordinate_system.bounds(Layer.BALLAST)
             start_y, top_y = bounds_obj.bottom, bounds_obj.top
         else:
-            start_y = scene.metadata.get('ballast_bottom_y', 0.5)
-            ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
+            ballast = LayerStack.BALLAST
+            start_y = scene.metadata.get('ballast_bottom_y', ballast.y_bottom)
+            ballast_thickness = scene.metadata.get('ballast_thickness', ballast.height)
             top_y = start_y + ballast_thickness
 
         domain_x, _, domain_z = scene.get_domain_params()

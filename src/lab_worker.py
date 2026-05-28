@@ -13,6 +13,7 @@ from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
 from .constants import PC, MC, PHC
 from .physics import circle_strip_intersection, classify_fouling_index
+from .layer_config import LayerStack
 import math
 import json
 
@@ -34,8 +35,9 @@ class LabWorker(Worker):
         # 1. Define Sampling Layer
         # BallastWorker writes ballast bounds to the work_order blackboard, not to
         # scene.metadata, so prefer the blackboard with scene.metadata as fallback.
-        ballast_bottom = scene.metadata.get('ballast_bottom_y', 0.5)
-        ballast_thickness = scene.metadata.get('ballast_thickness', 0.4)
+        ballast = LayerStack.BALLAST
+        ballast_bottom = scene.metadata.get('ballast_bottom_y', ballast.y_bottom)
+        ballast_thickness = scene.metadata.get('ballast_thickness', ballast.height)
         if scene.work_order:
             ballast_bottom    = scene.work_order.get('ballast_bottom_y',  ballast_bottom)
             ballast_thickness = scene.work_order.get('ballast_thickness', ballast_thickness)

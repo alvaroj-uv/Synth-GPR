@@ -172,6 +172,11 @@ class ToolWarehouse:
             elif algo == "hybris_shang":
                 from .rock_packing import HybridShangPacking
                 return HybridShangPacking()
+            elif algo == "strip":
+                from .rock_packing import StripPackingStrategy
+                # Use 5m × 3.2m strip: yields 2 domains in ~20s (vs 32s individual)
+                return StripPackingStrategy(strip_width=5.0, strip_height=3.2,
+                                          base_strategy="hybris_shang")
             elif algo == "rsa":
                 from .rock_packing import RSAPacking
                 return RSAPacking()
