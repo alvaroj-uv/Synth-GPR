@@ -1,13 +1,15 @@
 from typing import Dict, Any, List
 import random
 import math
+from pathlib import Path
 
 from .worker import Worker, SceneCheckpoint
 from .gpr_commands import CylinderCommand, BoxCommand
 from .constants import MC, PC
 from .physics import classify_pvc
-from .rock_model import PackingBounds
+from .rock_model import PackingBounds, Rock
 from .layer_config import LayerStack
+from .rock_loader import RockLoader
 
 
 class GranularMatrixWorker(Worker):
@@ -67,24 +69,56 @@ class GranularMatrixWorker(Worker):
         min_gap = getattr(scene.config, 'rock_min_gap', 0.0)
 
         # 3. Master Pack (Geometry Generation)
-        algo = scene.config.rock_packing_algorithm
-        packer = tools.get_tool("rock_packer")
-        from .rock_packing import _grading_curve_from_config
-        grading_curve = _grading_curve_from_config(scene.config)
-        print(f"[{self.name}] Running Master Pack ({algo})...")
-        all_circles = packer.generate_rocks(
-            bounds=bounds,
-            radius_min=0.001, # 1mm minimum grain size
-            radius_max=r_max,
-            target_fill_ratio=0.85, # Safely below max theoretical ~90%
-            max_attempts=scene.config.rock_packing_max_attempts,
-            min_gap=min_gap,
-            grading_curve=grading_curve,
-        )
-        
-        if not all_circles:
-            scene.log_issue(self.name, "packing_failure", "error", "Master pack generated 0 circles.")
-            return
+        # Check if rocks should be loaded from a source file instead of packing
+        source_file = getattr(scene.config, 'rock_source_file', None)
+
+        if source_file:
+            # Load rocks from existing .in file
+            print(f"[{self.name}] Loading rocks from {source_file}...")
+            try:
+                source_path = Path(source_file)
+                loaded_rocks, source_meta = RockLoader.extract_rocks_from_file(source_path)
+
+                # Filter rocks to ballast layer
+                ballast_rocks = [r for r in loaded_rocks if start_y <= r.y <= top_y]
+
+                if not ballast_rocks:
+                    # Try loading all rocks in ballast range
+                    ballast_rocks = [r for r in loaded_rocks if start_y <= r.y <= top_y + 0.5]
+
+                print(f"[{self.name}] Loaded {len(ballast_rocks)} rocks from source file")
+
+                # Convert loaded rocks to circle-like objects for processing
+                all_circles = [r.to_rock() for r in ballast_rocks]
+
+                if not all_circles:
+                    scene.log_issue(self.name, "rock_loading_failure", "error",
+                                   f"No rocks found in ballast layer from {source_file}")
+                    return
+
+            except Exception as e:
+                scene.log_issue(self.name, "rock_loading_error", "error", str(e))
+                return
+        else:
+            # Run packing algorithm
+            algo = scene.config.rock_packing_algorithm
+            packer = tools.get_tool("rock_packer")
+            from .rock_packing import _grading_curve_from_config
+            grading_curve = _grading_curve_from_config(scene.config)
+            print(f"[{self.name}] Running Master Pack ({algo})...")
+            all_circles = packer.generate_rocks(
+                bounds=bounds,
+                radius_min=0.001, # 1mm minimum grain size
+                radius_max=r_max,
+                target_fill_ratio=0.85, # Safely below max theoretical ~90%
+                max_attempts=scene.config.rock_packing_max_attempts,
+                min_gap=min_gap,
+                grading_curve=grading_curve,
+            )
+
+            if not all_circles:
+                scene.log_issue(self.name, "packing_failure", "error", "Master pack generated 0 circles.")
+                return
 
         # 4. Mission Assignment
         rock_mat = materials.get_material(MC.BALLAST_ROCK)
