@@ -28,9 +28,9 @@ class LoadedRock:
         return Rock(
             x=self.x,
             y=self.y,
-            z=self.z,
             radius=self.radius,
-            material=self.material
+            z_start=self.z,
+            z_end=self.z + 0.01  # Default 1cm extrusion
         )
 
 

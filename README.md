@@ -119,6 +119,36 @@ python scripts/main/generate_in_files.py replicated.in --mode replicate --source
 
 For detailed comparison and algorithm selection guidance, see [docs/PACKING_ALGORITHMS.md](docs/PACKING_ALGORITHMS.md).
 
+#### 1b. Rock Loading — Reuse Existing Rock Configurations
+
+Instead of generating new rocks with a packing algorithm, you can load rock geometries from existing `.in` files and apply your own material properties. This is useful for frequency comparison studies and antenna testing with identical rock geometry:
+
+**Load rocks at different frequency:**
+```bash
+python scripts/main/generate_from_rocks.py \
+  --source reference_1500mhz.in \
+  --freq 400e6 \
+  reference_400mhz.in
+```
+
+**Load rocks with custom PVC and moisture:**
+```bash
+python scripts/main/generate_from_rocks.py \
+  --source reference.in \
+  --freq 900e6 \
+  --pvc 35 \
+  --moisture 0.15 \
+  output_900mhz_35pvc.in
+```
+
+The rock loading feature:
+- **Skips packing** — Loads rocks from file (~0.5s instead of 15-20s)
+- **Runs full pipeline** — Gravity settling, fouling calculation, material analysis all execute
+- **Calculates metadata** — PVC, Fouling Index, material fractions computed from loaded geometry
+- **Enables studies** — Compare frequency effects, antenna configurations, or material properties with identical rocks
+
+For comprehensive guidance on rock loading workflows and use cases, see [docs/ROCK_LOADING_GUIDE.md](docs/ROCK_LOADING_GUIDE.md).
+
 #### 2. Running Simulations
 To run gprMax simulations on generated input files:
 ```bash

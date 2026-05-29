@@ -74,6 +74,7 @@ class GranularMatrixWorker(Worker):
 
         if source_file:
             # Load rocks from existing .in file
+            algo = "loaded"
             print(f"[{self.name}] Loading rocks from {source_file}...")
             try:
                 source_path = Path(source_file)
