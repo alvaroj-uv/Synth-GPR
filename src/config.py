@@ -181,7 +181,10 @@ class GeneratorConfig:
     # Rock Packing Strategy
     rock_packing_algorithm: str = "rsa"  # "rsa", "shang_chu", "hybris_shang", "random", "poisson", "front_chain", "physics", "triangle", "circlify", "growth", "wang"
     wang_tile_size: float = 0.1  # Size of Wang tiles in meters
-    
+
+    # Rock Source File (for loading pre-existing rocks instead of packing)
+    rock_source_file: str = None  # If set, load rocks from this .in file instead of running packing algorithm
+
     # Ballast/subgrade nominal depths
     min_ballast_thickness: float = 0.35  # More realistic range
     max_ballast_thickness: float = 0.55  # Max: subgrade(0.2) + formation(0.1) + ballast(0.55) = 0.85m 
