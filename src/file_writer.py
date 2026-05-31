@@ -145,6 +145,7 @@ class GPRMaxFileWriter:
             lines.append(Header("Domain Configuration").render())
             for cmd in scene.domain_commands:
                 lines.append(cmd.render())
+            lines.append("#messages: n")
 
         # 4. Sources (Antenna + Waveform) - Explicit Sorting
         if scene.source_commands:

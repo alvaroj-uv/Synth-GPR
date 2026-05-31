@@ -117,7 +117,7 @@ def generate_batch(
             print(f"[WARN] {e}, skipping")
             continue
 
-        print(f"→ Generating {label_upper} (PVC {pmin:.0f}-{pmax:.0f}%) ...")
+        print(f">> Generating {label_upper} (PVC {pmin:.0f}-{pmax:.0f}%) ...")
 
         # Create label-specific config with PVC range
         cfg = create_per_label_config(base_config, label_upper)
@@ -130,7 +130,7 @@ def generate_batch(
         )
 
         count = len(files)
-        print(f"  ✓ Generated {count} samples. IDs: {current_id} → {current_id + count - 1}")
+        print(f"  [OK] Generated {count} samples. IDs: {current_id} -> {current_id + count - 1}")
 
         current_id += count
         total_generated += count
@@ -243,7 +243,7 @@ def generate_single(
         for err in validation_errors[:3]:
             print(f"  - {err}")
     else:
-        print(f"✓ Geometry validation passed")
+        print(f"[OK] Geometry validation passed")
 
     # Write .in file with config embedded
     from src.file_writer import GPRMaxFileWriter
@@ -256,7 +256,7 @@ def generate_single(
         param_sources=param_sources,  # Track parameter sources
     )
 
-    print(f"✓ Wrote .in file: {written_path}")
+    print(f"[OK] Wrote .in file: {written_path}")
 
     # Optionally render PNG using dedicated render_in_file.py script
     if render:
@@ -277,7 +277,7 @@ def generate_single(
                 cwd=str(Path(__file__).resolve().parent.parent.parent),
             )
             if result.returncode == 0:
-                print(f"✓ Rendered visualization: {png_path}")
+                print(f"[OK] Rendered visualization: {png_path}")
             else:
                 print(f"[WARN] Rendering failed: {result.stderr}")
         except Exception as e:
@@ -314,7 +314,7 @@ def extract_parameters(source_path: Path) -> dict:
 
         return params
     except Exception as e:
-        print(f"✗ Failed to extract parameters from {source_path}: {e}")
+        print(f"[FAIL] Failed to extract parameters from {source_path}: {e}")
         return None
 
 

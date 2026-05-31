@@ -65,7 +65,7 @@ class LabWorker(Worker):
         y_min = ballast_bottom
         y_max = ballast_top
 
-        layer_area_mm2 = (domain_x * PC.MM_TO_M) * ((y_max - y_min) * PC.MM_TO_M)
+        layer_area_mm2 = (domain_x * PC.M_TO_MM) * ((y_max - y_min) * PC.M_TO_MM)
 
         # Secondary sieve: bottom 15 cm strip (local severity indicator)
         local_strip_top = ballast_bottom + PC.STANDARD_LAYER_HEIGHT
@@ -200,7 +200,7 @@ class LabWorker(Worker):
             if not ((r.y + r.radius) < y_min or (r.y - r.radius) > local_strip_top)
         )
         local_strip_porosity = max(0.0, min(1.0, 1.0 - local_rock_area_mm2 /
-                                             max((domain_x * PC.MM_TO_M) * (PC.STANDARD_LAYER_HEIGHT * PC.MM_TO_M), 1.0)))
+                                             max((domain_x * PC.M_TO_MM) * (PC.STANDARD_LAYER_HEIGHT * PC.M_TO_MM), 1.0)))
         local_foul_area_mm2 = 0.0
         for box in fouling_boxes:
             overlap_h = max(0.0, min(box.y2, local_strip_top) - max(box.y1, y_min))
@@ -250,7 +250,7 @@ class LabWorker(Worker):
             # Fouling Contribution:
             # Fouling is "fines" so we use its internal PSD
             # size_mm vs standard_fouling_psd
-            percent_foul_passing = get_percent_passing(size_mm / 1000.0, [ (d, p) for d, p in standard_fouling_psd])
+            percent_foul_passing = get_percent_passing(size_mm, [(d, p) for d, p in standard_fouling_psd])
             pass_foul_area = total_fouling_area_mm2 * (percent_foul_passing / 100.0)
             
             total_passing = pass_rock_area + pass_foul_area

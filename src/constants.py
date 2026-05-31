@@ -14,8 +14,8 @@ class PhysicalConstants:
     """Railway GPR physical constants and specifications."""
     
     # Unit Conversions
-    MM_TO_M: float = 1000.0
-    M_TO_MM: float = 0.001
+    M_TO_MM: float = 1000.0
+    MM_TO_M: float = 0.001
     
     # Ballast Layer Specifications (Selig & Waters, 1994)
     MIN_BALLAST_THICKNESS: float = 0.35  # meters
