@@ -32,6 +32,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import GeneratorConfig
 from src.production_line import ProductionLine
+from src.work_order import WorkOrder, WorkOrderSystem
+from src.file_writer import GPRMaxFileWriter
 
 
 def main():
@@ -59,9 +61,12 @@ def main():
     print(f"Source file: {args.source}")
     print(f"Output file: {args.output}")
     print(f"Frequency: {args.freq/1e9:.2f} GHz")
+    if args.pvc:
+        print(f"Target PVC: {args.pvc}%")
+    if args.moisture:
+        print(f"Target moisture: {args.moisture}")
     print()
 
-    # Create config with rock_source_file parameter
     try:
         # Create config with rock loading enabled
         config = GeneratorConfig.create_physically_perfect(
@@ -69,9 +74,29 @@ def main():
             rock_source_file=str(source_path),  # Tell worker to load from this file
         )
 
+        # Create WorkOrder with optional parameters
+        params = {
+            'pvc': args.pvc if args.pvc is not None else 0.0,
+            'moisture': args.moisture if args.moisture is not None else 0.0,
+        }
+        work_order = WorkOrder.from_sampled_params(1, params)
+        wos = WorkOrderSystem(work_order)
+
         # Run production line
         line = ProductionLine(config)
-        output_path = line.run(Path(args.output))
+        checkpoint = line.run(wos)
+
+        # Save to file
+        writer = GPRMaxFileWriter()
+        output_path = writer.save_scene_checkpoint(
+            checkpoint,
+            output_path=args.output,
+            scenario_type="Sim",
+            config=config
+        )
+
+        print(f"[✓] Generated {checkpoint.rock_count} rocks from {source_path.name}")
+        print(f"[✓] Output file: {output_path}")
 
         if args.render:
             print()
