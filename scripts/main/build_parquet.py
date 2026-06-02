@@ -79,7 +79,11 @@ def _process(out_path: Path) -> dict | None:
                                use_gain=False,
                                use_time_zero=True)
 
-    feat_df = extract_features(pd.DataFrame({"Time": time, ez_col: sig}))
+    # Pass the TRUE dt (computed above) so frequency-domain features use the
+    # real sampling interval (synthetic .out dt ≈ 0.031 ns), NOT the 0.1 ns
+    # default. Without this, all freq features (mean/median/dominant freq, STFT,
+    # bandwidth) are mis-scaled by ~3.2x and won't align with real-trace features.
+    feat_df = extract_features(pd.DataFrame({"Time": time, ez_col: sig}), dt=dt)
     if feat_df.empty:
         return None
 

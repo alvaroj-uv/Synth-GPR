@@ -93,6 +93,25 @@ Proc. 10th International Conference on Ground Penetrating Radar, 635–638.
 
 ---
 
+### Real-Field Fouling Indicators (waveform-only)
+
+**[61] Shapovalov, V., Arkhipov, V., Okost, M., & Morozov, A. (2026)**  
+*Comparison of approaches to assessing ballast layer contamination using ground penetrating radar*  
+International Journal of Transportation Science and Technology, 21, 286–305.  
+DOI: 10.1016/j.ijtst.2025.02.001 (open access, CC BY-NC-ND)  
+**Referenced in:** `docs/REF_Shapovalov2026_ideas.md`, project memory  
+**Context:** Real-field counterpart to Synth-GPR's waveform-only approach. 400 + 1700 MHz horn antennas at ~0.5 m height, 4 km of operating track (Kazakhstan), 22 sieve-analysis ground-truth points. Compares several scalar GPR contamination indicators against direct measurements.  
+**Key findings:**  
+- Hilbert envelope area is the single best real-field fouling indicator: Pearson r = 0.96 (AB400) — external validation that Hilbert features track real physics, not FDTD artifacts
+- No single indicator suffices; multiple linear regression over 5 indicators → R² = 0.97, MAE 1.79%, RMSE 2.15 (motivates our 572-feature RF as the nonlinear generalization of MLR)
+- 5 indicators: SfRa (FFT spectrum area), StAb (|amplitude| integral over ballast window), CrossNum (zero-crossings), InflecNum (inflection points), Hilbert (envelope area)
+- CrossNum & InflecNum weak/negative at 400 MHz (−0.47, −0.54): fouled ballast looks *more homogeneous* than clean at this wavelength (Fresnel-zone argument) → motivates multi-frequency
+- Moisture is the dominant error source (corroborates our limitations doc)
+- Operational maintenance trigger: >30% contamination over >30% of section; gradation <5 / 5–15 / 15–30 / >30%
+**Impact:** Literature-backed real-field baseline for waveform-only fouling indicators; sources CrossNum/InflecNum features to add; reframes our RF contribution vs. MLR.
+
+---
+
 ## Dielectric Models & Soil Physics
 
 ### Moisture-Dielectric Relationships
@@ -274,6 +293,7 @@ DOI: 10.1016/j.conbuildmat.2005.06.007
 | Santamarina et al. (2002) | config.py, warehouses.py | Mineral properties |
 | EN 13450:2013 | rock_packing.py, tests | Ballast spec, sieve sizes |
 | Wang et al. (2004) | VALIDATION.md | SSIM metric |
+| Shapovalov et al. (2026) | REF_Shapovalov2026_ideas.md | Real-field fouling indicators (Hilbert r=0.96), CrossNum/InflecNum |
 
 ---
 
@@ -363,6 +383,16 @@ DOI: 10.1016/j.conbuildmat.2005.06.007
   organization = {European Committee for Standardization (CEN)},
   number = {EN 13450:2013},
   year = {2013}
+}
+
+@article{shapovalov2026,
+  author = {Shapovalov, Vladimir and Arkhipov, Vitaly and Okost, Maksim and Morozov, Andrey},
+  title = {Comparison of approaches to assessing ballast layer contamination using ground penetrating radar},
+  journal = {International Journal of Transportation Science and Technology},
+  year = {2026},
+  volume = {21},
+  pages = {286--305},
+  doi = {10.1016/j.ijtst.2025.02.001}
 }
 ```
 
@@ -739,7 +769,7 @@ All references identified in **config.py**:
 ---
 
 **Compiled:** 2026-05-31  
-**Last updated:** 2026-05-31 (comprehensive scan of lab_worker.py and config.py)  
-**Total references:** 60 (from initial 17)  
+**Last updated:** 2026-06-01 (added Shapovalov et al. 2026 — real-field fouling indicators)  
+**Total references:** 61 (from initial 17)  
 **Next review:** After Phase 1 antenna calibration (estimated 2026-06-21)
 

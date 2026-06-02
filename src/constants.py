@@ -149,7 +149,15 @@ class PhysicsConstants:
     LDCP_QS_SUBGRADE: float = 8.0        # compacted subgrade
     LDCP_QS_FORMATION: float = 15.0      # sub-ballast formation
     LDCP_QS_VOID: float = 0.5            # open pore space
-    LDCP_FH_FACTOR_CLAY: float = 1.5     # F factor: FI = %FH / F (clay fouling, Rojas-Vivanco 2025 eq. 9)
+    LDCP_FH_FACTOR_CLAY: float = 1.5     # F factor: FI = %FH / F (clay fouling, Rojas-Vivanco 2025 eq. 9) — DEPRECATED for labeling, see fi_from_fouling_height
+
+    # %FH -> FI quadratic (Rojas-Vivanco 2025, theoretical curves; matches the
+    # exact equation used to label the REAL pandoscope data). FI = a*FH^2 + b*FH + c.
+    # Three compaction states; pick by ballast porosity. This REPLACES the linear
+    # FH/1.5 so synthetic height-FI is directly comparable to the real FI labels.
+    FH_FI_LOOSE:   tuple = (-0.0013, 0.5570, 0.4170)   # loose ballast (phi high)
+    FH_FI_MEDIUM:  tuple = (-0.0017, 0.6311, 0.4933)   # medium — used to label real data
+    FH_FI_COMPACT: tuple = (-0.0022, 0.7248, 0.6753)   # compacted ballast (phi low)
 
 # Singleton instances
 PC = PhysicalConstants()

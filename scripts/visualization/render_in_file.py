@@ -1,19 +1,21 @@
 """
-Render a gprMax .in file as a 2-D cross-section PNG or full analysis dashboard.
+Render a gprMax .in file as 2-D/3-D geometry PNG or full analysis dashboard.
+
+Automatically detects 2D vs 3D files (3D = contains #sphere commands).
 
 Usage:
     # Geometry only (fast):
     python scripts/visualization/render_in_file.py output/test/s_0000.in
-    python scripts/visualization/render_in_file.py output/test/s_0000.in --out custom.png --dpi 200
+    python scripts/visualization/render_in_file.py input_files_3d_poc/s_0000.in  # Auto-detects 3D
 
-    # Full 4-panel dashboard (geometry + signals + PSD + stats):
+    # Full 4-panel dashboard (2D only):
     python scripts/visualization/render_in_file.py output/test/s_0000.in --dashboard
-    python scripts/visualization/render_in_file.py s_0000.in -o report.png --no-show --no-dewow --gain power
 """
 
 import sys
 import logging
 import argparse
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -32,6 +34,29 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("Visualizer")
+
+
+def detect_3d_file(in_path: Path) -> bool:
+    """Detect if .in file is 3D (contains #sphere commands)."""
+    with open(in_path, 'r', encoding='utf-8', errors='replace') as f:
+        return any('#sphere:' in line for line in f)
+
+
+def render_3d_file(in_path: Path, out_path: Path, dpi: int = 150):
+    """Render 3D .in file using the specialized 3D renderer."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "render_3d",
+        Path(__file__).parent / "render_3d_in_file.py"
+    )
+    render_3d = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(render_3d)
+
+    scene_data = render_3d.parse_3d_in_file(in_path)
+    title = f"{in_path.stem} - {scene_data['metadata'].get('Lab_Class', '?')} class"
+    fig = render_3d.render_3d_views(scene_data, title=title, dpi=dpi)
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
 
 
 def main() -> None:
@@ -64,7 +89,13 @@ def main() -> None:
     if args.full_dashboard:
         args.dashboard = True
 
-    if args.dashboard:
+    # Detect 2D vs 3D
+    is_3d = detect_3d_file(in_path)
+
+    if is_3d and args.dashboard:
+        logger.warning("3D files do not support --dashboard mode, rendering geometry only")
+
+    if args.dashboard and not is_3d:
         sig_cfg = SignalPanelConfig(
             dewow=not args.no_dewow,
             gain_type=args.gain,
@@ -82,12 +113,18 @@ def main() -> None:
         if not args.no_show:
             plt.show()
     else:
+        # Render 2D or 3D geometry
         out_path = args.output or in_path.with_suffix(".png")
-        scene = parse_in_file(in_path)
-        fig, _ = render_geometry_figure(scene, title=in_path.stem, dpi=args.dpi)
-        fig.savefig(out_path, dpi=args.dpi, bbox_inches="tight")
 
-    print(f"Saved -> {out_path}")
+        if is_3d:
+            render_3d_file(in_path, out_path, dpi=args.dpi)
+        else:
+            scene = parse_in_file(in_path)
+            fig, _ = render_geometry_figure(scene, title=in_path.stem, dpi=args.dpi)
+            fig.savefig(out_path, dpi=args.dpi, bbox_inches="tight")
+            plt.close(fig)
+
+        print(f"Saved -> {out_path}")
 
 
 if __name__ == "__main__":

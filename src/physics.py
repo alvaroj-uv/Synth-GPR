@@ -392,6 +392,68 @@ def crim_fouling_eps(
     return eps_r, sigma
 
 
+def debye_decompose(eps_static: float, d_eps_frac: float, eps_inf_min: float = 1.0) -> tuple:
+    """Split a static permittivity into (eps_inf, d_eps) for a 1-pole Debye model.
+
+    gprMax's #material gets eps_inf (high-freq permittivity) and
+    #add_dispersion_debye gets d_eps = eps_static - eps_inf, with the constraint
+    eps_inf >= 1 (cannot go below vacuum). This caps the dispersive fraction so a
+    low-eps material (e.g. fouling eps~4.5) can never produce eps_inf < 1, which
+    gprMax rejects with 'requires a positive value of one or greater'.
+
+    Args:
+        eps_static:  the (constant) permittivity you have today, e.g. from CRIM.
+        d_eps_frac:  desired fraction of eps_static to make dispersive (0-1).
+        eps_inf_min: floor for eps_inf (default 1.0, gprMax minimum).
+
+    Returns:
+        (eps_inf, d_eps) — both safe to write; eps_inf + d_eps == eps_static
+        whenever the cap is not hit, otherwise d_eps is reduced to keep eps_inf
+        at the floor.
+    """
+    d_eps_frac = max(0.0, min(d_eps_frac, 1.0))
+    d_eps = d_eps_frac * eps_static
+    max_d_eps = max(0.0, eps_static - eps_inf_min)
+    d_eps = min(d_eps, max_d_eps)
+    eps_inf = eps_static - d_eps
+    return round(eps_inf, 4), round(d_eps, 4)
+
+
+def fi_from_fouling_height(fh_pct: float, porosity: float = None) -> float:
+    """Convert %FH (fouled-ballast height fraction) to FI via the Rojas-Vivanco
+    2025 theoretical quadratic — the SAME equation used to label the real
+    pandoscope data, so synthetic height-FI is directly comparable.
+
+    FI = a*FH^2 + b*FH + c, with (a,b,c) chosen by compaction state from
+    ballast porosity:
+        loose   (phi >= 0.65) : FH_FI_LOOSE
+        medium  (default)     : FH_FI_MEDIUM  (real labels use this)
+        compact (phi <= 0.55) : FH_FI_COMPACT
+
+    Replaces the old linear FH/1.5 (PHC.LDCP_FH_FACTOR_CLAY), which diverged from
+    the real labeling by up to ~20 FI points at high FH.
+
+    Args:
+        fh_pct:   percent fouling height (0-100), e.g. Lab_LDCP_FH.
+        porosity: ballast void fraction; selects the compaction curve.
+                  None -> medium (matches the real data's "Medium" labeling).
+
+    Returns:
+        Estimated FI (clamped to >= 0).
+    """
+    if porosity is None:
+        a, b, c = PHC.FH_FI_MEDIUM
+    elif porosity >= 0.65:
+        a, b, c = PHC.FH_FI_LOOSE
+    elif porosity <= 0.55:
+        a, b, c = PHC.FH_FI_COMPACT
+    else:
+        a, b, c = PHC.FH_FI_MEDIUM
+
+    fh = max(0.0, min(fh_pct, 100.0))
+    return max(0.0, a * fh * fh + b * fh + c)
+
+
 def get_percent_passing(d_target: float, psd_points: list) -> float:
     """
     Get Percent Passing at d_target using Log-Linear Interpolation on a PSD curve.

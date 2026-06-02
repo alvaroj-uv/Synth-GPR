@@ -279,6 +279,16 @@ class GeneratorConfig:
         # Spatial discretization validation
         if self.dx <= 0:
             raise ValueError("#dx_dy_dz: x-direction spatial step (dx) must be greater than zero")
+
+        # Keep the 2-D source/receiver z INSIDE the single z-cell [0, dz].
+        # In a 2-D run domain_z == dz (one cell thick); the tx/rx must sit at the
+        # cell centre (dz/2). If tx_rx_z was set for a different dz (or left at a
+        # hard-coded default), a smaller dz pushes it outside the domain and
+        # gprMax silently produces an EMPTY trace. Auto-correct to dz/2 whenever
+        # it would fall out of range, so changing dz can never break src/rx.
+        if self.dz > 0 and not (0.0 < self.tx_rx_z < self.dz):
+            # frozen dataclass -> must bypass the immutability to correct
+            object.__setattr__(self, "tx_rx_z", self.dz / 2.0)
         
         # PVC (Percentage Voids Contaminated) must be valid percentage
         if self.pvc_min < 0 or self.pvc_min > 100:

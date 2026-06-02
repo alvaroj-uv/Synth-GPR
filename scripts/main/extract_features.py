@@ -45,9 +45,12 @@ def extract_features_from_out_file(out_file_path: str) -> dict:
     """
     # Load A-scan data from .out file (HDF5)
     df = read_gprmax_hdf5(out_file_path, fields=['E'])
-    
-    # Extract features
-    features_df = extract_features(df)
+
+    # Use the TRUE dt from the Time axis (synthetic .out dt ≈ 0.031 ns) so freq
+    # features aren't computed with the 0.1 ns default. See build_parquet.py.
+    time = df["Time"].values
+    dt = float(time[1] - time[0]) if len(time) > 1 else None
+    features_df = extract_features(df, dt=dt) if dt else extract_features(df)
     
     # Return first row as dictionary (one signal per file)
     if len(features_df) == 0:

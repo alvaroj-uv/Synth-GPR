@@ -113,7 +113,9 @@ def _process(out_path: Path) -> dict | None:
                                use_gain=False,
                                use_time_zero=True)
 
-    feat_df = extract_features(pd.DataFrame({"Time": time, ez_col: sig}))
+    # Pass the TRUE dt so frequency features use the real sampling interval
+    # (synthetic .out dt ≈ 0.031 ns), not the 0.1 ns default. See build_parquet.py.
+    feat_df = extract_features(pd.DataFrame({"Time": time, ez_col: sig}), dt=dt)
     if feat_df.empty:
         return None
 
@@ -188,6 +190,22 @@ def main():
         sys.exit(1)
 
     df = pd.DataFrame(rows)
+
+    # Calculate Lab_LDCP_FI_est from Lab_LDCP_FH where missing, using the
+    # Rojas-Vivanco 2025 quadratic (matches the real-data labeling), with the
+    # compaction curve picked per-row from porosity. Replaces linear FH/1.5.
+    if "Lab_LDCP_FH" in df.columns and "Lab_LDCP_FI_est" in df.columns:
+        from src.physics import fi_from_fouling_height
+        mask = df["Lab_LDCP_FI_est"].isna()
+        if mask.any():
+            por = df["porosity"] if "porosity" in df.columns else None
+            df.loc[mask, "Lab_LDCP_FI_est"] = df.loc[mask].apply(
+                lambda r: round(fi_from_fouling_height(
+                    r["Lab_LDCP_FH"],
+                    r["porosity"] if "porosity" in df.columns else None), 2),
+                axis=1)
+            print(f"\n[INFO] Calculated Lab_LDCP_FI_est for {mask.sum()} missing values "
+                  f"using Rojas quadratic (porosity-aware)")
 
     # Fill NaN metadata with column median
     for field in METADATA_FIELDS:

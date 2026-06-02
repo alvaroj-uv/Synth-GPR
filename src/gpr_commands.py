@@ -91,7 +91,20 @@ class MaterialCommand(GPRCommand):
     mag_loss: float
     identifier: str
     commented: bool = False
-    
+
+    def __post_init__(self):
+        # gprMax requires the static (DC) relative permittivity to be >= 1
+        # (cannot be below vacuum). When a material is made dispersive with
+        # #add_dispersion_debye, this eps is eps_inf and STILL must be >= 1.
+        # Guard here so no generation path can ever emit an invalid material
+        # (e.g. eps_inf = eps - d_eps going below 1 for low-eps fouling).
+        if self.eps < 1.0:
+            raise ValueError(
+                f"#material '{self.identifier}': relative permittivity must be "
+                f">= 1 (got {self.eps}). If using Debye dispersion, cap d_eps so "
+                f"eps_inf = eps_static - d_eps stays >= 1."
+            )
+
     def get_cmd_string(self) -> str:
         return f"#material: {fmt(self.eps)} {fmt(self.sigma)} {fmt(self.mu)} {fmt(self.mag_loss)} {self.identifier}"
 
@@ -136,14 +149,29 @@ class TriangleCommand(GPRCommand):
     thickness: float = 0.0
     material: str = ""
     commented: bool = False
-    
+
     @property
     def priority(self) -> int:
         return 21 # Objects (Angular Rocks) - Render AFTER Box
-    
+
     def get_cmd_string(self) -> str:
         return f"#triangle: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.x3)} {fmt(self.y3)} {fmt(self.z3)} {fmt(self.thickness)} {self.material}"
 
+@dataclass
+class SphereCommand(GPRCommand):
+    x: float
+    y: float
+    z: float
+    radius: float
+    material: str
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 20  # Objects (3D Rocks) - Render AFTER Box
+
+    def get_cmd_string(self) -> str:
+        return f"#sphere: {fmt(self.x)} {fmt(self.y)} {fmt(self.z)} {fmt(self.radius)} {self.material}"
 
 @dataclass
 class WaveformCommand(GPRCommand):

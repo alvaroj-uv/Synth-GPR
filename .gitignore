@@ -13,6 +13,7 @@
 *.rar
 *.zip
 *.parquet
+*.joblib
 
 # Images (keep output/test_images tracked)
 test_*.png
@@ -40,5 +41,4 @@ docs/reports/vulture_report.txt
 test_pipeline_output/
 test_run_mac/
 tools/
-
-output/rf_model_merged.joblib
+output/
