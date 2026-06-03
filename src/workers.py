@@ -5,7 +5,44 @@ Each worker handles a specific layer or component of the GPR scene.
 """
 from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
-from .gpr_commands import BoxCommand, HertzianDipoleCommand, RxCommand, WaveformCommand
+from .gpr_commands import (
+    BoxCommand, HertzianDipoleCommand, RxCommand, WaveformCommand,
+    SoilPeplinskiCommand, FractalBoxCommand, AddSurfaceRoughnessCommand,
+)
+
+
+def _emit_layer(scene, name: str, peplinski: tuple, y_bottom: float, y_top: float,
+                heterogeneous: bool, roughen: bool) -> None:
+    """Emit a soil layer as either a flat #box (homogeneous) or a
+    #soil_peplinski + #fractal_box (heterogeneous), optionally roughening its
+    top interface. `name` is the material/box id; the flat-box path expects the
+    homogeneous material to already be added to the scene by the caller.
+    """
+    domain_x, _, domain_z = scene.get_domain_params()
+    cfg = scene.config
+    if not heterogeneous:
+        scene.add_geometry(BoxCommand(0, y_bottom, 0, domain_x, y_top, domain_z, name))
+        return
+
+    soil_id = f"{name}_soil"
+    box_id = f"{name}_fb"
+    s, c, bulk, spd, wlo, whi = peplinski
+    scene.add_geometry(SoilPeplinskiCommand(s, c, bulk, spd, wlo, whi, soil_id))
+    seed = None
+    if scene.work_order is not None:
+        seed = scene.work_order.get_input('seed', None)
+    if seed is not None:
+        seed = int(seed) & 0x7FFFFFFF
+    scene.add_geometry(FractalBoxCommand(
+        0, y_bottom, 0, domain_x, y_top, domain_z,
+        cfg.sublayer_fractal_dimension, cfg.sublayer_n_materials,
+        soil_id, box_id, seed=seed))
+    if roughen:
+        depth = getattr(cfg, 'layer_roughness_depth', 0.02)
+        lower = max(y_bottom, y_top - depth)
+        scene.add_geometry(AddSurfaceRoughnessCommand(
+            0, y_top, 0, domain_x, y_top, domain_z,
+            cfg.sublayer_fractal_dimension, lower, y_top, box_id, seed=seed))
 from .constants import MC, PC
 
 
@@ -67,19 +104,23 @@ class SubgradeWorker(Worker):
         if scene.work_order:
             scene.work_order.set('subgrade_top_y', subgrade_top, self.name)
 
-        scene.add_geometry(BoxCommand(
-            0, 0, 0,
-            domain_x, subgrade_top, domain_z,
-            MC.SUBGRADE
-        ))
+        hetero = getattr(scene.config, 'heterogeneous_sublayers', False)
+        # Buried sublayer interfaces are NOT roughened (a rough top under a
+        # flat-bottomed upper layer would create air-void artifacts). Sublayers
+        # get peplinski TEXTURE only; interface roughness is applied to the
+        # topmost ballast-facing surface (fouling top) in GranularMatrixWorker.
+        _emit_layer(scene, MC.SUBGRADE, scene.config.subgrade_peplinski,
+                    0.0, subgrade_top, hetero, roughen=False)
         
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
         found = False
         for cmd in scene.geometry:
-            if hasattr(cmd, 'material') and cmd.material == MC.SUBGRADE:
+            # flat-box path: material; hetero path: fractal_box box_id
+            if (getattr(cmd, 'material', None) == MC.SUBGRADE
+                    or getattr(cmd, 'box_id', None) == f"{MC.SUBGRADE}_fb"):
                 found = True
                 break
-        
+
         if not found:
             return ["SubgradeWorker: No subgrade geometry found"]
         return []
@@ -126,24 +167,19 @@ class FormationWorker(Worker):
         if scene.work_order:
              scene.work_order.set('formation_top_y', top_y, self.name)
 
-        domain_x, _, domain_z = scene.get_domain_params()
+        hetero = getattr(scene.config, 'heterogeneous_sublayers', False)
+        _emit_layer(scene, MC.FORMATION, scene.config.formation_peplinski,
+                    start_y, top_y, hetero, roughen=False)
 
-        scene.add_geometry(BoxCommand(
-            0, start_y, 0,
-            domain_x, top_y, domain_z,
-            MC.FORMATION
-        ))
-        
     def quality_check(self, scene: SceneCheckpoint) -> List[str]:
-        # Check if formation exists and is on top of subgrade
-        formation_cmds = [
-            c for c in scene.geometry 
-            if isinstance(c, BoxCommand) and c.material == MC.FORMATION
-        ]
-        
-        if not formation_cmds:
+        # Check formation exists (flat-box material or hetero fractal_box id)
+        found = any(
+            getattr(c, 'material', None) == MC.FORMATION
+            or getattr(c, 'box_id', None) == f"{MC.FORMATION}_fb"
+            for c in scene.geometry
+        )
+        if not found:
             return ["FormationWorker: No formation geometry found"]
-            
         return []
 
 

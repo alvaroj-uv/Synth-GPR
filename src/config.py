@@ -182,6 +182,22 @@ class GeneratorConfig:
     fouling_water_frac_slope: float = 0.20
     fouling_water_frac_spread: float = 0.02  # +/- band for water_lo..water_hi
 
+    # Heterogeneous sublayers (subgrade/formation as soil_peplinski + fractal_box
+    # instead of flat eps=10 boxes) and layer surface roughness. The trace is
+    # layer-dominated and the flat specular interfaces are a sim->real suspect;
+    # these make the sublayers textured and the interfaces rough. Default off.
+    # NOTE: #add_surface_roughness only operates on a #fractal_box, so roughness
+    # implies heterogeneous_sublayers for the sublayer interfaces.
+    heterogeneous_sublayers: bool = False
+    layer_surface_roughness: bool = False
+    sublayer_fractal_dimension: float = 1.5
+    sublayer_n_materials: int = 10
+    # Peplinski (sand_frac, clay_frac, bulk_density, sand_part_density, water_lo, water_hi)
+    subgrade_peplinski: tuple = (0.5, 0.5, 1.9, 2.66, 0.10, 0.18)   # deeper, wetter
+    formation_peplinski: tuple = (0.7, 0.3, 1.9, 2.66, 0.05, 0.12)  # drier transition
+    # Roughness undulation depth (m) applied below each layer top interface.
+    layer_roughness_depth: float = 0.02
+
     # Rock gravity settlement (Benedetto et al. 2016 vertical compaction)
     rock_gravity_settle: bool = True
     

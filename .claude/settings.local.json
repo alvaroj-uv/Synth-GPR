@@ -13,7 +13,10 @@
       "Bash(findstr /n \"triangle\" \"C:\\\\Users\\\\barba\\\\.conda\\\\envs\\\\gprMax\\\\Lib\\\\site-packages\\\\gprMax\\\\input_cmds_geometry.py\")",
       "Bash(python -c ' *)",
       "Bash(grep -r \"visualize_gprmax_blueprint\" \"d:\\\\Codigo\\\\Synth-GPR\" --include=\"*.py\" 2>nul)",
-      "Bash(grep -r \"parse_gprmax_input\" \"d:\\\\Codigo\\\\Synth-GPR\" --include=\"*.py\" 2>nul)"
+      "Bash(grep -r \"parse_gprmax_input\" \"d:\\\\Codigo\\\\Synth-GPR\" --include=\"*.py\" 2>nul)",
+      "Bash(cd \"D:\\\\gprMax\" && grep -n \"add_surface_roughness\" gprMax/input_cmds_geometry.py | head; sed -n '888,920p' gprMax/input_cmds_geometry.py)",
+      "Read(//d/gprMax/**)",
+      "Bash(C:/Users/barba/miniconda3/python.exe -c ' *)"
     ],
     "additionalDirectories": [
       "d:\\Codigo\\Synth-GPR"

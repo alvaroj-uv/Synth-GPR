@@ -187,6 +187,47 @@ class FractalBoxCommand(GPRCommand):
 
 
 @dataclass
+class AddSurfaceRoughnessCommand(GPRCommand):
+    """gprMax #add_surface_roughness: applies fractal roughness to a face of an
+    existing #fractal_box, replacing a flat specular interface with an undulating
+    one (breaks the coherent layer reflections that dominate flat-box scenes).
+
+    #add_surface_roughness: x1 y1 z1 x2 y2 z2 frac_dim w_x w_y limit_lower limit_upper box_id [seed]
+
+    The (x1,y1,z1)-(x2,y2,z2) define the surface plane (for a horizontal top
+    surface, y1==y2==top). limit_lower/limit_upper bound the y-range the surface
+    undulates between. MUST be emitted AFTER the #fractal_box it references.
+    """
+    x1: float
+    y1: float
+    z1: float
+    x2: float
+    y2: float
+    z2: float
+    frac_dim: float
+    limit_lower: float
+    limit_upper: float
+    box_id: str
+    seed: int = None
+    weight_x: float = 1.0
+    weight_y: float = 1.0
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 11  # right after #fractal_box (10), before rocks (20)
+
+    def get_cmd_string(self) -> str:
+        s = (f"#add_surface_roughness: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} "
+             f"{fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.frac_dim)} "
+             f"{fmt(self.weight_x)} {fmt(self.weight_y)} "
+             f"{fmt(self.limit_lower)} {fmt(self.limit_upper)} {self.box_id}")
+        if self.seed is not None:
+            s += f" {self.seed}"
+        return s
+
+
+@dataclass
 class CylinderCommand(GPRCommand):
     x1: float
     y1: float

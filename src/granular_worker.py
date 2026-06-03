@@ -313,6 +313,20 @@ class GranularMatrixWorker(Worker):
             seed=seed,
         ))
 
+        # Roughen the fouling TOP (the fouling->ballast-air interface, the
+        # strongest sub-ballast specular reflector). Safe: the ballast region
+        # above is air + discrete rocks, so undulating the surface DOWN into the
+        # fouling never creates voids. Rocks are stamped afterwards (higher
+        # priority), so they still sit on top.
+        if getattr(cfg, 'layer_surface_roughness', False):
+            from .gpr_commands import AddSurfaceRoughnessCommand
+            depth = getattr(cfg, 'layer_roughness_depth', 0.02)
+            lower = max(y_start, y_top - depth)
+            scene.add_geometry(AddSurfaceRoughnessCommand(
+                x_start, y_top, 0.0, domain_x, y_top, domain_z,
+                cfg.fouling_fractal_dimension, lower, y_top, "foul_fb", seed=seed,
+            ))
+
     def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
         """Render one rock as a faceted polygon extruded in z via gprMax #triangle commands.
 
