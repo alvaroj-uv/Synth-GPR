@@ -123,6 +123,70 @@ class BoxCommand(GPRCommand):
         return f"#box: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {self.material}"
 
 @dataclass
+class SoilPeplinskiCommand(GPRCommand):
+    """gprMax #soil_peplinski mixing model for a semi-empirical heterogeneous soil.
+
+    #soil_peplinski: sand_frac clay_frac bulk_density sand_part_density water_lo water_hi name
+
+    Used together with #fractal_box to give a fouling layer internal volumetric
+    dielectric texture (scattering) instead of a single homogeneous value.
+    """
+    sand_frac: float
+    clay_frac: float
+    bulk_density: float
+    sand_part_density: float
+    water_lo: float
+    water_hi: float
+    identifier: str
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 5  # Material-like: must be defined before the fractal_box that uses it
+
+    def get_cmd_string(self) -> str:
+        return (f"#soil_peplinski: {fmt(self.sand_frac)} {fmt(self.clay_frac)} "
+                f"{fmt(self.bulk_density)} {fmt(self.sand_part_density)} "
+                f"{fmt(self.water_lo)} {fmt(self.water_hi)} {self.identifier}")
+
+
+@dataclass
+class FractalBoxCommand(GPRCommand):
+    """gprMax #fractal_box: a box filled with a fractally-distributed mix of a
+    soil's material variants, producing spatially heterogeneous permittivity.
+
+    #fractal_box: x1 y1 z1 x2 y2 z2 frac_dim w_x w_y w_z n_materials soil box_id [seed]
+
+    Rendered at box priority (10) so subsequent #cylinder/#triangle rocks stamp
+    on top of it (painter's algorithm), matching the solid-box fouling path.
+    """
+    x1: float
+    y1: float
+    z1: float
+    x2: float
+    y2: float
+    z2: float
+    frac_dim: float
+    n_materials: int
+    soil: str
+    box_id: str
+    seed: int = None
+    weight_x: float = 1.0
+    weight_y: float = 1.0
+    weight_z: float = 1.0
+    commented: bool = False
+
+    def get_cmd_string(self) -> str:
+        s = (f"#fractal_box: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} "
+             f"{fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.frac_dim)} "
+             f"{fmt(self.weight_x)} {fmt(self.weight_y)} {fmt(self.weight_z)} "
+             f"{self.n_materials} {self.soil} {self.box_id}")
+        if self.seed is not None:
+            s += f" {self.seed}"
+        return s
+
+
+@dataclass
 class CylinderCommand(GPRCommand):
     x1: float
     y1: float

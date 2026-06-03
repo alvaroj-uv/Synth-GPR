@@ -99,6 +99,14 @@ def parse_in_file(path: Path) -> SceneData:
                     x2=float(tokens[4]), y2=float(tokens[5]),
                     material=tokens[7],
                 ))
+            elif cmd == "#fractal_box:":
+                # #fractal_box: x1 y1 z1 x2 y2 z2 frac_dim wx wy wz n_mat soil box_id [seed]
+                # Rendered like a box of its soil material (heterogeneous fill).
+                scene.boxes.append(BoxGeom(
+                    x1=float(tokens[1]), y1=float(tokens[2]),
+                    x2=float(tokens[4]), y2=float(tokens[5]),
+                    material=tokens[12],
+                ))
             elif cmd == "#triangle:":
                 # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 material
                 scene.triangles.append(TriangleGeom(
@@ -143,6 +151,7 @@ STYLES: dict[str, MaterialStyle] = {
     "bal_rock_L3":       MaterialStyle("#6D4C41", "///", "Rock L3"),
     "bal_foul":          MaterialStyle("#4B3621", ".",  "Fouling (dense)"),
     "bal_foul_granular": MaterialStyle("#C8A055", ".",  "Fouling"),
+    "foul_soil":         MaterialStyle("#B5651D", "xx", "Fouling (heterogeneous)"),
     "concrete_sleeper":  MaterialStyle("#708090", "x",  "Sleeper"),
 }
 
@@ -156,7 +165,7 @@ for _i in range(1, 10):
 _LEGEND_ORDER = [
     "subgrade", "formation",
     "bal_rock", "bal_rock_L1", "bal_rock_L2", "bal_rock_L3",
-    "bal_foul", "bal_foul_granular",
+    "bal_foul", "bal_foul_granular", "foul_soil",
     *[f"bal_foul_g{i}" for i in range(1, 10)],
     "concrete_sleeper",
 ]

@@ -339,14 +339,28 @@ class AntennaWorker(Worker):
                 scene.work_order.log(f"[WARNING] {warning_msg}", self.name)
 
         # 3. Add Waveform
+        # The source identifier stays "ricker_src" for backward compatibility
+        # (the dipole references it by name), regardless of waveform type.
+        waveform_name = "ricker_src"
+        wf_type = getattr(scene.config, 'source_waveform', 'ricker').lower()
         if scene.config.add_waveform:
-            waveform_name = "ricker_src"
-            freq_normalized = 1.0  # gprMax normalized time
-            center_freq = scene.config.center_freq
-            
-            waveform = WaveformCommand("ricker", freq_normalized, center_freq, waveform_name)
+            freq_normalized = 1.0  # gprMax amplitude (normalized)
+            if wf_type == 'gaussian':
+                # GSSI-antenna-style excitation: Gaussian at the antenna resonant
+                # frequency. Matches the real antenna's source spectrum without
+                # adding any 3D antenna geometry (stays 2D / same sim cost).
+                exc_freq = getattr(scene.config, 'gaussian_excitation_freq', None)
+                if exc_freq is None:
+                    # 1.71 GHz is gprMax's optimised excitation for the 1.5 GHz
+                    # GSSI model; otherwise fall back to the configured centre freq.
+                    exc_freq = 1.71e9 if abs(scene.config.center_freq - 1.5e9) < 1e8 \
+                        else scene.config.center_freq
+                waveform = WaveformCommand("gaussian", freq_normalized, exc_freq, waveform_name)
+            else:
+                waveform = WaveformCommand("ricker", freq_normalized,
+                                           scene.config.center_freq, waveform_name)
             scene.add_source(waveform)
-        
+
         # 4. Add Source
         if scene.config.add_source:
             # Use Point3D to_tuple()

@@ -9,14 +9,15 @@ from .value_objects import (
     Point3D, Point2D, Length,
     PercentageVoidContamination
 )
-from .materials import Materials, Material
+# NOTE: material EM properties live in constants.MC (single source of truth).
+# The former domain.materials.Materials/Material table was dead, duplicated
+# those values with conflicting numbers, and has been removed.
 from .scene_parameters import SceneParameters
 from .coordinates import Anchor, LayerStack, CoordinateSystem, Layer, LayerBounds
 
 __all__ = [
     'Point3D', 'Point2D', 'Length',
     'PercentageVoidContamination',
-    'Materials', 'Material',
     'SceneParameters',
     'Anchor', 'LayerStack', 'CoordinateSystem',
     'Layer', 'LayerBounds'

@@ -66,13 +66,18 @@ class MaterialConstants:
     SLEEPER: str = "sleeper"
     RAIL: str = "rail"
     
-    # Defaults (Dielectric, Conductivity)
+    # ── SINGLE SOURCE OF TRUTH for base material EM properties ──────────────
+    # (relative_permittivity, conductivity_S_per_m). Every other place that
+    # needs a default material value MUST reference these — do NOT redefine the
+    # numbers elsewhere (config defaults point here; there is no separate
+    # material table). Changing a value here changes it everywhere.
     AIR_PROPS: tuple = (1.0, 0.0)
     SUBGRADE_PROPS: tuple = (10.0, 0.02)      # dry/moist
     SUBGRADE_EPS_SAT: float = 21.0            # saturated — Xie et al. (2010)
-    FORMATION_PROPS: tuple = (10.0, 0.03) # S&W
-    BALLAST_ROCK_PROPS: tuple = (5.5, 0.001) # Granite/Limestone
-    FOULING_BASE_PROPS: tuple = (5.0, 0.01) # Dry clay/fines
+    FORMATION_PROPS: tuple = (10.0, 0.03)     # S&W
+    BALLAST_ROCK_PROPS: tuple = (5.0, 0.001)  # clean ballast rock (live default)
+    FOULING_BASE_PROPS: tuple = (6.0, 0.002)  # base/min fouled material
+    FOULING_DENSE_PROPS: tuple = (8.0, 0.01)  # dense/max settled fouling
 
 @dataclass(frozen=True)
 class SignalConstants:

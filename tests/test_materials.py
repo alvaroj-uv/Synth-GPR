@@ -1,72 +1,62 @@
 """
-Unit tests for Material value objects.
+Tests for material EM properties.
+
+The former domain.materials.Materials/Material table was DEAD (only these tests
+referenced it) and asserted values that never reached the generator (ballast 4.0,
+subgrade 5.0, ...). It has been removed. Material EM properties now have a SINGLE
+SOURCE OF TRUTH: constants.MC. These tests guard that source and that the live
+config + MaterialWarehouse trace back to it.
 """
 
 import pytest
-from src.domain import Material, Materials
+
+from src.constants import MC
+from src.config import GeneratorConfig
+from src.warehouses import MaterialWarehouse
 
 
-class TestMaterial:
-    """Tests for Material value object."""
-    
-    def test_material_creation(self):
-        """Can create material with properties."""
-        mat = Material(
-            name="test_material",
-            permittivity=5.0,
-            conductivity=0.01
-        )
-        assert mat.name == "test_material"
-        assert mat.permittivity == 5.0
-        assert mat.conductivity == 0.01
-        assert mat.permeability == 1.0  # default
-    
-    def test_material_immutability(self):
-        """Material is immutable."""
-        mat = Materials.SUBGRADE
-        with pytest.raises(AttributeError):
-            mat.permittivity = 10.0  # type: ignore
-    
-    def test_material_string_representation(self):
-        """Material has readable string."""
-        mat = Material("subgrade", permittivity=5.0, conductivity=0.01)
-        assert "subgrade" in str(mat)
-        assert "5.0" in str(mat)
-        assert "0.010" in str(mat)
-    
-    def test_material_to_gprmax_command(self):
-        """Material converts to gprMax command."""
-        mat = Materials.BALLAST_ROCK
-        cmd = mat.to_gprmax_command()
-        
-        assert cmd.eps == 4.0
-        assert cmd.sigma == 0.001
-        assert cmd.identifier == "bal_rock"
+class TestMaterialConstantsSSOT:
+    """constants.MC is the single source of truth for base material EM props."""
+
+    def test_canonical_values_present(self):
+        # (permittivity, conductivity) tuples — the values that actually generate.
+        assert MC.AIR_PROPS == (1.0, 0.0)
+        assert MC.SUBGRADE_PROPS[0] == 10.0
+        assert MC.FORMATION_PROPS[0] == 10.0
+        assert MC.BALLAST_ROCK_PROPS == (5.0, 0.001)
+        assert MC.FOULING_BASE_PROPS == (6.0, 0.002)
+        assert MC.FOULING_DENSE_PROPS == (8.0, 0.01)
 
 
-class TestMaterials:
-    """Tests for Materials library."""
-    
-    def test_predefined_materials_exist(self):
-        """Standard materials are defined."""
-        assert Materials.FREE_SPACE.permittivity == 1.0
-        assert Materials.SUBGRADE.permittivity == 5.0
-        assert Materials.FORMATION.permittivity == 6.0
-        assert Materials.BALLAST_ROCK.permittivity == 4.0
-        assert Materials.FOULING_BASE.permittivity == 8.0
-    
-    def test_materials_get_by_name(self):
-        """Can retrieve material by name."""
-        mat = Materials.get("subgrade")
-        assert mat.name == "subgrade"
-        assert mat == Materials.SUBGRADE
-    
-    def test_materials_get_unknown_raises(self):
-        """Getting unknown material raises error."""
-        with pytest.raises(ValueError, match="Unknown material"):
-            Materials.get("nonexistent")
-    
-    def test_materials_are_immutable(self):
-        """Cannot modify standard materials."""
-        with pytest.raises(AttributeError):
-            Materials.SUBGRADE.permittivity = 10.0  # type: ignore
+class TestConfigTracesToMC:
+    """GeneratorConfig material defaults must come from MC (no separate numbers)."""
+
+    def test_ballast_default_from_mc(self):
+        cfg = GeneratorConfig()
+        assert cfg.bal_rock_eps == MC.BALLAST_ROCK_PROPS[0]
+        assert cfg.bal_rock_sigma == MC.BALLAST_ROCK_PROPS[1]
+
+    def test_fouling_defaults_from_mc(self):
+        cfg = GeneratorConfig()
+        assert cfg.bal_foul_eps_min == MC.FOULING_BASE_PROPS[0]
+        assert cfg.bal_foul_eps_max == MC.FOULING_DENSE_PROPS[0]
+        assert cfg.bal_foul_sigma_min == MC.FOULING_BASE_PROPS[1]
+        assert cfg.bal_foul_sigma_max == MC.FOULING_DENSE_PROPS[1]
+
+
+class TestWarehouseEmitsCanonical:
+    """The LIVE MaterialWarehouse emits the canonical MC values."""
+
+    def test_ballast_material_matches_mc(self):
+        wh = MaterialWarehouse(GeneratorConfig())
+        bal = wh.get_material(MC.BALLAST_ROCK)
+        assert bal.eps == MC.BALLAST_ROCK_PROPS[0]
+        assert bal.sigma == MC.BALLAST_ROCK_PROPS[1]
+        assert bal.identifier == MC.BALLAST_ROCK
+
+    def test_subgrade_formation_match_mc(self):
+        wh = MaterialWarehouse(GeneratorConfig())
+        sub = wh.get_material(MC.SUBGRADE)
+        form = wh.get_material(MC.FORMATION)
+        assert sub.eps == MC.SUBGRADE_PROPS[0]
+        assert form.eps == MC.FORMATION_PROPS[0]

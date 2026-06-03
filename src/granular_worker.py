@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 
 from .worker import Worker, SceneCheckpoint
-from .gpr_commands import CylinderCommand, BoxCommand
+from .gpr_commands import CylinderCommand, BoxCommand, SoilPeplinskiCommand, FractalBoxCommand
 from .constants import MC, PC
 from .physics import classify_pvc
 from .rock_model import PackingBounds, Rock
@@ -79,6 +79,13 @@ class GranularMatrixWorker(Worker):
             try:
                 source_path = Path(source_file)
                 loaded_rocks, source_meta = RockLoader.extract_rocks_from_file(source_path)
+
+                # RockLibrary fragments are packed in y in [0, height] (0-based),
+                # so shift them up to the scene's ballast bottom. Other source
+                # files are assumed already in scene coordinates.
+                if 'rock_library' in source_meta:
+                    for r in loaded_rocks:
+                        r.y += start_y
 
                 # Filter rocks to ballast layer
                 ballast_rocks = [r for r in loaded_rocks if start_y <= r.y <= top_y]
@@ -227,12 +234,19 @@ class GranularMatrixWorker(Worker):
             fouling_top_y = (y_low + y_high) / 2.0
             fouling_top_y = max(fouling_top_y, start_y + scene.config.dx)
 
-            scene.add_geometry(BoxCommand(
-                0, start_y, 0.0,
-                domain_x, fouling_top_y, domain_z,
-                MC.FOULING
-            ))
-            print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m (Calculated for exact PVC)")
+            if getattr(scene.config, 'fouling_heterogeneous', False):
+                self._add_heterogeneous_fouling(
+                    scene, pvc, 0.0, start_y, fouling_top_y, domain_x, domain_z
+                )
+                print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m "
+                      f"(heterogeneous fractal_box, exact PVC)")
+            else:
+                scene.add_geometry(BoxCommand(
+                    0, start_y, 0.0,
+                    domain_x, fouling_top_y, domain_z,
+                    MC.FOULING
+                ))
+                print(f"[{self.name}] Fouling settled up to Y = {fouling_top_y:.3f}m (Calculated for exact PVC)")
         
         # Stamp the structural rocks ON TOP of the background box (Painter's Algorithm)
         for r in assigned_rocks:
@@ -247,8 +261,57 @@ class GranularMatrixWorker(Worker):
             
         print(f"[{self.name}] Master Pack ({algo}): {len(all_circles)} total circles.")
         print(f"  -> Assigned Rocks   : {len(assigned_rocks)} (Density: {achieved_density:.3f})")
-        print(f"  -> Fouling Mode     : Solid Box (Target PVC: {pvc:.1f}%)")
+        foul_mode = ("Heterogeneous fractal_box"
+                     if getattr(scene.config, 'fouling_heterogeneous', False)
+                     else "Solid Box")
+        print(f"  -> Fouling Mode     : {foul_mode} (Target PVC: {pvc:.1f}%)")
         print(f"  -> Physical Top     : {physical_top:.3f}m")
+
+    def _add_heterogeneous_fouling(self, scene: SceneCheckpoint, pvc: float,
+                                   x_start: float, y_start: float, y_top: float,
+                                   domain_x: float, domain_z: float) -> None:
+        """Emit the fouling void-fill as a heterogeneous #soil_peplinski + #fractal_box.
+
+        Gap A (PINN4GPR-inspired): the fouling fines are modeled with the
+        Peplinski semi-empirical mixing model and distributed fractally so the
+        layer has internal volumetric dielectric texture (volumetric scattering),
+        unlike a single homogeneous #box. The rock skeleton is still stamped on
+        top afterwards, preserving rock/fouling scattering interfaces.
+
+        Volumetric water fraction rises with PVC (capillary retention of fines),
+        so the dielectric dispersion tracks fouling.
+        """
+        cfg = scene.config
+        wf = cfg.fouling_water_frac_base + cfg.fouling_water_frac_slope * (
+            min(max(pvc, 0.0), 100.0) / 100.0
+        )
+        spread = cfg.fouling_water_frac_spread
+        water_lo = max(0.001, wf - spread)
+        water_hi = max(water_lo + 1e-3, wf + spread)
+
+        soil_id = "foul_soil"
+        scene.add_geometry(SoilPeplinskiCommand(
+            cfg.fouling_peplinski_sand_frac,
+            cfg.fouling_peplinski_clay_frac,
+            cfg.fouling_peplinski_bulk_density,
+            cfg.fouling_peplinski_sand_part_density,
+            water_lo, water_hi, soil_id,
+        ))
+
+        seed = None
+        if scene.work_order is not None:
+            seed = scene.work_order.get_input('seed', None)
+        if seed is not None:
+            seed = int(seed) & 0x7FFFFFFF
+
+        scene.add_geometry(FractalBoxCommand(
+            x_start, y_start, 0.0,
+            domain_x, y_top, domain_z,
+            cfg.fouling_fractal_dimension,
+            cfg.fouling_n_materials,
+            soil_id, "foul_fb",
+            seed=seed,
+        ))
 
     def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
         """Render one rock as a faceted polygon extruded in z via gprMax #triangle commands.

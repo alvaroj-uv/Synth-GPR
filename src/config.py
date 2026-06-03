@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .constants import MC  # single source of truth for material EM properties
+
 
 
 # ------------------------------------------------------------
@@ -46,6 +48,15 @@ class GeneratorConfig:
     tx_rx_z: float = 0.0015  # centre of 3 mm domain_z
     add_waveform: bool = True
     add_source: bool = True
+    # Source excitation waveform. "ricker" (default, idealized) or "gaussian"
+    # (GSSI-antenna-style excitation — matches the real antenna's source spectrum
+    # better; gprMax's antenna_like_GSSI models excite with a Gaussian at the
+    # antenna resonant frequency rather than a zero-mean Ricker). Same sim cost.
+    source_waveform: str = "ricker"
+    # When source_waveform == "gaussian", excite at this frequency. If None, the
+    # antenna resonant freq is used (1.71 GHz for the 1.5 GHz GSSI model, else
+    # center_freq). Keeps the dipole 2D/fast — no antenna geometry added.
+    gaussian_excitation_freq: float = None
     add_geometry_view: bool = False
     add_sleepers: bool = False
     subgrade_wet: bool = False  # True: saturated subgrade εr=21 (Xie et al. 2010), False: εr=10
@@ -151,6 +162,26 @@ class GeneratorConfig:
     # Fouling PSD type: "standard" (coarser, 30% P200) or "a4" (Benedetto et al. 2016, 84.7% P200)
     fouling_psd_type: str = "standard"
 
+    # Heterogeneous fouling (Gap A — PINN4GPR-inspired) -----------------------
+    # When True, the fouling void-fill is emitted as a #soil_peplinski +
+    # #fractal_box (spatially heterogeneous dielectric) instead of a single
+    # homogeneous #box, while KEEPING the full packed-rock skeleton on top.
+    # This preserves rock/fouling scattering interfaces — distinct from the
+    # rocks-removed peplinski_slope.py experiment. Default off; flip on for
+    # A/B testing the freq-vs-FI slope before drawing conclusions.
+    fouling_heterogeneous: bool = False
+    fouling_fractal_dimension: float = 1.5   # fractal_box frac_dim
+    fouling_n_materials: int = 10            # number of soil water-fraction variants
+    # Peplinski mixing-model parameters for the fouling fines (clay-dominated).
+    fouling_peplinski_sand_frac: float = 0.3
+    fouling_peplinski_clay_frac: float = 0.7
+    fouling_peplinski_bulk_density: float = 1.9    # g/cm^3
+    fouling_peplinski_sand_part_density: float = 2.66  # g/cm^3
+    # Volumetric water fraction vs PVC (capillary retention): water = a + b*PVC/100
+    fouling_water_frac_base: float = 0.02
+    fouling_water_frac_slope: float = 0.20
+    fouling_water_frac_spread: float = 0.02  # +/- band for water_lo..water_hi
+
     # Rock gravity settlement (Benedetto et al. 2016 vertical compaction)
     rock_gravity_settle: bool = True
     
@@ -195,16 +226,17 @@ class GeneratorConfig:
     formation_thickness: float = 0.10
     subgrade_thickness: float = 0.20
 
-    # Material ranges
+    # Material ranges — defaults sourced from constants.MC (single source of
+    # truth). Override via .ini if needed; do NOT hardcode separate numbers.
     # Clean ballast
-    bal_rock_eps: float = 5.0 
-    bal_rock_sigma: float = 0.001
+    bal_rock_eps: float = MC.BALLAST_ROCK_PROPS[0]
+    bal_rock_sigma: float = MC.BALLAST_ROCK_PROPS[1]
 
     # Base fouled material properties (Legacy/Fallback)
-    bal_foul_eps_min: float = 6.0
-    bal_foul_eps_max: float = 8.0
-    bal_foul_sigma_min: float = 0.002
-    bal_foul_sigma_max: float = 0.01
+    bal_foul_eps_min: float = MC.FOULING_BASE_PROPS[0]
+    bal_foul_eps_max: float = MC.FOULING_DENSE_PROPS[0]
+    bal_foul_sigma_min: float = MC.FOULING_BASE_PROPS[1]
+    bal_foul_sigma_max: float = MC.FOULING_DENSE_PROPS[1]
 
     # Wet fouling amplification factors
     wet_eps_factor_min: float = 1.2
@@ -289,7 +321,17 @@ class GeneratorConfig:
         if self.dz > 0 and not (0.0 < self.tx_rx_z < self.dz):
             # frozen dataclass -> must bypass the immutability to correct
             object.__setattr__(self, "tx_rx_z", self.dz / 2.0)
-        
+
+        # SAME failure mode for ROCKS: in 2-D the single z-cell is [0, domain_z].
+        # If rock_z_end < dz, a #cylinder spans <1 cell in z, rounds to ZERO
+        # z-cells, and gprMax silently DROPS the rock from the grid (it never
+        # reaches the cell-centre where the field is evaluated). The result: a
+        # simulation with PHANTOM rocks (material changes have no effect). Force
+        # rocks to span the full z-cell whenever the extent is sub-cell.
+        if self.dz > 0 and (self.rock_z_end - self.rock_z_start) < self.dz:
+            object.__setattr__(self, "rock_z_start", 0.0)
+            object.__setattr__(self, "rock_z_end", self.domain_z)
+
         # PVC (Percentage Voids Contaminated) must be valid percentage
         if self.pvc_min < 0 or self.pvc_min > 100:
             raise ValueError(f"pvc_min must be between 0 and 100, got {self.pvc_min}")

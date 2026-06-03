@@ -51,6 +51,14 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
         signal = rx_group[component][:]
         rx_pos = rx_group.attrs.get("Position", [None, None, None])
 
+    # B-scan data is 2D (n_time, n_traces) when the source is stepped
+    # (#src_steps). Pick the middle trace as a representative A-scan so the
+    # 1D plotting/FFT below works. (PINN4GPR scenes are B-scans.)
+    ascan_idx = None
+    if signal.ndim == 2:
+        ascan_idx = signal.shape[1] // 2
+        signal = signal[:, ascan_idx]
+
     t_ns = np.arange(iterations) * dt * 1e9    # time axis in nanoseconds
 
     # --- Frequency spectrum ---
@@ -139,9 +147,17 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     for spine in ax3.spines.values():
         spine.set_edgecolor(grid_col)
 
+    # rx Position attr is absent in some .out files (e.g. PINN4GPR) -> guard.
+    if rx_pos[0] is not None and rx_pos[1] is not None:
+        rx_str = f"Rx @ ({rx_pos[0]:.3f}, {rx_pos[1]:.3f}) m"
+    else:
+        rx_str = "Rx position n/a"
+    if ascan_idx is not None:
+        rx_str += f"  [B-scan trace {ascan_idx}]"
+
     lines = [
         ("Scenario", out_path.stem),
-        ("Antenna", f"Rx @ ({rx_pos[0]:.3f}, {rx_pos[1]:.3f}) m"),
+        ("Antenna", rx_str),
         ("dt", f"{dt*1e12:.1f} ps  |  {iterations} steps"),
         ("─" * 28, ""),
         ("PVC input",   f"{pvc}%"),

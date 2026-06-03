@@ -30,6 +30,8 @@ MATERIAL_COLORS = {
     'bal_rock': '#5A5A5A',
     'bal_foul_granular': '#C8A055',
     'bal_foul': '#4B3621',
+    'fouling': '#C8A055',
+    'antenna': '#404040',
 }
 
 MATERIAL_LABELS = {
@@ -39,6 +41,8 @@ MATERIAL_LABELS = {
     'bal_rock': 'Ballast Rock',
     'bal_foul_granular': 'Fouling',
     'bal_foul': 'Dense Fouling',
+    'fouling': 'Fouling',
+    'antenna': 'Antenna (GSSI)',
 }
 
 
@@ -81,6 +85,23 @@ def parse_3d_in_file(path: Path):
                 if ':' in line:
                     key, val = line[2:].split(':', 1)
                     metadata[key.strip()] = val.strip()
+                continue
+
+            # Antenna inserted via #python block: the call line does NOT start
+            # with '#', so handle it before the '#'-only guard below. Draw a
+            # stand-in case box + tx marker from the call args.
+            if line.startswith("antenna_like_GSSI"):
+                import re as _re
+                args = _re.findall(r"-?\d+\.?\d*(?:e-?\d+)?", line.split("(", 1)[1])
+                if len(args) >= 3:
+                    cx, cy, zs = float(args[0]), float(args[1]), float(args[2])
+                    case = (0.300, 0.300, 0.178) if "400" in line else (0.170, 0.108, 0.045)
+                    boxes.append(BoxGeom(
+                        x1=cx - case[0] / 2, y1=cy - case[1] / 2, z1=zs,
+                        x2=cx + case[0] / 2, y2=cy + case[1] / 2, z2=zs + case[2],
+                        material="antenna"
+                    ))
+                    tx = {'x': cx, 'y': cy, 'z': zs}
                 continue
 
             if not line.startswith("#"):

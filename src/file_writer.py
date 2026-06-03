@@ -141,11 +141,13 @@ class GPRMaxFileWriter:
             lines.append(cmd.render())
             
         # 3. Domain (FIXED from config)
+        # #messages: n is emitted unconditionally so every generated .in
+        # suppresses gprMax's verbose per-step output, regardless of scene shape.
+        lines.append("#messages: n")
         if scene.domain_commands:
             lines.append(Header("Domain Configuration").render())
             for cmd in scene.domain_commands:
                 lines.append(cmd.render())
-            lines.append("#messages: n")
 
         # 4. Sources (Antenna + Waveform) - Explicit Sorting
         if scene.source_commands:
