@@ -55,6 +55,55 @@ def read_gprmax_hdf5(filename, fields=['E', 'H']):
     df = pd.DataFrame(data)
     return df
 
+def read_ascan(filename, component='Ez'):
+    """
+    Read a single A-scan trace plus timing/position metadata from a gprMax .out file.
+
+    Shared low-level reader for the A-scan visualizers. For stepped-source
+    (B-scan) outputs the middle trace is returned and ``ascan_idx`` is set to
+    that trace index; otherwise ``ascan_idx`` is None.
+
+    Args:
+        filename: Path to the gprMax HDF5 .out file.
+        component: Requested field component (e.g. 'Ez'). Falls back to 'Ez'
+            then the first available component if the request is absent.
+
+    Returns:
+        dict with keys: signal, dt, iterations, t_ns (ns), component (resolved),
+        available (list), rx_pos, ascan_idx.
+    """
+    with h5py.File(filename, 'r') as f:
+        dt = float(f.attrs['dt'])
+        iterations = int(f.attrs['Iterations'])
+        rx_group = f['rxs/rx1']
+        available = list(rx_group.keys())
+
+        if component not in available:
+            component = 'Ez' if 'Ez' in available else available[0]
+
+        signal = rx_group[component][:]
+        rx_pos = rx_group.attrs.get('Position', [None, None, None])
+
+    # B-scan data is 2D (n_time, n_traces) when the source is stepped; pick the
+    # middle trace as a representative A-scan for 1D plotting/FFT.
+    ascan_idx = None
+    if signal.ndim == 2:
+        ascan_idx = signal.shape[1] // 2
+        signal = signal[:, ascan_idx]
+
+    t_ns = np.arange(iterations) * dt * 1e9
+
+    return {
+        'signal': signal,
+        'dt': dt,
+        'iterations': iterations,
+        't_ns': t_ns,
+        'component': component,
+        'available': available,
+        'rx_pos': rx_pos,
+        'ascan_idx': ascan_idx,
+    }
+
 def load_batch_dataset(input_dir, field='Ez'):
     """
     Loads all .out files in input_dir and extracts signals.

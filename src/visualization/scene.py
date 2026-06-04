@@ -282,8 +282,8 @@ def render_geometry_figure(
     """Create a standalone figure for a single geometry panel.
 
     Returns (fig, ax) ready for saving or further annotation.
-    Both render_in_file.py and the blueprint use this when they need
-    a self-contained geometry image (not a subplot inside a dashboard).
+    unified_visualizer.py uses this when it needs a self-contained
+    geometry image (not a subplot inside a dashboard).
     """
     aspect = scene.domain_y / max(scene.domain_x, 1e-6)
     fig_h  = min(base_width * aspect * 0.75, max_height)

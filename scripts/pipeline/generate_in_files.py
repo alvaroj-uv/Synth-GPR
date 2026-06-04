@@ -11,7 +11,7 @@ Supports two modes:
 1. Batch: Generate N samples per fouling class
 2. Single: Generate one .in file with optional PNG visualization
 
-Rendering is delegated to scripts/visualization/render_in_file.py.
+Rendering is delegated to scripts/visualization/unified_visualizer.py.
 All .in files contain embedded CONFIG_* and SOURCE_* headers for replication.
 
 Usage Examples:
@@ -30,8 +30,8 @@ Usage Examples:
     python scripts/pipeline/generate_in_files.py out.in --mode single --freq 400e6 --pvc 50 \\
         --angular --sides 3 --packing-algo shang_chu --render
 
-    # Render existing .in file as PNG (dedicated renderer)
-    python scripts/visualization/render_in_file.py output.in -o output.png --dpi 200
+    # Render existing .in file as PNG (unified visualizer, auto-detects 2D/3D)
+    python scripts/visualization/unified_visualizer.py output.in --geometry -o output.png --dpi 200
 """
 
 import sys
@@ -258,7 +258,7 @@ def generate_single(
 
     print(f"[OK] Wrote .in file: {written_path}")
 
-    # Optionally render PNG using dedicated render_in_file.py script
+    # Optionally render PNG using the unified visualizer (auto-detects 2D/3D)
     if render:
         try:
             import subprocess
@@ -266,9 +266,10 @@ def generate_single(
             result = subprocess.run(
                 [
                     sys.executable,
-                    "scripts/visualization/render_in_file.py",
+                    "scripts/visualization/unified_visualizer.py",
                     str(written_path),
                     "-o", str(png_path),
+                    "--geometry",
                     "--no-show",
                     "--dpi", "150",
                 ],

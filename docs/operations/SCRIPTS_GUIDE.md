@@ -99,15 +99,14 @@ python scripts/tools/verify_production_imports.py
 
 ---
 
-### `scripts/visualization/` (9 files)
+### `scripts/visualization/` (8 files)
 Plotting, rendering, and visual analysis scripts.
 
 **Key visualizers:**
-- `unified_visualizer.py` — Main visualization dashboard
+- `unified_visualizer.py` — Main visualizer (geometry, A-scan, dashboard; auto-detects 2D/3D)
 - `plot_fouling_classes.py` — Fouling classification plots
 - `visualize_ascan.py` — A-scan signal visualization
-- `render_in_file.py` — Render GPR input files
-- `render_3d_in_file.py` — 3D domain visualization
+- `render_3d_in_file.py` — 3D domain rendering engine (used by `unified_visualizer.py`)
 
 **Usage:**
 ```bash

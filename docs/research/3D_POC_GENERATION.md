@@ -7,7 +7,7 @@ for the waveform-only fouling classifier.
 
 **Scripts:**
 - Generation: [scripts/main/generate_3d_inputs.py](../scripts/main/generate_3d_inputs.py)
-- Visualization: [scripts/visualization/render_in_file.py](../scripts/visualization/render_in_file.py) (auto-detects 2D vs 3D)
+- Visualization: [scripts/visualization/unified_visualizer.py](../scripts/visualization/unified_visualizer.py) (auto-detects 2D vs 3D)
 - 3D render core: [scripts/visualization/render_3d_in_file.py](../scripts/visualization/render_3d_in_file.py)
 
 ---
@@ -113,8 +113,8 @@ same as objects/cylinders) to support `#sphere` in the command framework.
 
 ## 5. Visualization — Three Orthogonal Views with True Axis Alignment
 
-`render_in_file.py` auto-detects 3D files (presence of `#sphere`) and dispatches to
-the 3D renderer. Three views: TOP (X-Z), FRONT (X-Y), SIDE (Z-Y).
+`unified_visualizer.py` auto-detects 3D files (presence of `#sphere`) and dispatches to
+the 3D renderer (`render_3d_in_file.py`). Three views: TOP (X-Z), FRONT (X-Y), SIDE (Z-Y).
 
 ### Alignment requirement
 - TOP and FRONT must share the **same on-screen X-axis width** (both span Dx).

@@ -10,12 +10,15 @@ import argparse
 import re
 from pathlib import Path
 
-import h5py
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.data_loader import read_ascan
+from src.signal_processing import compute_padded_spectrum
 
 
 def read_header_meta(in_path: Path) -> dict:
@@ -37,35 +40,22 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     out_path = out_path.resolve()
     in_path  = out_path.with_suffix(".in")
 
-    # --- Read HDF5 ---
-    with h5py.File(out_path, "r") as f:
-        dt         = float(f.attrs["dt"])
-        iterations = int(f.attrs["Iterations"])
-        rx_group   = f["rxs/rx1"]
-        available  = list(rx_group.keys())
+    # --- Read A-scan trace (shared reader; handles B-scan trace selection) ---
+    data = read_ascan(out_path, component)
+    if data["component"] != component:
+        print(f"[!] Component '{component}' not found. Available: {data['available']}")
+    component  = data["component"]
+    signal     = data["signal"]
+    dt         = data["dt"]
+    iterations = data["iterations"]
+    rx_pos     = data["rx_pos"]
+    ascan_idx  = data["ascan_idx"]
+    t_ns       = data["t_ns"]    # time axis in nanoseconds
 
-        if component not in available:
-            print(f"[!] Component '{component}' not found. Available: {available}")
-            component = "Ez" if "Ez" in available else available[0]
-
-        signal = rx_group[component][:]
-        rx_pos = rx_group.attrs.get("Position", [None, None, None])
-
-    # B-scan data is 2D (n_time, n_traces) when the source is stepped
-    # (#src_steps). Pick the middle trace as a representative A-scan so the
-    # 1D plotting/FFT below works. (PINN4GPR scenes are B-scans.)
-    ascan_idx = None
-    if signal.ndim == 2:
-        ascan_idx = signal.shape[1] // 2
-        signal = signal[:, ascan_idx]
-
-    t_ns = np.arange(iterations) * dt * 1e9    # time axis in nanoseconds
-
-    # --- Frequency spectrum ---
-    n_fft = 2 ** int(np.ceil(np.log2(len(signal))) + 2)
-    spectrum = np.abs(np.fft.rfft(signal, n=n_fft))
-    freq_ghz = np.fft.rfftfreq(n_fft, d=dt) / 1e9
-    peak_ghz = freq_ghz[np.argmax(spectrum)]
+    # --- Frequency spectrum (shared padded-rFFT + peak) ---
+    freqs, spectrum, peak_hz = compute_padded_spectrum(signal, dt)
+    freq_ghz = freqs / 1e9
+    peak_ghz = peak_hz / 1e9
 
     # --- Metadata from .in ---
     meta = read_header_meta(in_path)

@@ -224,10 +224,34 @@ def compute_spectrum(signal, dt):
     # Compute FFT
     fft_vals = np.abs(np.fft.fft(signal))
     freqs = np.fft.fftfreq(len(signal), d=dt)
-    
+
     # Keep only positive frequencies
     pos_mask = freqs >= 0
     return freqs[pos_mask], fft_vals[pos_mask]
+
+def compute_padded_spectrum(signal, dt, pad_factor=2):
+    """
+    Magnitude spectrum via a zero-padded real FFT, plus the peak frequency.
+
+    Zero-pads the signal to ``2 ** ceil(log2(N) + pad_factor)`` samples before
+    the rFFT, giving finer frequency resolution for clean peak picking. This is
+    the spectrum used by the A-scan visualizers.
+
+    Args:
+        signal (np.array): Input 1-D signal.
+        dt (float): Time step in seconds.
+        pad_factor (int): Extra power-of-two padding beyond the next power of two.
+
+    Returns:
+        freqs (np.array): Positive frequency axis (Hz).
+        spectrum (np.array): Magnitude spectrum.
+        peak (float): Frequency of the spectral peak (Hz).
+    """
+    n_fft = 2 ** int(np.ceil(np.log2(len(signal))) + pad_factor)
+    spectrum = np.abs(np.fft.rfft(signal, n=n_fft))
+    freqs = np.fft.rfftfreq(n_fft, d=dt)
+    peak = freqs[np.argmax(spectrum)]
+    return freqs, spectrum, peak
 
 def calculate_instantaneous_attributes(signal, dt, use_mirroring=False):
     """

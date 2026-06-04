@@ -1,190 +1,101 @@
 #!/usr/bin/env python3
 """
-Unit tests for visualize_gprmax_blueprint.py
-Tests the refactored helper functions and rendering logic.
+Regression tests for the consolidated visualizer (`unified_visualizer.py`).
+
+The old `visualize_gprmax_blueprint.py` monolith was refactored into the
+`src/visualization/` package plus the `unified_visualizer.py` CLI, and the
+2D/3D dispatch from the former `render_in_file.py` was merged into it. These
+tests guard that 2D and 3D `.in` files both render a geometry PNG through the
+single entry point.
 """
 
-import pytest
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
 import sys
+from pathlib import Path
 
-# Add parent directory to path
+import pytest
+import matplotlib
+
+matplotlib.use("Agg")
+
+# Project root on path so `src.*` imports inside the visualizer resolve.
 sys.path.insert(0, str(Path(__file__).parent.parent))
+# Visualizer dir on path so it can import its sibling `render_3d_in_file`.
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "visualization"))
 
-from scripts.tools.visualization import visualize_gprmax_blueprint as vgb
-
-
-class TestConstants:
-    """Test that constants are properly defined"""
-    
-    def test_signal_threshold_exists(self):
-        """Verify signal amplitude threshold constant exists"""
-        assert hasattr(vgb, 'SIGNAL_AMPLITUDE_THRESHOLD')
-        assert vgb.SIGNAL_AMPLITUDE_THRESHOLD == 1e-9
-    
-    def test_figure_sizes_exist(self):
-        """Verify figure size constants exist"""
-        assert hasattr(vgb, 'BLUEPRINT_FIGURE_SIZE')
-        assert hasattr(vgb, 'SIGNAL_FIGURE_SIZE')
-        assert vgb.BLUEPRINT_FIGURE_SIZE == (12, 8)
-        assert vgb.SIGNAL_FIGURE_SIZE == (16, 8)
-    
-    def test_visual_constants_exist(self):
-        """Verify visual styling constants exist"""
-        assert hasattr(vgb, 'DEFAULT_LINE_WIDTH')
-        assert hasattr(vgb, 'EDGE_COLOR')
-        assert vgb.DEFAULT_LINE_WIDTH == 0.3
-        assert vgb.EDGE_COLOR == '#404040'
+from scripts.visualization import unified_visualizer as uv
 
 
-class TestMaterialColors:
-    """Test material color generation"""
-    
-    def test_generate_material_colors(self):
-        """Test material colors dictionary generation"""
-        colors = vgb.generate_material_colors()
-        
-        # Check base materials exist
-        assert 'free_space' in colors
-        assert 'bal_rock' in colors
-        assert 'subgrade' in colors
-        assert 'formation' in colors
-        
-        # Check gradient materials generated
-        for i in range(1, 10):
-            assert f'bal_foul_g{i}' in colors
-    
-    def test_material_colors_are_valid(self):
-        """Test that all color values are valid"""
-        colors = vgb.generate_material_colors()
-        
-        for material, color in colors.items():
-            # Color should be string (hex) or tuple (RGBA)
-            assert isinstance(color, (str, tuple, np.ndarray))
-
-
-class TestHelperFunctions:
-    """Test extracted helper functions"""
-    
-    def test_filter_cylinders(self):
-        """Test cylinder filtering from objects list"""
-        objects = [
-            {'type': 'box', 'material': 'test'},
-            {'type': 'cylinder', 'x': 0.1, 'y': 0.2, 'radius': 0.05},
-            {'type': 'cylinder', 'x': 0.3, 'y': 0.4, 'radius': 0.03},
-            {'type': 'box', 'material': 'test2'},
-        ]
-        
-        cylinders = vgb.filter_cylinders(objects)
-        assert len(cylinders) == 2
-        assert all(obj['type'] == 'cylinder' for obj in cylinders)
-    
-    def test_filter_boxes(self):
-        """Test box filtering from objects list"""
-        objects = [
-            {'type': 'box', 'material': 'test', 'y1': 0, 'y2': 1},
-            {'type': 'cylinder', 'x': 0.1, 'y': 0.2},
-            {'type': 'box', 'material': 'test2', 'y1': 1, 'y2': 2},
-        ]
-        
-        boxes = vgb.filter_boxes(objects)
-        assert len(boxes) == 2
-        assert all(obj['type'] == 'box' for obj in boxes)
-    
-    def test_filter_boxes_exclude_material(self):
-        """Test box filtering with material exclusion"""
-        objects = [
-            {'type': 'box', 'material': 'free_space', 'y1': 0, 'y2': 1},
-            {'type': 'box', 'material': 'subgrade', 'y1': 0, 'y2': 0.3},
-            {'type': 'box', 'material': 'free_space', 'y1': 1, 'y2': 2},
-        ]
-        
-        boxes = vgb.filter_boxes(objects, exclude_material='free_space')
-        assert len(boxes) == 1
-        assert boxes[0]['material'] == 'subgrade'
-
-
-class TestColorMapping:
-    """Test color mapping functions"""
-    
-    def test_get_material_color_alpha_free_space(self):
-        """Test free_space returns special color"""
-        materials = {'free_space': {'eps': 1.0, 'sigma': 0}}
-        color, alpha = vgb.get_material_color_alpha(
-            'free_space', materials, min_eps=1, max_eps=10, cmap=plt.cm.YlOrBr
-        )
-        
-        assert color == '#E8F4F8'
-        assert alpha == 0.1
-    
-    def test_get_material_color_alpha_normal(self):
-        """Test normal material returns colormap value"""
-        materials = {'subgrade': {'eps': 8.0, 'sigma': 0.02}}
-        color, alpha = vgb.get_material_color_alpha(
-            'subgrade', materials, min_eps=1, max_eps=10, cmap=plt.cm.YlOrBr
-        )
-        
-        # Should return a color tuple/string and alpha of 1.0
-        assert color is not None
-        assert alpha == 1.0
-    
-    def test_get_material_color_alpha_missing_material(self):
-        """Test missing material uses default eps value"""
-        materials = {}
-        color, alpha = vgb.get_material_color_alpha(
-            'unknown', materials, min_eps=1, max_eps=10, cmap=plt.cm.YlOrBr
-        )
-        
-        # Should still return valid values
-        assert color is not None
-        assert alpha == 1.0
-
-
-class TestParsingIntegration:
-    """Integration tests for parsing .in files"""
-    
-    @pytest.fixture
-    def sample_in_file(self, tmp_path):
-        """Create a minimal sample .in file for testing"""
-        content = """#title: Test Scenario
+SAMPLE_2D = """#title: Test 2D Scenario
 #domain: 0.5 1.5 0.005
 #material: 8 0.02 subgrade
 #material: 10 0.03 formation
 #box: 0.0 0.0 0.0 0.5 0.3 0.005 subgrade
 #box: 0.0 0.3 0.0 0.5 0.4 0.005 formation
-#waveform: ricker 1 4e+08
-#hertzian_dipole: z 0.3 1.434 0.0025 4e+08
+#waveform: ricker 1 4e+08 my_wave
+#hertzian_dipole: z 0.3 1.434 0.0025 my_wave
 #rx: 0.35 1.434 0.0025
 ## FI (%): 15.5
 ## FI_class: Clean
+## Lab_Class: Clean
 """
-        test_file = tmp_path / "test.in"
-        test_file.write_text(content)
-        return test_file
-    
-    def test_parse_sample_file(self, sample_in_file):
-        """Test parsing a complete sample file"""
-        data = vgb.parse_gprmax_input(str(sample_in_file))
-        
-        assert data['title'] == 'Test Scenario'
-        assert data['domain']['x'] == 0.5
-        assert data['domain']['y'] == 1.5
-        assert data['domain']['z'] == 0.005
-        
-        assert 'subgrade' in data['materials']
-        assert 'formation' in data['materials']
-        
-        assert len(data['objects']) == 2
-        assert data['objects'][0]['type'] == 'box'
-        
-        assert data['source'] is not None
-        assert data['receiver'] is not None
-        
-        assert data['metadata']['FI'] == '15.5'
-        assert data['metadata']['FI_class'] == 'Clean'
+
+SAMPLE_3D = """#title: Test 3D Scenario
+#domain: 2.0 1.15 0.4
+#box: 0.0 0.0 0.0 2.0 0.3 0.4 subgrade
+#box: 0.0 0.3 0.0 2.0 0.5 0.4 formation
+#sphere: 1.0 0.8 0.2 0.05 bal_rock
+#sphere: 1.2 0.7 0.2 0.04 bal_rock
+#hertzian_dipole: z 1.0 1.1 0.2 my_wave
+#rx: 1.05 1.1 0.2
+## Lab_Class: Fouled
+"""
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+@pytest.fixture
+def sample_2d(tmp_path):
+    f = tmp_path / "scene_2d.in"
+    f.write_text(SAMPLE_2D)
+    return f
+
+
+@pytest.fixture
+def sample_3d(tmp_path):
+    f = tmp_path / "scene_3d.in"
+    f.write_text(SAMPLE_3D)
+    return f
+
+
+class TestDetect3D:
+    def test_2d_not_detected_as_3d(self, sample_2d):
+        assert uv.detect_3d_file(sample_2d) is False
+
+    def test_3d_detected(self, sample_3d):
+        assert uv.detect_3d_file(sample_3d) is True
+
+
+class TestGeometryRendering:
+    def test_render_2d_geometry(self, sample_2d, tmp_path):
+        out_png = tmp_path / "out_2d.png"
+        uv.visualize_geometry_only(sample_2d, out_png, dpi=80)
+        assert out_png.exists() and out_png.stat().st_size > 0
+
+    def test_render_3d_geometry_via_dispatch(self, sample_3d, tmp_path):
+        out_png = tmp_path / "out_3d.png"
+        # Goes through the merged 3D dispatch path.
+        uv.visualize_geometry_only(sample_3d, out_png, dpi=80)
+        assert out_png.exists() and out_png.stat().st_size > 0
+
+
+class Test3DParser:
+    def test_parser_reads_spheres_and_domain(self, sample_3d):
+        from render_3d_in_file import parse_3d_in_file
+
+        data = parse_3d_in_file(sample_3d)
+        assert len(data["spheres"]) == 2
+        assert data["domain"]["x"] == pytest.approx(2.0)
+        assert data["domain"]["z"] == pytest.approx(0.4)
+        assert data["metadata"]["Lab_Class"] == "Fouled"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

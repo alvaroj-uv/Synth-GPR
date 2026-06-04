@@ -31,9 +31,9 @@ import matplotlib.gridspec as gridspec
 from src.visualization.scene import parse_in_file, render_geometry_figure, draw_geometry
 from src.visualization.dashboard import render_dashboard
 from src.visualization.panels import SignalPanelConfig
-from src.data_loader import read_gprmax_hdf5
+from src.data_loader import read_gprmax_hdf5, read_ascan
 from src.feature_extraction import extract_features
-from src.signal_processing import preprocess_signal
+from src.signal_processing import preprocess_signal, compute_padded_spectrum
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,8 +51,34 @@ def find_paired_file(path: Path) -> Path | None:
     return paired if paired.exists() else None
 
 
+def detect_3d_file(in_path: Path) -> bool:
+    """Detect if a .in file is 3D (contains #sphere commands)."""
+    with open(in_path, "r", encoding="utf-8", errors="replace") as f:
+        return any("#sphere:" in line for line in f)
+
+
+def render_3d_geometry(in_path: Path, out_path: Path, dpi: int = 150) -> None:
+    """Render a 3D .in file using the specialized 3D renderer."""
+    # Ensure this script's directory is importable whether run as a script or
+    # imported as a module (e.g. from the test suite).
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from render_3d_in_file import parse_3d_in_file, render_3d_views
+
+    logger.info(f"Parsing 3D scene {in_path.name}...")
+    scene_data = parse_3d_in_file(in_path)
+    title = f"{in_path.stem} - {scene_data['metadata'].get('Lab_Class', '?')} class"
+    fig = render_3d_views(scene_data, title=title, dpi=dpi)
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    logger.info(f"✓ Saved: {out_path}")
+    plt.close(fig)
+
+
 def visualize_geometry_only(in_path: Path, out_path: Path, dpi: int = 150) -> None:
-    """Render geometry from .in file."""
+    """Render geometry from .in file (auto-detects 2D vs 3D)."""
+    if detect_3d_file(in_path):
+        render_3d_geometry(in_path, out_path, dpi)
+        return
+
     logger.info(f"Parsing {in_path.name}...")
     scene = parse_in_file(in_path)
 
@@ -65,34 +91,25 @@ def visualize_geometry_only(in_path: Path, out_path: Path, dpi: int = 150) -> No
 
 def visualize_ascan_only(out_path: Path, out_png: Path, component: str = "Ez", dpi: int = 150) -> None:
     """Visualize A-scan and frequency spectrum from .out file."""
-    import h5py
     from scipy.signal import hilbert
 
     logger.info(f"Reading {out_path.name}...")
-    with h5py.File(out_path, "r") as f:
-        dt = float(f.attrs["dt"])
-        iterations = int(f.attrs["Iterations"])
-        rx_group = f["rxs/rx1"]
+    data = read_ascan(out_path, component)
+    if data["component"] != component:
+        logger.warning(f"Component '{component}' not found. Available: {data['available']}")
+    component = data["component"]
+    signal    = data["signal"]
+    dt        = data["dt"]
+    rx_pos    = data["rx_pos"]
+    t_ns      = data["t_ns"]
 
-        available = list(rx_group.keys())
-        if component not in available:
-            logger.warning(f"Component '{component}' not found. Available: {available}")
-            component = "Ez" if "Ez" in available else available[0]
-
-        signal = rx_group[component][:]
-        rx_pos = rx_group.attrs.get("Position", [None, None, None])
-
-    t_ns = np.arange(iterations) * dt * 1e9
-
-    # Frequency spectrum
-    n_fft = 2 ** int(np.ceil(np.log2(len(signal))) + 2)
-    spectrum = np.abs(np.fft.rfft(signal, n=n_fft))
-    freq_ghz = np.fft.rfftfreq(n_fft, d=dt) / 1e9
-    peak_ghz = freq_ghz[np.argmax(spectrum)]
+    # Frequency spectrum (shared padded-rFFT + peak)
+    freqs, spectrum, peak_hz = compute_padded_spectrum(signal, dt)
+    freq_ghz = freqs / 1e9
+    peak_ghz = peak_hz / 1e9
 
     # Envelope
-    analytic = hilbert(signal)
-    envelope = np.abs(analytic)
+    envelope = np.abs(hilbert(signal))
 
     # Plot
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
@@ -250,11 +267,16 @@ Examples:
     logger.info(f"Input file: {in_file.name}")
     logger.info(f"Output dir: {out_path.parent}")
 
+    # 3D files only support geometry rendering (no dashboard/signal panels).
+    is_3d = in_file.suffix == ".in" and in_file.exists() and detect_3d_file(in_file)
+    if is_3d and (args.all or args.dashboard):
+        logger.warning("3D files do not support dashboard mode — rendering geometry only")
+
     # Execute visualizations
-    if args.all:
+    if args.all and not is_3d:
         logger.info("Mode: Generate ALL visualizations")
         visualize_all_combined(in_file, out_path, out_path.with_stem(f"{out_path.stem}_ascan"), sig_cfg, args.dpi)
-    elif args.dashboard:
+    elif args.dashboard and not is_3d:
         logger.info("Mode: Full Dashboard")
         visualize_full_dashboard(in_file, out_path, sig_cfg, args.dpi)
     elif args.ascan:
@@ -263,8 +285,8 @@ Examples:
             logger.error("No .out file found")
             return 1
         visualize_ascan_only(out_file, out_path, args.component, args.dpi)
-    elif args.geometry:
-        logger.info("Mode: Geometry only")
+    elif args.geometry or is_3d:
+        logger.info("Mode: Geometry only" + (" (3D)" if is_3d else ""))
         visualize_geometry_only(in_file, out_path, args.dpi)
     else:
         # Auto-detect: if .out exists, show dashboard; otherwise geometry
