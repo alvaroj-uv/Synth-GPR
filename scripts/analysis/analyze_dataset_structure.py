@@ -2,6 +2,12 @@
 """
 Analyze .in and .out files to understand their structure before training RF.
 Extract metadata from .in files and verify .out file structure.
+
+I/O note: this is a low-level HDF5 *introspection* diagnostic — it walks raw
+groups/datasets to report file structure, which is its whole purpose. It is the
+sanctioned exception to the "no raw h5py in scripts" rule (see
+docs/architecture/IO_CONSOLIDATION_PLAN.md); signal reads go through
+src.data_loader.
 """
 
 import sys

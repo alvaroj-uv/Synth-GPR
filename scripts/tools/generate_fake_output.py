@@ -10,8 +10,10 @@ This script creates a corresponding .out file with synthesized signals (Ricker w
 import sys
 import argparse
 import numpy as np
-import h5py
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.data_loader import write_rx_out
 
 def ricker(f, length, dt, peak_time):
     """Generate a Ricker wavelet."""
@@ -44,37 +46,21 @@ def generate_fake_output(input_file: str, dt=1e-10, iterations=1000, freq=400e6)
     # Combined Signal + Noise
     noise = np.random.normal(0, 0.02, iterations)
     total_signal = sig_direct + sig_ref1 + sig_ref2 + noise
-    
-    # Create HDF5
-    with h5py.File(out_path, 'w') as f:
-        # Root Attributes
-        f.attrs['dt'] = dt
-        f.attrs['Iterations'] = iterations
-        f.attrs['Title'] = "Fake Simulation Data"
-        f.attrs['gprMax'] = "3.x (Fake)"
-        
-        # Structure: rxs/rx1/Ez
-        grp_rxs = f.create_group('rxs')
-        grp_rx1 = grp_rxs.create_group('rx1')
-        
-        # Attributes for Rx
-        grp_rx1.attrs['Name'] = 'rx1'
-        grp_rx1.attrs['Position'] = np.array([0.1, 0.1, 0.1])
-        
-        # Ez Field (Vertical Electric)
-        dset_ez = grp_rx1.create_dataset('Ez', data=total_signal)
-        dset_ez.attrs['Unit'] = 'V/m'
-        
-        # Hx Field (Transverse Magnetic) - slightly different phase/amp
-        total_signal_h = (sig_direct * 0.8) + (sig_ref1 * -0.3) + (sig_ref2 * 0.1) + noise
-        dset_hx = grp_rx1.create_dataset('Hx', data=total_signal_h/377.0) # Approx impedance scaling
-        dset_hx.attrs['Unit'] = 'A/m'
-        
-        # Hy/Ex/Ey/Hz (Zeros or Noise)
-        grp_rx1.create_dataset('Hy', data=noise*0.1)
-        grp_rx1.create_dataset('Ex', data=noise*0.1)
-        grp_rx1.create_dataset('Ey', data=noise*0.1)
-        grp_rx1.create_dataset('Hz', data=noise*0.1)
+
+    # Hx (Transverse Magnetic) - slightly different phase/amp, impedance-scaled
+    total_signal_h = (sig_direct * 0.8) + (sig_ref1 * -0.3) + (sig_ref2 * 0.1) + noise
+
+    # Structure: rxs/rx1/{Ez,Hx,...} written via the canonical .out writer.
+    traces = {
+        'Ez': total_signal,
+        'Hx': total_signal_h / 377.0,   # approx impedance scaling
+        'Hy': noise * 0.1,
+        'Ex': noise * 0.1,
+        'Ey': noise * 0.1,
+        'Hz': noise * 0.1,
+    }
+    write_rx_out(out_path, traces, dt=dt, position=(0.1, 0.1, 0.1),
+                 title="Fake Simulation Data", gprmax="3.x (Fake)")
 
     print("Done.")
 

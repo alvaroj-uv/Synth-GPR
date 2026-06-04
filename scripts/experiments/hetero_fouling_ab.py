@@ -194,17 +194,15 @@ def _metric(ez, dt):
 
 
 def analyze():
-    import h5py
     from scipy.stats import linregress
 
     man = pd.read_csv(OUT_DIR / "manifest.csv")
 
+    from src.data_loader import read_ascan
+
     def load(p):
-        f = h5py.File(p, "r")
-        dt = f.attrs["dt"]
-        ez = np.array(f["rxs/rx1/Ez"]).astype(float)
-        f.close()
-        return ez, dt
+        d = read_ascan(p)
+        return d["signal"].astype(float), d["dt"]
 
     rows = []
     for _, r in man.iterrows():

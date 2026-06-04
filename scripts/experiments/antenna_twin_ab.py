@@ -224,23 +224,21 @@ def _freq_feats(ez, dt):
 
 
 def analyze():
-    import h5py
+    from src.data_loader import read_rx_traces
     man = pd.read_csv(OUT_DIR / "manifest.csv")
 
     def load(p):
-        f = h5py.File(p, "r"); dt = f.attrs["dt"]
         # The two arms radiate on different components: the z-dipole -> Ez, the
         # GSSI bowties (y-aligned) -> Ey. Pick the DOMINANT component by energy
         # so each arm's principal trace is analysed (not a fixed preference).
-        rxg = f["rxs"]; rk = list(rxg.keys())[0]
+        traces, dt = read_rx_traces(p)
         best, best_amp = None, -1.0
         for c in ("Ex", "Ey", "Ez"):
-            if c in rxg[rk]:
-                arr = np.array(rxg[rk][c]).astype(float)
+            if c in traces:
+                arr = traces[c].astype(float)
                 amp = np.abs(arr).max()
                 if amp > best_amp:
-                    best, best_amp, comp = arr, amp, c
-        f.close()
+                    best, best_amp = arr, amp
         return best, dt
 
     rows = []

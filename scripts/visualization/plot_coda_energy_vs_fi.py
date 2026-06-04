@@ -16,7 +16,6 @@ import argparse
 import re
 from pathlib import Path
 
-import h5py
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -24,6 +23,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.signal_processing import calculate_instantaneous_attributes
+from src.data_loader import read_ascan
 
 CODA_NS = (6.0, 16.0)  # must match plot_fouling_classes.py
 CLASS_COLORS = {
@@ -45,14 +45,8 @@ def read_header_meta(in_path: Path) -> dict:
 
 
 def coda_energy(out_path: Path, component="Ez"):
-    with h5py.File(out_path, "r") as f:
-        dt = float(f.attrs["dt"])
-        iterations = int(f.attrs["Iterations"])
-        rx = f["rxs/rx1"]
-        comp = component if component in rx else (
-            "Ez" if "Ez" in rx else list(rx.keys())[0])
-        signal = rx[comp][:]
-    t_ns = np.arange(iterations) * dt * 1e9
+    d = read_ascan(out_path, component)
+    t_ns, signal, dt = d["t_ns"], d["signal"], d["dt"]
     env = calculate_instantaneous_attributes(signal, dt, use_mirroring=True)["envelope"]
     m = (t_ns >= CODA_NS[0]) & (t_ns <= CODA_NS[1])
     return float(np.trapezoid(env[m], t_ns[m]))

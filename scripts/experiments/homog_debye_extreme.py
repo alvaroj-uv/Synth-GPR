@@ -84,11 +84,11 @@ def metric(ez,dt):
     return np.sum(f*p)/np.sum(p)/1e6 if p.sum()>0 else np.nan
 
 def analyze():
-    import h5py
+    from src.data_loader import read_ascan
     from scipy.stats import linregress
     man=pd.read_csv(OUT_DIR/"manifest.csv")
     def load(p):
-        f=h5py.File(p,'r'); dt=f.attrs['dt']; ez=np.array(f['rxs/rx1/Ez']).astype(float); f.close(); return ez,dt
+        d=read_ascan(p); return d["signal"].astype(float), d["dt"]
     print(f"Real target slope ~3.6 MHz/FI | baseline nodeb ~0.17 | 1-level debye ~0.37\n")
     for tau in TAUS:
         tag=f"tau{tau*1e9:.1f}".replace(".","p")

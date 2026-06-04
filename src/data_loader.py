@@ -104,6 +104,64 @@ def read_ascan(filename, component='Ez'):
         'ascan_idx': ascan_idx,
     }
 
+def read_rx_traces(filename, rx=None, fields=('Ex', 'Ey', 'Ez', 'Hx', 'Hy', 'Hz')):
+    """
+    Read every requested field-component trace for one receiver from a .out file.
+
+    Use this when the caller must choose among components (e.g. picking the
+    dominant-energy trace) rather than a single fixed component.
+
+    Args:
+        filename: Path to the gprMax HDF5 .out file.
+        rx: Receiver group name (e.g. 'rx1'). Defaults to the first receiver.
+        fields: Component names to read if present.
+
+    Returns:
+        (traces, dt): traces is a dict {component: 1-D np.array} preserving the
+        order of ``fields``; dt is the time step in seconds.
+    """
+    with h5py.File(filename, 'r') as f:
+        dt = float(f.attrs['dt'])
+        rxs = f['rxs']
+        rx_name = rx if rx is not None else list(rxs.keys())[0]
+        rx_group = rxs[rx_name]
+        traces = {c: rx_group[c][:] for c in fields if c in rx_group}
+    return traces, dt
+
+def write_rx_out(filename, traces, dt, position=(0.0, 0.0, 0.0),
+                 title='Synthetic', gprmax='fake'):
+    """
+    Write a gprMax-style .out HDF5 file for a single receiver.
+
+    Inverse of ``read_rx_traces`` / ``read_ascan`` — centralizes the on-disk
+    layout (root attrs ``dt``/``Iterations`` + ``rxs/rx1`` group carrying
+    ``Position`` and one dataset per field component). Used to synthesize test
+    data so scripts never hand-roll the HDF5 structure.
+
+    Args:
+        filename: Output .out path.
+        traces: dict {component: 1-D array}; all share length == Iterations.
+        dt: Time step in seconds.
+        position: Receiver (x, y, z).
+        title, gprmax: Root attribute strings.
+    """
+    traces = {c: np.asarray(v) for c, v in traces.items()}
+    if not traces:
+        raise ValueError("traces must contain at least one component")
+    iterations = len(next(iter(traces.values())))
+
+    with h5py.File(filename, 'w') as f:
+        f.attrs['dt'] = dt
+        f.attrs['Iterations'] = iterations
+        f.attrs['Title'] = title
+        f.attrs['gprMax'] = gprmax
+
+        rx = f.create_group('rxs/rx1')
+        rx.attrs['Name'] = 'rx1'
+        rx.attrs['Position'] = np.asarray(position, dtype=float)
+        for comp, arr in traces.items():
+            rx.create_dataset(comp, data=arr)
+
 def load_batch_dataset(input_dir, field='Ez'):
     """
     Loads all .out files in input_dir and extracts signals.
