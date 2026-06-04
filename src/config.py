@@ -61,6 +61,11 @@ class GeneratorConfig:
     add_sleepers: bool = False
     subgrade_wet: bool = False  # True: saturated subgrade εr=21 (Xie et al. 2010), False: εr=10
 
+    # Snapshot Configuration (Optional) — EM field snapshots for visualization/PINN training
+    # When empty (default), no snapshots are recorded. Set to list of times (seconds) to enable.
+    # Example: [2e-9, 5e-9, 10e-9] for snapshots at 2ns, 5ns, 10ns
+    snapshot_times: list[float] = field(default_factory=list)
+
     # PML absorbing boundary (Benedetto et al. 2016): 10 cells on all sides
     pml_layers: int = 10
 

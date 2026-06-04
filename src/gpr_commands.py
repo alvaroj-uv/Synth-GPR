@@ -285,13 +285,45 @@ class WaveformCommand(GPRCommand):
     frequency: float
     identifier: str
     commented: bool = False
-    
+
     @property
     def priority(self) -> int:
         return 50 # Waveforms
-    
+
     def get_cmd_string(self) -> str:
         return f"#waveform: {self.type_name} {fmt(self.amplitude)} {fmt(self.frequency)} {self.identifier}"
+
+@dataclass
+class SnapshotCommand(GPRCommand):
+    """EM field snapshot at a specific time for later visualization/analysis.
+
+    Syntax: #snapshot: x1 y1 z1 x2 y2 z2 dx dy dz time filename
+
+    Records the electric and magnetic fields over a region at a given simulation time.
+    Useful for PINNs training, physics visualization, and debugging.
+    """
+    x1: float
+    y1: float
+    z1: float
+    x2: float
+    y2: float
+    z2: float
+    dx: float
+    dy: float
+    dz: float
+    time: float
+    filename: str
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 75  # After waveforms, before sources/receivers
+
+    def get_cmd_string(self) -> str:
+        return (f"#snapshot: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} "
+                f"{fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} "
+                f"{fmt(self.dx)} {fmt(self.dy)} {fmt(self.dz)} "
+                f"{fmt(self.time)} {self.filename}")
 
 @dataclass
 class HertzianDipoleCommand(GPRCommand):

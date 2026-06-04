@@ -461,9 +461,22 @@ class AssemblerWorker(Worker):
         scene.add_geometry(GeometryViewCommand(
             0, 0, 0,
             domain_x, domain_y, domain_z,
-            dx, dy, dz, 
+            dx, dy, dz,
             filename, 'n'
         ))
+
+        # 2. Add EM field snapshots if configured
+        if scene.config.snapshot_times:
+            from .gpr_commands import SnapshotCommand
+            for i, snapshot_time in enumerate(scene.config.snapshot_times):
+                snapshot_filename = f"{filename}_snap{i:02d}"
+                scene.add_geometry(SnapshotCommand(
+                    0, 0, 0,
+                    domain_x, domain_y, domain_z,
+                    dx, dy, dz,
+                    snapshot_time,
+                    snapshot_filename
+                ))
 
         # Mark as assembled
         scene.assembled = True

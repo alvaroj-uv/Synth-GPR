@@ -180,6 +180,15 @@ class ToolWarehouse:
             elif algo == "rsa":
                 from .rock_packing import RSAPacking
                 return RSAPacking()
+            elif algo == "pymunk":
+                try:
+                    from .pymunk_packing import PymunkBallastPacking
+                    return PymunkBallastPacking()
+                except ImportError:
+                    raise ImportError(
+                        "pymunk packing requires 'pymunk' package. "
+                        "Install with: pip install pymunk"
+                    )
             else:
                 from .rock_packing import RSAPacking
                 return RSAPacking()
