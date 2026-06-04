@@ -95,14 +95,14 @@ def test_pvc_to_fi_conversion_inverse_property(pvc, phi):
 def test_fi_classification_monotonicity(fi_values):
     """
     Property: Classification should never downgrade as FI increases.
-    
-    Tests ordinal relationship: CL < MF < F < HF
+
+    Tests ordinal relationship: C < MC < MF < F < HF
     """
     # Sort FI values
     sorted_fi = sorted(fi_values)
-    
-    # Define classification order
-    class_order = {"CL": 0, "MF": 1, "F": 2, "HF": 3}
+
+    # Define classification order (matches classify_fouling_index)
+    class_order = {"C": 0, "MC": 1, "MF": 2, "F": 3, "HF": 4}
     
     # Get classifications
     classifications = [classify_fouling_index(fi) for fi in sorted_fi]

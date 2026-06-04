@@ -29,8 +29,10 @@ SAMPLE_2D = """#title: Test 2D Scenario
 #domain: 0.5 1.5 0.005
 #material: 8 0.02 subgrade
 #material: 10 0.03 formation
+#material: 5 0.001 1 0 bal_rock
 #box: 0.0 0.0 0.0 0.5 0.3 0.005 subgrade
 #box: 0.0 0.3 0.0 0.5 0.4 0.005 formation
+#triangle: 0.25 0.5 0.0 0.20 0.45 0.0 0.30 0.45 0.0 0.005 bal_rock
 #waveform: ricker 1 4e+08 my_wave
 #hertzian_dipole: z 0.3 1.434 0.0025 my_wave
 #rx: 0.35 1.434 0.0025
@@ -87,6 +89,14 @@ class TestGeometryRendering:
 
 
 class Test3DParser:
+    def test_parser_reads_triangle_material_after_thickness(self, sample_2d):
+        from src.visualization.scene import parse_in_file
+
+        scene = parse_in_file(sample_2d)
+        assert len(scene.triangles) == 1
+        assert scene.triangles[0].material == "bal_rock"
+        assert scene.triangles[0].xyz == pytest.approx((0.25, 0.4666666667, 0.0))
+
     def test_parser_reads_spheres_and_domain(self, sample_3d):
         # The 3D parser is now the single src.visualization.scene.parse_in_file.
         from src.visualization.scene import parse_in_file

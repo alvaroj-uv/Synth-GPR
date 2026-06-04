@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -15,7 +16,22 @@ from ..file_reader import parse_metadata_comments
 # ── Data model ────────────────────────────────────────────────────────────────
 
 @dataclass
-class BoxGeom:
+class AbstractGeom(ABC):
+    x: float = field(init=False)
+    y: float = field(init=False)
+    z: float = field(init=False)
+
+    @abstractmethod
+    def _set_anchor(self) -> None:
+        """Set the shared x/y/z anchor for this geometry."""
+
+    @property
+    def xyz(self) -> tuple[float, float, float]:
+        return self.x, self.y, self.z
+
+
+@dataclass
+class BoxGeom(AbstractGeom):
     x1: float
     y1: float
     x2: float
@@ -24,30 +40,64 @@ class BoxGeom:
     z1: float = 0.0   # depth extent (3D); ignored by 2D drawing
     z2: float = 0.0
 
+    def __post_init__(self) -> None:
+        self._set_anchor()
+
+    def _set_anchor(self) -> None:
+        self.x = (self.x1 + self.x2) / 2.0
+        self.y = (self.y1 + self.y2) / 2.0
+        self.z = (self.z1 + self.z2) / 2.0
+
 
 @dataclass
-class CylinderGeom:
-    x: float
-    y: float
+class CylinderGeom(AbstractGeom):
+    x1: float
+    y1: float
+    z1: float
+    x2: float
+    y2: float
+    z2: float
     radius: float
     material: str
 
+    def __post_init__(self) -> None:
+        self._set_anchor()
+
+    def _set_anchor(self) -> None:
+        self.x = (self.x1 + self.x2) / 2.0
+        self.y = (self.y1 + self.y2) / 2.0
+        self.z = (self.z1 + self.z2) / 2.0
+
 
 @dataclass
-class TriangleGeom:
+class TriangleGeom(AbstractGeom):
     x1: float; y1: float
     x2: float; y2: float
     x3: float; y3: float
     material: str
+    z1: float = 0.0
+    z2: float = 0.0
+    z3: float = 0.0
+
+    def __post_init__(self) -> None:
+        self._set_anchor()
+
+    def _set_anchor(self) -> None:
+        self.x = (self.x1 + self.x2 + self.x3) / 3.0
+        self.y = (self.y1 + self.y2 + self.y3) / 3.0
+        self.z = (self.z1 + self.z2 + self.z3) / 3.0
 
 
 @dataclass
-class SphereGeom:
+class SphereGeom(AbstractGeom):
     x: float
     y: float
     z: float
     radius: float
     material: str
+
+    def _set_anchor(self) -> None:
+        pass
 
 
 @dataclass
@@ -63,13 +113,17 @@ class SceneData:
     domain_y: float = 0.0
     domain_z: float = 0.0
     title: str = ""
-    boxes: list = field(default_factory=list)      # list[BoxGeom]
-    cylinders: list = field(default_factory=list)  # list[CylinderGeom]
-    triangles: list = field(default_factory=list)  # list[TriangleGeom]
-    spheres: list = field(default_factory=list)    # list[SphereGeom] (3D)
+    boxes: list[BoxGeom] = field(default_factory=list)
+    cylinders: list[CylinderGeom] = field(default_factory=list)
+    triangles: list[TriangleGeom] = field(default_factory=list)
+    spheres: list[SphereGeom] = field(default_factory=list)
     tx: Optional[AntennaPos] = None
     receivers: list[AntennaPos] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
+
+    @property
+    def geometries(self) -> list[AbstractGeom]:
+        return [*self.boxes, *self.cylinders, *self.triangles, *self.spheres]
 
 
 # ── Parser ────────────────────────────────────────────────────────────────────
@@ -140,12 +194,14 @@ def parse_in_file(path: Path) -> SceneData:
                 material=tokens[12],
             ))
         elif cmd == "#triangle:":
-            # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 material
+            # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 thickness material
+            material = tokens[11] if len(tokens) > 11 else tokens[10]
             scene.triangles.append(TriangleGeom(
                 x1=float(tokens[1]), y1=float(tokens[2]),
                 x2=float(tokens[4]), y2=float(tokens[5]),
                 x3=float(tokens[7]), y3=float(tokens[8]),
-                material=tokens[10],
+                material=material,
+                z1=float(tokens[3]), z2=float(tokens[6]), z3=float(tokens[9]),
             ))
         elif cmd == "#sphere:":
             # #sphere: x y z radius material
@@ -156,7 +212,8 @@ def parse_in_file(path: Path) -> SceneData:
         elif cmd == "#cylinder:":
             # #cylinder: x1 y1 z1 x2 y2 z2 radius material
             scene.cylinders.append(CylinderGeom(
-                x=float(tokens[1]), y=float(tokens[2]),
+                x1=float(tokens[1]), y1=float(tokens[2]), z1=float(tokens[3]),
+                x2=float(tokens[4]), y2=float(tokens[5]), z2=float(tokens[6]),
                 radius=float(tokens[7]),
                 material=tokens[8],
             ))

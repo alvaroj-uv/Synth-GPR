@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "visualization"))
 
 from src.file_reader import parse_metadata_comments, parse_metadata_file
-from src.visualization.scene import parse_in_file, SceneData, SphereGeom
+from src.visualization.scene import AbstractGeom, parse_in_file, SceneData, SphereGeom
 
 
 SAMPLE_2D = """#title: 2D
@@ -84,6 +84,10 @@ class TestParse2D:
         assert len(s.boxes) == 2 and len(s.cylinders) == 1
         # z captured on boxes even for a 2D scene
         assert s.boxes[0].z2 == pytest.approx(0.005)
+        assert all(isinstance(g, AbstractGeom) for g in s.geometries)
+        assert all(hasattr(g, attr) for g in s.geometries for attr in ("x", "y", "z"))
+        assert s.boxes[0].xyz == pytest.approx((0.25, 0.15, 0.0025))
+        assert s.cylinders[0].xyz == pytest.approx((0.25, 0.6, 0.0025))
         assert s.tx.x == pytest.approx(0.3) and s.tx.z == pytest.approx(0.0025)
         assert len(s.receivers) == 1 and s.receivers[0].z == pytest.approx(0.0025)
         assert s.meta["pvc"] == 12.5 and not s.spheres
