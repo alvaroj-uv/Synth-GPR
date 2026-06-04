@@ -21,6 +21,7 @@ import numpy as np, pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 from src.physics import crim_bulk_eps, debye_decompose
 
 DATA_DIR = ROOT / "output" / "gpr_synth_dataset_80k"
@@ -69,7 +70,7 @@ def homog_box(content, debye):
 
 def generate():
     OUT_DIR.mkdir(parents=True,exist_ok=True)
-    syn=pd.read_parquet(PARQUET,columns=["sample_id","Lab_FI"])
+    syn=load_features(PARQUET,columns=["sample_id","Lab_FI"])
     rng=np.random.default_rng(SEED); picks=[]
     for lo,hi in FI_BINS:
         pool=syn[(syn.Lab_FI>=lo)&(syn.Lab_FI<hi)].sample_id.values

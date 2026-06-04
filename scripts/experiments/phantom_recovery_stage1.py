@@ -21,6 +21,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 
 SRC_DIR = ROOT / "output" / "gpr_synth_dataset_80k"
 LABELS = ROOT / "output" / "dataset_80k_features.parquet"

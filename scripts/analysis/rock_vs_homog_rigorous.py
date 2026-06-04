@@ -30,6 +30,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 from src.physics import crim_bulk_eps
 
 DATA_DIR = ROOT / "output" / "gpr_synth_dataset_80k"
@@ -105,7 +106,7 @@ def make_homogeneous(content):
 
 def generate():
     HOMOG_DIR.mkdir(parents=True, exist_ok=True)
-    syn = pd.read_parquet(PARQUET, columns=["sample_id", "Lab_FI"])
+    syn = load_features(PARQUET, columns=["sample_id", "Lab_FI"])
     syn["cls"] = syn["Lab_FI"].apply(lambda v: "C" if v < 10 else "HF" if v >= 40 else "mid")
     rng = np.random.default_rng(SEED)
 

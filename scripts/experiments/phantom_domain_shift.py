@@ -23,6 +23,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 
 from scripts.main.build_parquet import _process
 from sklearn.metrics import balanced_accuracy_score, accuracy_score
@@ -43,7 +44,7 @@ def main():
     # Derive feature columns the SAME way training did (exclude metadata),
     # from the training parquet — guarantees identical column order.
     from scripts.main.train_rf_waveform_only import METADATA_FIELDS
-    pq = pd.read_parquet(ROOT / "output" / "dataset_80k_features.parquet")
+    pq = load_features(ROOT / "output" / "dataset_80k_features.parquet")
     exclude = {"sample_id", "source", "label"} | METADATA_FIELDS
     feat_cols = [c for c in pq.columns if c not in exclude]
     print(f"Model expects {len(feat_cols)} features\n")
