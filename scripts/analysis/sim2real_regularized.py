@@ -31,6 +31,7 @@ from sklearn.metrics import balanced_accuracy_score, accuracy_score, confusion_m
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 
 SYN_PARQUET = ROOT / "output" / "dataset_coda_features.parquet"
 FI_PARQUET = ROOT / "output" / "dataset_80k_features.parquet"
@@ -82,8 +83,8 @@ def main():
         print(m); lines.append(m)
 
     # --- train RF on synthetic (coda-aligned, notebook bins) ---
-    syn = pd.read_parquet(SYN_PARQUET)
-    fi_map = pd.read_parquet(FI_PARQUET, columns=["sample_id", "Lab_FI"])
+    syn = load_features(SYN_PARQUET)
+    fi_map = load_features(FI_PARQUET, columns=["sample_id", "Lab_FI"])
     syn = syn.merge(fi_map, on="sample_id", how="inner")
 
     real = pd.read_csv(REAL_CSV)

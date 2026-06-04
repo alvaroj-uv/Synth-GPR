@@ -27,6 +27,7 @@ from sklearn.metrics import (
 import argparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.dataset_io import load_features
 
 # Metadata columns to EXCLUDE (keep only waveform features)
 METADATA_FIELDS = {
@@ -62,7 +63,7 @@ def parse_args():
 
 def load_data_waveform_only(parquet_path):
     """Load parquet and select only waveform features (exclude metadata)."""
-    df = pd.read_parquet(parquet_path)
+    df = load_features(parquet_path)
 
     # Exclude: sample_id, source, label, and all metadata fields
     exclude_cols = {"sample_id", "source", "label"} | METADATA_FIELDS

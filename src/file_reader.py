@@ -3,10 +3,52 @@ Config extraction and recovery from gprMax .in files.
 
 Allows reconstructing GeneratorConfig from embedded CONFIG_* headers in .in files,
 enabling exact replication of geometries using the same random seed.
+
+Also hosts ``parse_metadata_comments`` — the single, dependency-light parser for
+the generic ``## key: value`` header substrate shared by the geometry parser,
+the A-scan visualizer, and the scene repository. (The CONFIG_*/SOURCE_* readers
+below are a separate, type-inferred replication sublanguage and are intentionally
+kept distinct — see docs/architecture/IO_CONSOLIDATION_PLAN.md.)
 """
 
+import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Iterable
+
+
+def parse_metadata_comments(lines: Iterable[str]) -> Dict[str, Any]:
+    """
+    Parse ``## key: value`` header comments into a dict with JSON-decoded values.
+
+    This is the one place that interprets gprMax metadata comments. Values that
+    parse as JSON (numbers, true/false, lists) are decoded; everything else is
+    kept as a stripped string.
+
+    Args:
+        lines: Any iterable of strings — an open file handle, ``content.splitlines()``,
+            etc. The whole iterable is scanned (metadata may appear anywhere).
+
+    Returns:
+        Dict mapping metadata keys to JSON-decoded values.
+    """
+    meta: Dict[str, Any] = {}
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("## ") and ":" in line:
+            key, _, val = line[3:].partition(":")
+            k, v = key.strip(), val.strip()
+            try:
+                meta[k] = json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                meta[k] = v
+    return meta
+
+
+def parse_metadata_file(in_path) -> Dict[str, Any]:
+    """Read a .in file and return its ``## key: value`` metadata (see
+    ``parse_metadata_comments``)."""
+    with open(in_path, encoding="utf-8", errors="replace") as fh:
+        return parse_metadata_comments(fh)
 
 
 def extract_config_from_in_file(in_path: str) -> Dict[str, Any]:

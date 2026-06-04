@@ -10,6 +10,7 @@ from typing import Optional, List
 import pandas as pd
 
 from .scene_repository import SceneRepository, SceneMetadata
+from ..file_reader import parse_metadata_comments
 
 
 class FileSystemSceneRepository(SceneRepository):
@@ -264,14 +265,14 @@ class FileSystemSceneRepository(SceneRepository):
             'rock_count': 0,
         }
         
-        for line in content.split('\n'):
-            if line.startswith('## FI (%):'):
-                try:
-                    metadata['fi'] = float(line.split(':')[1].strip())
-                except:
-                    pass
-            elif line.startswith('## FI_class:'):
-                metadata['classification'] = line.split(':')[1].strip()
+        meta = parse_metadata_comments(content.split('\n'))
+        if 'FI (%)' in meta:
+            try:
+                metadata['fi'] = float(meta['FI (%)'])
+            except (TypeError, ValueError):
+                pass
+        if 'FI_class' in meta:
+            metadata['classification'] = str(meta['FI_class'])
         
         # Only return if we found meaningful data
         if metadata['fi'] > 0 or metadata['classification'] != 'Unknown':

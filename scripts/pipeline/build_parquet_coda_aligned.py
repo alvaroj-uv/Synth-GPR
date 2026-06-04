@@ -42,6 +42,7 @@ from src.data_loader import read_gprmax_hdf5
 from src.signal_processing import dewow
 from src.feature_extraction import extract_features
 from src.constants import PC
+from src.dataset_io import load_features, save_dataset
 
 DATASET_DIR = ROOT / "output" / "dataset_variants"
 OUTPUT_PATH = ROOT / "output" / "dataset_coda_features.parquet"
@@ -85,7 +86,7 @@ def main():
     # Build sample_id -> label map from existing parquet (authoritative labels)
     labels = {}
     try:
-        lab_df = pd.read_parquet(SRC_PARQUET, columns=["sample_id", "label"])
+        lab_df = load_features(SRC_PARQUET, columns=["sample_id", "label"])
         labels = dict(zip(lab_df["sample_id"], lab_df["label"]))
     except Exception:
         print("  (no source parquet labels; falling back to id-range classes)")
@@ -121,7 +122,7 @@ def main():
         rows.append(row)
 
     out = pd.DataFrame(rows)
-    out.to_parquet(OUTPUT_PATH, index=False)
+    save_dataset(out, OUTPUT_PATH)
     print(f"\nSaved {len(out)} rows -> {OUTPUT_PATH}")
     print(f"Class dist:\n{out['label'].value_counts().sort_index().to_string()}")
 

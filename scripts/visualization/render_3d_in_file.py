@@ -12,15 +12,17 @@ Three views with ALIGNED AXES:
 All views share Y-axis range for proper scaling relationship.
 """
 
-import re
+import sys
 from pathlib import Path
-from dataclasses import dataclass
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import Circle, Rectangle
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.visualization.scene import parse_in_file
 
 # Material styles
 MATERIAL_COLORS = {
@@ -46,102 +48,7 @@ MATERIAL_LABELS = {
 }
 
 
-@dataclass
-class SphereGeom:
-    x: float
-    y: float
-    z: float
-    radius: float
-    material: str
-
-
-@dataclass
-class BoxGeom:
-    x1: float
-    y1: float
-    z1: float
-    x2: float
-    y2: float
-    z2: float
-    material: str
-
-
-def parse_3d_in_file(path: Path):
-    """Parse a 3D gprMax .in file."""
-    spheres = []
-    boxes = []
-    domain = {'x': 0, 'y': 0, 'z': 0}
-    metadata = {}
-    tx = None
-    rx = []
-
-    with open(path, encoding='utf-8', errors='replace') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.startswith("##"):
-                if ':' in line:
-                    key, val = line[2:].split(':', 1)
-                    metadata[key.strip()] = val.strip()
-                continue
-
-            # Antenna inserted via #python block: the call line does NOT start
-            # with '#', so handle it before the '#'-only guard below. Draw a
-            # stand-in case box + tx marker from the call args.
-            if line.startswith("antenna_like_GSSI"):
-                import re as _re
-                args = _re.findall(r"-?\d+\.?\d*(?:e-?\d+)?", line.split("(", 1)[1])
-                if len(args) >= 3:
-                    cx, cy, zs = float(args[0]), float(args[1]), float(args[2])
-                    case = (0.300, 0.300, 0.178) if "400" in line else (0.170, 0.108, 0.045)
-                    boxes.append(BoxGeom(
-                        x1=cx - case[0] / 2, y1=cy - case[1] / 2, z1=zs,
-                        x2=cx + case[0] / 2, y2=cy + case[1] / 2, z2=zs + case[2],
-                        material="antenna"
-                    ))
-                    tx = {'x': cx, 'y': cy, 'z': zs}
-                continue
-
-            if not line.startswith("#"):
-                continue
-
-            tokens = line.split()
-            if not tokens:
-                continue
-
-            cmd = tokens[0]
-
-            if cmd == "#domain:":
-                domain = {'x': float(tokens[1]), 'y': float(tokens[2]), 'z': float(tokens[3])}
-            elif cmd == "#sphere:":
-                spheres.append(SphereGeom(
-                    x=float(tokens[1]), y=float(tokens[2]), z=float(tokens[3]),
-                    radius=float(tokens[4]), material=tokens[5]
-                ))
-            elif cmd == "#box:":
-                boxes.append(BoxGeom(
-                    x1=float(tokens[1]), y1=float(tokens[2]), z1=float(tokens[3]),
-                    x2=float(tokens[4]), y2=float(tokens[5]), z2=float(tokens[6]),
-                    material=tokens[7]
-                ))
-            elif cmd == "#hertzian_dipole:":
-                tx = {'x': float(tokens[2]), 'y': float(tokens[3]), 'z': float(tokens[4])}
-            elif cmd == "#rx:":
-                rx.append({'x': float(tokens[1]), 'y': float(tokens[2]), 'z': float(tokens[3])})
-
-    return {
-        'spheres': spheres,
-        'boxes': boxes,
-        'domain': domain,
-        'metadata': metadata,
-        'tx': tx,
-        'rx': rx,
-    }
-
-
-def render_3d_views(scene_data, title="3D Domain", dpi=150):
+def render_3d_views(scene, title="3D Domain", dpi=150):
     """Render three orthogonal views with proper axis alignment.
 
     Layout: Single column, three rows
@@ -153,13 +60,12 @@ def render_3d_views(scene_data, title="3D Domain", dpi=150):
       - TOP and FRONT share X-axis (both 0-2.248m horizontally)
       - FRONT and SIDE share Y-axis (both 0-1.15m vertically)
     """
-    spheres = scene_data['spheres']
-    boxes = scene_data['boxes']
-    domain = scene_data['domain']
-    tx = scene_data['tx']
-    rx = scene_data['rx']
+    spheres = scene.spheres
+    boxes = scene.boxes
+    tx = scene.tx
+    rx = scene.receivers
 
-    Dx, Dy, Dz = domain['x'], domain['y'], domain['z']
+    Dx, Dy, Dz = scene.domain_x, scene.domain_y, scene.domain_z
 
     # Manual axes placement guarantees true alignment regardless of aspect='equal'.
     # We pick a fixed scale (figure-fraction per metre) so every view uses the same
@@ -233,10 +139,10 @@ def render_3d_views(scene_data, title="3D Domain", dpi=150):
 
     # Mark TX/RX
     if tx:
-        ax_top.plot(tx['x'], tx['z'], 'r*', markersize=14, label='TX',
+        ax_top.plot(tx.x, tx.z, 'r*', markersize=14, label='TX',
                    markeredgecolor='darkred', markeredgewidth=0.5)
     for i, rxr in enumerate(rx):
-        ax_top.plot(rxr['x'], rxr['z'], 'b^', markersize=9, label='RX' if i == 0 else '',
+        ax_top.plot(rxr.x, rxr.z, 'b^', markersize=9, label='RX' if i == 0 else '',
                    markeredgecolor='darkblue', markeredgewidth=0.5)
     ax_top.legend(fontsize=10, loc='upper right')
 
@@ -268,10 +174,10 @@ def render_3d_views(scene_data, title="3D Domain", dpi=150):
 
     # Mark TX/RX (X-Y projection)
     if tx:
-        ax_front.plot(tx['x'], tx['y'], 'r*', markersize=14, label='TX',
+        ax_front.plot(tx.x, tx.y, 'r*', markersize=14, label='TX',
                      markeredgecolor='darkred', markeredgewidth=0.5)
     for i, rxr in enumerate(rx):
-        ax_front.plot(rxr['x'], rxr['y'], 'b^', markersize=9, label='RX' if i == 0 else '',
+        ax_front.plot(rxr.x, rxr.y, 'b^', markersize=9, label='RX' if i == 0 else '',
                      markeredgecolor='darkblue', markeredgewidth=0.5)
     ax_front.legend(fontsize=10, loc='upper right')
 
@@ -303,10 +209,10 @@ def render_3d_views(scene_data, title="3D Domain", dpi=150):
 
     # Mark TX/RX (Z-Y projection)
     if tx:
-        ax_side.plot(tx['z'], tx['y'], 'r*', markersize=14, label='TX',
+        ax_side.plot(tx.z, tx.y, 'r*', markersize=14, label='TX',
                     markeredgecolor='darkred', markeredgewidth=0.5)
     for i, rxr in enumerate(rx):
-        ax_side.plot(rxr['z'], rxr['y'], 'b^', markersize=9, label='RX' if i == 0 else '',
+        ax_side.plot(rxr.z, rxr.y, 'b^', markersize=9, label='RX' if i == 0 else '',
                     markeredgecolor='darkblue', markeredgewidth=0.5)
     ax_side.legend(fontsize=10, loc='upper right')
 
@@ -342,15 +248,15 @@ def main():
         return
 
     print(f"Parsing: {in_path}")
-    scene_data = parse_3d_in_file(in_path)
+    scene = parse_in_file(in_path)
 
-    print(f"  Spheres: {len(scene_data['spheres'])}")
-    print(f"  Boxes: {len(scene_data['boxes'])}")
-    print(f"  Domain: {scene_data['domain']['x']:.2f} × {scene_data['domain']['y']:.2f} × {scene_data['domain']['z']:.2f} m")
+    print(f"  Spheres: {len(scene.spheres)}")
+    print(f"  Boxes: {len(scene.boxes)}")
+    print(f"  Domain: {scene.domain_x:.2f} × {scene.domain_y:.2f} × {scene.domain_z:.2f} m")
 
     print(f"Rendering 3D views...")
-    title = f"{in_path.stem} - {scene_data['metadata'].get('Lab_Class', '?')} class"
-    fig = render_3d_views(scene_data, title=title, dpi=args.dpi)
+    title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
+    fig = render_3d_views(scene, title=title, dpi=args.dpi)
 
     out_path = args.output or in_path.with_stem(in_path.stem + "_3d").with_suffix(".png")
     fig.savefig(out_path, dpi=args.dpi, bbox_inches="tight")

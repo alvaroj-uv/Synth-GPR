@@ -42,6 +42,7 @@ from sklearn.metrics import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from src.dataset_io import load_features
 
 # ---- Kept identical to the original script -----------------------------------
 METADATA_FIELDS = {
@@ -79,7 +80,7 @@ def make_rf():
 
 
 def load():
-    df = pd.read_parquet(PARQUET)
+    df = load_features(PARQUET)
     exclude = {"sample_id", "source", "label"} | METADATA_FIELDS
     feat_cols = [c for c in df.columns if c not in exclude]
     X = df[feat_cols].values.astype("float32")

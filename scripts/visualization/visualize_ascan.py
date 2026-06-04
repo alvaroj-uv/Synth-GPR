@@ -7,7 +7,6 @@ Usage:
 """
 import sys
 import argparse
-import re
 from pathlib import Path
 
 import numpy as np
@@ -19,21 +18,14 @@ import matplotlib.gridspec as gridspec
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.data_loader import read_ascan
 from src.signal_processing import compute_padded_spectrum
+from src.file_reader import parse_metadata_file
 
 
 def read_header_meta(in_path: Path) -> dict:
-    """Extract key ## comment metadata from the companion .in file."""
-    meta = {}
+    """Extract ## comment metadata from the companion .in file (shared parser)."""
     if not in_path.exists():
-        return meta
-    with open(in_path, encoding="utf-8", errors="ignore") as fh:
-        for line in fh:
-            if not line.startswith("##"):
-                break
-            m = re.match(r"^##\s+(\w+):\s+(.+)", line)
-            if m:
-                meta[m.group(1)] = m.group(2).strip()
-    return meta
+        return {}
+    return parse_metadata_file(in_path)
 
 
 def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:

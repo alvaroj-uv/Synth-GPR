@@ -28,6 +28,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.constants import PC
+from src.dataset_io import load_features
 
 PARQUET_PATH = Path("output/dataset_80k_features_complete.parquet")
 OUTPUT_REPORT = Path("output/rf_ldcp_fi_est_10fold.txt")
@@ -52,7 +53,7 @@ EXCLUDE_COLS = {
 
 def main():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Loading parquet...")
-    df = pd.read_parquet(PARQUET_PATH)
+    df = load_features(PARQUET_PATH)
     print(f"  Shape: {df.shape}")
 
     # Check target variable

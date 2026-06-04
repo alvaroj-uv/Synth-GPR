@@ -32,6 +32,7 @@ from sklearn.metrics import (
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 
 LABEL_ORDER = ["C", "MC", "MF", "F", "HF"]
 
@@ -57,7 +58,7 @@ def get_feat_cols(parquet_path):
     )
     t = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(t)
-    df = pd.read_parquet(parquet_path, columns=None)
+    df = load_features(parquet_path, columns=None)
     exclude = {"sample_id", "source", "label"} | t.METADATA_FIELDS
     return [c for c in df.columns if c not in exclude]
 

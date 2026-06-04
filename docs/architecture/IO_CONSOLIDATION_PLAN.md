@@ -105,17 +105,25 @@ Migrated all 14 scripts off raw `h5py.File`:
   by design (it dumps HDF5 group/dataset structure); documented as the
   sanctioned exception in-file and here.
 
-### Phase 2 — `.in` reading unification · *medium risk, highest dedup*
-1. Define the unified `Scene` model + one `parse_in_file()` in `file_reader.py`
-   (geometry 2D+3D, antennas, JSON-typed `meta`).
-2. Re-point `scene.py` to consume `Scene` and keep **drawing only**
-   (`draw_geometry`, `render_geometry_figure`).
-3. Re-point `render_3d_in_file.py` to consume `Scene`; delete `parse_3d_in_file`.
-4. Replace `visualize_ascan.read_header_meta` with `parse_in_file(...).meta`.
-5. Make `file_reader.extract_config_from_in_file` and the repository's
-   `_extract_metadata_from_in_file` thin views over `Scene.meta`.
-6. Resolves visualization redundancy #2. Guard with Phase-0 characterization
-   tests on real `.in` files (2D and 3D).
+### Phase 2 — `.in` reading unification · *medium risk, highest dedup* — ✅ DONE
+1. Metadata substrate: one `parse_metadata_comments()` (+`parse_metadata_file`)
+   in `file_reader.py` — dependency-light, JSON-decoded `## key: value`.
+2. Geometry: `scene.parse_in_file` is now the **single 2D+3D parser**
+   (`SceneData` extended with `domain_z`, box `z1/z2`, `SphereGeom`, antenna `z`,
+   and the `antenna_like_GSSI(...)` call line). It uses the metadata helper.
+3. `render_3d_in_file.parse_3d_in_file` **deleted**; `render_3d_views` consumes
+   `SceneData`; `unified_visualizer` + the `render_3d` CLI call `parse_in_file`.
+4. `visualize_ascan.read_header_meta` and the repository's
+   `_extract_metadata_from_in_file` now delegate to `parse_metadata_comments`.
+5. Tests: `tests/test_in_parser_consolidation.py` (2D/3D geometry, antenna line,
+   metadata typing, 3D render, repository) + updated `test_visualize_blueprint`.
+   Resolves visualization redundancy #2.
+
+**Scoped out (intentional):** `file_reader.extract_config_from_in_file` /
+`extract_sources_from_in_file` (the CONFIG_*/SOURCE_* replication sublanguage)
+keep their own type-inference — `json.loads` decodes `true/false` but not
+Python-style `True/False`, so folding them onto generic `meta` would change
+config-replication behavior. Left as a distinct, documented reader.
 
 ### Phase 3 — Dataset/parquet I/O · *higher risk, ML pipeline*
 - Introduce `src/dataset_io.py`: `load_features()`, `save_dataset()`,
@@ -126,9 +134,14 @@ Migrated all 14 scripts off raw `h5py.File`:
   one spot) but touches the training path — migrate read-only consumers first,
   then writers, with row-count/column/hash assertions.
 
-### Phase 4 — Enforcement · *optional*
-- A test that greps `scripts/` for `h5py.File` / `pd.read_parquet` / `open(*.in)`
-  and fails, locking in the boundary so new scripts can't regress.
+### Phase 4 — Enforcement · *optional* — ✅ DONE
+`tests/test_io_boundary.py` — architectural fitness functions:
+- **No raw `h5py` in `scripts/`** (whitelist: `analyze_dataset_structure.py`, the
+  HDF5-structure introspection diagnostic). Locks Phase 1.
+- **`parse_3d_in_file` cannot be reintroduced.** Locks Phase 2.
+- **Parquet ratchet**: the set of scripts using `read_parquet`/`to_parquet` may
+  shrink but not grow (baseline = the current 16). Prevents new violations while
+  Phase 3 is pending; trim the baseline as Phase 3 migrates files.
 
 ---
 

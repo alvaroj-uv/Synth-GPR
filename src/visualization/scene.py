@@ -2,12 +2,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-import json
+import re
 
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.axes import Axes
+
+from ..file_reader import parse_metadata_comments
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -19,6 +21,8 @@ class BoxGeom:
     x2: float
     y2: float
     material: str
+    z1: float = 0.0   # depth extent (3D); ignored by 2D drawing
+    z2: float = 0.0
 
 
 @dataclass
@@ -38,19 +42,31 @@ class TriangleGeom:
 
 
 @dataclass
+class SphereGeom:
+    x: float
+    y: float
+    z: float
+    radius: float
+    material: str
+
+
+@dataclass
 class AntennaPos:
     x: float
     y: float
+    z: float = 0.0
 
 
 @dataclass
 class SceneData:
     domain_x: float = 0.0
     domain_y: float = 0.0
+    domain_z: float = 0.0
     title: str = ""
     boxes: list = field(default_factory=list)      # list[BoxGeom]
     cylinders: list = field(default_factory=list)  # list[CylinderGeom]
     triangles: list = field(default_factory=list)  # list[TriangleGeom]
+    spheres: list = field(default_factory=list)    # list[SphereGeom] (3D)
     tx: Optional[AntennaPos] = None
     receivers: list[AntennaPos] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
@@ -59,75 +75,100 @@ class SceneData:
 # ── Parser ────────────────────────────────────────────────────────────────────
 
 def parse_in_file(path: Path) -> SceneData:
-    """Parse a gprMax .in file into SceneData.
+    """Parse a gprMax .in file into SceneData (single 2D + 3D geometry parser).
 
-    Handles: #domain, #title, #box, #cylinder, #hertzian_dipole, #rx
-    and ## key: value metadata comments (JSON-decoded when possible).
+    Handles: #domain, #title, #box, #fractal_box, #triangle, #cylinder, #sphere,
+    #hertzian_dipole, #rx, the ``antenna_like_GSSI(...)`` python-call line, and
+    ``## key: value`` metadata comments (JSON-decoded via
+    ``file_reader.parse_metadata_comments``). Z-coordinates are captured so the
+    same SceneData drives both the 2D projection and the 3D orthographic views.
     """
     scene = SceneData()
     with open(path, encoding="utf-8", errors="replace") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line:
-                continue
+        lines = fh.readlines()
 
-            if line.startswith("## ") and ":" in line:
-                key, _, val = line[3:].partition(":")
-                k, v = key.strip(), val.strip()
-                try:
-                    scene.meta[k] = json.loads(v)
-                except (json.JSONDecodeError, ValueError):
-                    scene.meta[k] = v
-                continue
+    scene.meta = parse_metadata_comments(lines)
 
-            if not line.startswith("#"):
-                continue
-            tokens = line.split()
-            if not tokens:
-                continue
-            cmd = tokens[0]
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
 
-            if cmd == "#title:":
-                scene.title = " ".join(tokens[1:])
-            elif cmd == "#domain:":
-                scene.domain_x = float(tokens[1])
-                scene.domain_y = float(tokens[2])
-            elif cmd == "#box:":
-                # #box: x1 y1 z1 x2 y2 z2 material
+        # Antenna inserted via a #python block: the call line does NOT start
+        # with '#', so handle it before the '#'-only guard. Draw a stand-in
+        # case box + tx marker from the call args (used by the 3D views).
+        if line.startswith("antenna_like_GSSI"):
+            args = re.findall(r"-?\d+\.?\d*(?:e-?\d+)?", line.split("(", 1)[1])
+            if len(args) >= 3:
+                cx, cy, zs = float(args[0]), float(args[1]), float(args[2])
+                case = (0.300, 0.300, 0.178) if "400" in line else (0.170, 0.108, 0.045)
                 scene.boxes.append(BoxGeom(
-                    x1=float(tokens[1]), y1=float(tokens[2]),
-                    x2=float(tokens[4]), y2=float(tokens[5]),
-                    material=tokens[7],
+                    x1=cx - case[0] / 2, y1=cy - case[1] / 2, z1=zs,
+                    x2=cx + case[0] / 2, y2=cy + case[1] / 2, z2=zs + case[2],
+                    material="antenna",
                 ))
-            elif cmd == "#fractal_box:":
-                # #fractal_box: x1 y1 z1 x2 y2 z2 frac_dim wx wy wz n_mat soil box_id [seed]
-                # Rendered like a box of its soil material (heterogeneous fill).
-                scene.boxes.append(BoxGeom(
-                    x1=float(tokens[1]), y1=float(tokens[2]),
-                    x2=float(tokens[4]), y2=float(tokens[5]),
-                    material=tokens[12],
-                ))
-            elif cmd == "#triangle:":
-                # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 material
-                scene.triangles.append(TriangleGeom(
-                    x1=float(tokens[1]), y1=float(tokens[2]),
-                    x2=float(tokens[4]), y2=float(tokens[5]),
-                    x3=float(tokens[7]), y3=float(tokens[8]),
-                    material=tokens[10],
-                ))
-            elif cmd == "#cylinder:":
-                # #cylinder: x1 y1 z1 x2 y2 z2 radius material
-                scene.cylinders.append(CylinderGeom(
-                    x=float(tokens[1]), y=float(tokens[2]),
-                    radius=float(tokens[7]),
-                    material=tokens[8],
-                ))
-            elif cmd == "#hertzian_dipole:":
-                # #hertzian_dipole: polarisation x y z waveform_id
-                scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]))
-            elif cmd == "#rx:":
-                # #rx: x y z
-                scene.receivers.append(AntennaPos(x=float(tokens[1]), y=float(tokens[2])))
+                scene.tx = AntennaPos(x=cx, y=cy, z=zs)
+            continue
+
+        if not line.startswith("#"):
+            continue
+        tokens = line.split()
+        if not tokens:
+            continue
+        cmd = tokens[0]
+
+        if cmd == "#title:":
+            scene.title = " ".join(tokens[1:])
+        elif cmd == "#domain:":
+            scene.domain_x = float(tokens[1])
+            scene.domain_y = float(tokens[2])
+            if len(tokens) > 3:
+                scene.domain_z = float(tokens[3])
+        elif cmd == "#box:":
+            # #box: x1 y1 z1 x2 y2 z2 material
+            scene.boxes.append(BoxGeom(
+                x1=float(tokens[1]), y1=float(tokens[2]), z1=float(tokens[3]),
+                x2=float(tokens[4]), y2=float(tokens[5]), z2=float(tokens[6]),
+                material=tokens[7],
+            ))
+        elif cmd == "#fractal_box:":
+            # #fractal_box: x1 y1 z1 x2 y2 z2 frac_dim wx wy wz n_mat soil box_id [seed]
+            # Rendered like a box of its soil material (heterogeneous fill).
+            scene.boxes.append(BoxGeom(
+                x1=float(tokens[1]), y1=float(tokens[2]), z1=float(tokens[3]),
+                x2=float(tokens[4]), y2=float(tokens[5]), z2=float(tokens[6]),
+                material=tokens[12],
+            ))
+        elif cmd == "#triangle:":
+            # #triangle: x1 y1 z1 x2 y2 z2 x3 y3 z3 material
+            scene.triangles.append(TriangleGeom(
+                x1=float(tokens[1]), y1=float(tokens[2]),
+                x2=float(tokens[4]), y2=float(tokens[5]),
+                x3=float(tokens[7]), y3=float(tokens[8]),
+                material=tokens[10],
+            ))
+        elif cmd == "#sphere:":
+            # #sphere: x y z radius material
+            scene.spheres.append(SphereGeom(
+                x=float(tokens[1]), y=float(tokens[2]), z=float(tokens[3]),
+                radius=float(tokens[4]), material=tokens[5],
+            ))
+        elif cmd == "#cylinder:":
+            # #cylinder: x1 y1 z1 x2 y2 z2 radius material
+            scene.cylinders.append(CylinderGeom(
+                x=float(tokens[1]), y=float(tokens[2]),
+                radius=float(tokens[7]),
+                material=tokens[8],
+            ))
+        elif cmd == "#hertzian_dipole:":
+            # #hertzian_dipole: polarisation x y z waveform_id
+            scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]),
+                                  z=float(tokens[4]))
+        elif cmd == "#rx:":
+            # #rx: x y z
+            scene.receivers.append(AntennaPos(
+                x=float(tokens[1]), y=float(tokens[2]), z=float(tokens[3]),
+            ))
 
     return scene
 

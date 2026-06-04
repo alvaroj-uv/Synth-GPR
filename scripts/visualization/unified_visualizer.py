@@ -62,12 +62,12 @@ def render_3d_geometry(in_path: Path, out_path: Path, dpi: int = 150) -> None:
     # Ensure this script's directory is importable whether run as a script or
     # imported as a module (e.g. from the test suite).
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from render_3d_in_file import parse_3d_in_file, render_3d_views
+    from render_3d_in_file import render_3d_views
 
     logger.info(f"Parsing 3D scene {in_path.name}...")
-    scene_data = parse_3d_in_file(in_path)
-    title = f"{in_path.stem} - {scene_data['metadata'].get('Lab_Class', '?')} class"
-    fig = render_3d_views(scene_data, title=title, dpi=dpi)
+    scene = parse_in_file(in_path)
+    title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
+    fig = render_3d_views(scene, title=title, dpi=dpi)
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     logger.info(f"✓ Saved: {out_path}")
     plt.close(fig)

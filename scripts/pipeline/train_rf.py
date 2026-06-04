@@ -41,7 +41,8 @@ RANDOM_SEED = 42
 
 
 def load_data(parquet_path):
-    df = pd.read_parquet(parquet_path)
+    from src.dataset_io import load_features
+    df = load_features(parquet_path)
     feat_cols = [c for c in df.columns if c not in ("sample_id", "label", "source")]
     X = df[feat_cols].values.astype("float32")
     y = df["label"].values

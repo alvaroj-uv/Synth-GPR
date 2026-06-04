@@ -35,6 +35,7 @@ from sklearn.metrics import (
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
+from src.dataset_io import load_features
 
 # Coda-aligned synthetic parquet: SAME 250-sample coda time-support as the real
 # traces, SAME 572 extract_features columns. This is the only fair training set.
@@ -82,8 +83,8 @@ def main():
     real_feats = [c for c in real.columns if c not in ("ID", "FI", "FI_class")]
 
     # ---- synthetic: coda-aligned features + continuous Lab_FI (from 80k parquet)
-    syn = pd.read_parquet(SYN_PARQUET)
-    fi_map = pd.read_parquet(FI_PARQUET, columns=["sample_id", "Lab_FI"])
+    syn = load_features(SYN_PARQUET)
+    fi_map = load_features(FI_PARQUET, columns=["sample_id", "Lab_FI"])
     syn = syn.merge(fi_map, on="sample_id", how="inner")
     common = [c for c in real_feats if c in syn.columns]
     missing = [c for c in real_feats if c not in syn.columns]

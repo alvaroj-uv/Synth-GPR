@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.data_loader import read_gprmax_hdf5
 from src.feature_extraction import extract_features
 from src.signal_processing import preprocess_signal
+from src.dataset_io import save_dataset
 from src.constants import PC
 
 DATASET_DIR = Path("output/dataset_1k")
@@ -137,7 +138,7 @@ def main():
     df[feat_cols] = df[feat_cols].astype("float32")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(output_path, index=False, engine="pyarrow", compression="snappy")
+    save_dataset(df, output_path)
 
     print(f"\nDone")
     print(f"  Rows      : {len(df)}")

@@ -88,13 +88,14 @@ class TestGeometryRendering:
 
 class Test3DParser:
     def test_parser_reads_spheres_and_domain(self, sample_3d):
-        from render_3d_in_file import parse_3d_in_file
+        # The 3D parser is now the single src.visualization.scene.parse_in_file.
+        from src.visualization.scene import parse_in_file
 
-        data = parse_3d_in_file(sample_3d)
-        assert len(data["spheres"]) == 2
-        assert data["domain"]["x"] == pytest.approx(2.0)
-        assert data["domain"]["z"] == pytest.approx(0.4)
-        assert data["metadata"]["Lab_Class"] == "Fouled"
+        scene = parse_in_file(sample_3d)
+        assert len(scene.spheres) == 2
+        assert scene.domain_x == pytest.approx(2.0)
+        assert scene.domain_z == pytest.approx(0.4)
+        assert scene.meta["Lab_Class"] == "Fouled"
 
 
 if __name__ == "__main__":
