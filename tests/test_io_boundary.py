@@ -58,40 +58,17 @@ def test_parse_3d_in_file_not_reintroduced():
     )
 
 
-# ── Phase 3 ratchet: parquet I/O may shrink but not grow ──────────────────────
-# Phase 3 will route these through a src dataset-IO module. Until then, this
-# ratchet prevents NEW scripts from hand-rolling parquet I/O. As Phase 3 migrates
-# files, they simply drop out of the offender set (subset still holds), and the
-# baseline can be trimmed.
-PARQUET_BASELINE = {
-    "analysis/domain_adapt.py",
-    "analysis/rock_vs_homog_rigorous.py",
-    "analysis/sim2real_gap.py",
-    "analysis/sim2real_regularized.py",
-    "analysis/validate_real.py",
-    "experiments/homog_debye_slope.py",
-    "experiments/peplinski_slope.py",
-    "experiments/phantom_domain_shift.py",
-    "experiments/phantom_recovery_stage1.py",
-    "pipeline/build_parquet.py",
-    "pipeline/build_parquet_coda_aligned.py",
-    "pipeline/build_parquet_merged.py",
-    "pipeline/train_rf.py",
-    "pipeline/train_rf_ldcp_fi_est.py",
-    "pipeline/train_rf_waveform_only.py",
-    "pipeline/train_rf_waveform_only_grouped.py",
-}
-
-
-def test_parquet_usage_does_not_grow():
-    current = {
+# ── Phase 3 lock: no raw parquet in scripts ───────────────────────────────────
+# Dataset reads/writes go through src.dataset_io (load_features / save_dataset).
+def test_no_raw_parquet_in_scripts():
+    offenders = [
         _rel(p) for p in _py_files()
         if re.search(r"\b(read_parquet|to_parquet)\b", p.read_text(encoding="utf-8", errors="replace"))
-    }
-    new = current - PARQUET_BASELINE
-    assert not new, (
-        "New scripts must use the src dataset-IO layer (Phase 3), not raw "
-        "pd.read_parquet/to_parquet:\n  " + "\n  ".join(sorted(new))
+    ]
+    assert not offenders, (
+        "Scripts must read/write datasets via src.dataset_io "
+        "(load_features / save_dataset), not raw pandas parquet:\n  "
+        + "\n  ".join(offenders)
     )
 
 

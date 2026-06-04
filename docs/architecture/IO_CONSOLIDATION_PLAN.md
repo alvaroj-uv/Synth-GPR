@@ -125,37 +125,38 @@ keep their own type-inference — `json.loads` decodes `true/false` but not
 Python-style `True/False`, so folding them onto generic `meta` would change
 config-replication behavior. Left as a distinct, documented reader.
 
-### Phase 3 — Dataset/parquet I/O · *higher risk, ML pipeline*
-- Introduce `src/dataset_io.py`: `load_features()`, `save_dataset()`,
-  `load_splits()` — one place for schema, dtypes, compression, column contracts.
-- Migrate the 16 parquet scripts (pipeline `build_parquet*`, `train_rf*`;
-  analysis `sim2real_*`, `domain_adapt`, `validate_real`; experiments).
-- Highest value for reproducibility (enforces the 572-waveform-feature schema in
-  one spot) but touches the training path — migrate read-only consumers first,
-  then writers, with row-count/column/hash assertions.
+### Phase 3 — Dataset/parquet I/O · *higher risk, ML pipeline* — ✅ DONE
+- `src/dataset_io.py`: `load_features(path, columns=None)` and
+  `save_dataset(df, path)` — the single chokepoint for the parquet
+  engine/compression options (pyarrow + snappy + no index), and where
+  schema/dtype/column contracts can later be enforced without touching scripts.
+- All 16 parquet scripts migrated (3 writers, 13 readers incl. all `train_rf*`).
+  The substitution is a faithful pass-through, so no behavior change.
+- Tests: `tests/test_dataset_io.py` (round-trip, projection, no-index, dtypes).
 
 ### Phase 4 — Enforcement · *optional* — ✅ DONE
 `tests/test_io_boundary.py` — architectural fitness functions:
 - **No raw `h5py` in `scripts/`** (whitelist: `analyze_dataset_structure.py`, the
   HDF5-structure introspection diagnostic). Locks Phase 1.
 - **`parse_3d_in_file` cannot be reintroduced.** Locks Phase 2.
-- **Parquet ratchet**: the set of scripts using `read_parquet`/`to_parquet` may
-  shrink but not grow (baseline = the current 16). Prevents new violations while
-  Phase 3 is pending; trim the baseline as Phase 3 migrates files.
+- **No raw parquet in `scripts/`** — datasets go through `src.dataset_io`
+  (`load_features`/`save_dataset`). Locks Phase 3 (tightened from the original
+  ratchet once all 16 scripts were migrated).
 
 ---
 
 ## 4. Risk & sequencing summary
-| Phase | Touches | Risk | Value | Reversible? |
+| Phase | Touches | Risk | Value | Status |
 |---|---|---|---|---|
-| 0 Guardrails | tests only | none | enables the rest | n/a |
-| 1 `.out` sweep | 14 scripts | low | dedup + consistency | yes (per-script) |
-| 2 `.in` unify | 5 parsers → 1 | medium | kills redundancy #2 | yes (git) |
-| 3 dataset I/O | 16 scripts | higher | reproducibility | yes (read-first) |
-| 4 enforcement | 1 test | none | prevents regression | yes |
+| 0 Guardrails | tests only | none | enables the rest | ✅ |
+| 1 `.out` sweep | 14 scripts | low | dedup + consistency | ✅ |
+| 2 `.in` unify | 5 parsers → 1 | medium | kills redundancy #2 | ✅ |
+| 3 dataset I/O | 16 scripts | higher | reproducibility | ✅ |
+| 4 enforcement | 1 test (3 checks) | none | prevents regression | ✅ |
 
-**Recommended order:** 0 → 1 → 2 → 3 → 4. Phases 1 and 2 are independent and can
-interleave; Phase 3 should wait until Phase 0 fixtures exist.
+**All phases complete.** The boundary is self-enforcing via
+`tests/test_io_boundary.py` (no raw `h5py`, no `parse_3d_in_file`, no raw parquet
+in `scripts/`).
 
 **Out of scope / already done:** `.in` **writing** is already centralized in
 `GPRMaxFileWriter`; `.out` reading has a canonical home (`data_loader`) — Phase 1

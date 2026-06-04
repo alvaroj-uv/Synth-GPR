@@ -65,7 +65,7 @@ def generate():
     for old in OUT_DIR.glob("pr_*.in"):
         old.unlink()
 
-    df = pd.read_parquet(LABELS, columns=["sample_id", "label", "pvc", "Lab_FI"])
+    df = load_features(LABELS, columns=["sample_id", "label", "pvc", "Lab_FI"])
     rng = np.random.default_rng(SEED)
     picks = []
     for cls in sorted(df.label.unique()):
