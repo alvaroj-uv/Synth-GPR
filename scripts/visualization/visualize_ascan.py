@@ -90,19 +90,35 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     ax1.set_facecolor(panel_bg)
     ax1.plot(t_ns, signal, color=accent, lw=0.8, alpha=0.92)
     ax1.axhline(0, color=grid_col, lw=0.5)
+
+    # Annotate physical features
+    ax1.axvspan(0, 0.5, alpha=0.1, color=accent3, label='Direct wave (TX→RX)')
+    ax1.axvline(1.5, color=accent2, lw=2.0, linestyle='--', alpha=0.8, label='Surface reflection')
+    ax1.text(0.2, ax1.get_ylim()[1]*0.85, 'Direct', color=accent3, fontsize=8, fontweight='bold')
+    ax1.text(1.55, ax1.get_ylim()[1]*0.85, 'Surface', color=accent2, fontsize=8, fontweight='bold')
+
     for spine in ax1.spines.values():
         spine.set_edgecolor(grid_col)
     ax1.set_xlabel("Time (ns)", color=text_col, fontsize=9)
     ax1.set_ylabel(f"{component} (V/m)", color=text_col, fontsize=9)
-    ax1.set_title(f"Full A-scan — {component}", color=text_col, fontsize=10, fontweight='bold')
+    ax1.set_title(f"Full A-scan — {component}  [Direct wave 0-0.5ns | Surface hit ~1.5ns]",
+                  color=text_col, fontsize=10, fontweight='bold')
     ax1.tick_params(colors=text_col, labelsize=8)
     ax1.grid(True, color=grid_col, lw=0.5, alpha=0.6)
+    ax1.legend(fontsize=8, facecolor=panel_bg, labelcolor=text_col, edgecolor=grid_col, loc='upper right')
 
     # --- Panel 2: Early arrivals (zoomed 0-3 ns) ---
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.set_facecolor(panel_bg)
     idx_zoom = t_ns < 3.0
     ax2.plot(t_ns[idx_zoom], signal[idx_zoom], color=accent, lw=1.0)
+
+    # Mark direct wave and surface reflection regions
+    ax2.axvspan(0, 0.5, alpha=0.08, color=accent3)
+    ax2.axvline(1.5, color=accent2, lw=1.5, linestyle='--', alpha=0.7)
+    ax2.text(0.2, ax2.get_ylim()[1]*0.8, 'Direct', color=accent3, fontsize=7, fontweight='bold')
+    ax2.text(1.55, ax2.get_ylim()[1]*0.8, 'Surface\nreflection', color=accent2, fontsize=7, fontweight='bold')
+
     # Mark peaks
     peaks, props = find_peaks(np.abs(signal[idx_zoom]), height=np.std(signal)*2)
     if len(peaks) > 0:
@@ -182,23 +198,25 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
         rx_str = "n/a"
 
     stats_lines = [
-        ("SIGNAL ANALYSIS", ""),
+        ("SIGNAL INTERPRETATION", ""),
+        ("Direct wave", "0.0-0.5 ns"),
+        ("Surface hit", "~1.5 ns"),
+        ("Ballast layers", "1.5-20 ns"),
+        ("─" * 25, ""),
+        ("SIGNAL METRICS", ""),
         ("Duration", f"{t_ns[-1]:.2f} ns"),
         ("Samples", f"{len(signal):,}"),
-        ("dt", f"{dt*1e12:.3f} ps"),
-        ("─" * 25, ""),
         ("Peak", f"{np.max(signal):.0f} V/m"),
-        ("Trough", f"{np.min(signal):.0f} V/m"),
         ("RMS", f"{rms:.0f} V/m"),
-        ("Std Dev", f"{np.std(signal):.0f}"),
-        ("Skewness", f"{skew(signal):.2f}"),
-        ("─" * 25, ""),
         ("Peaks found", f"{n_peaks}"),
+        ("─" * 25, ""),
+        ("FREQUENCY", ""),
         ("Dom. Freq", f"{peak_ghz:.2f} GHz"),
         ("BW est.", "~1-2 GHz"),
         ("─" * 25, ""),
-        ("File", out_path.stem[:20]),
-        ("PVC input", f"{pvc}%"),
+        ("METADATA", ""),
+        ("File", out_path.stem[:15]),
+        ("PVC", f"{pvc}%"),
         ("Lab FI", f"{lab_fi}% [{lab_class}]"),
     ]
 
