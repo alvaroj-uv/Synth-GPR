@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 
 # Local imports
-from .constants import PAC
+from .constants import PAC, PHC  # PHC for material properties and simulation parameters
 from .rock_model import PackingBounds, Rock
 
 
@@ -1596,7 +1596,7 @@ class ShangChuPacking(RockPackingStrategy):
         min_gap: float = 0.0,
         grading_curve: "GradingCurve" = None,
         n_starts: int = 4,
-        timeout_per_start: float = 2.0,
+        timeout_per_start: float = PHC.PACKING_TIMEOUT_PER_START,  # from constants.py
     ) -> List[Rock]:
         """
         Sequential multi-start Shang-Chu packing with best result selection.
@@ -1859,7 +1859,7 @@ class GrowthPacking(RockPackingStrategy):
                         (default 0.001 m = 1 mm).
     """
 
-    def __init__(self, place_attempts: int = 500, grow_step: float = 0.001):
+    def __init__(self, place_attempts: int = 500, grow_step: float = PHC.CIRCLE_GROW_STEP):  # from constants.py
         self.place_attempts = place_attempts
         self.grow_step = grow_step
 

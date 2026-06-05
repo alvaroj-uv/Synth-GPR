@@ -130,11 +130,28 @@ class PhysicsConstants:
     FI_MODERATELY_CLEAN_THRESHOLD: float = 10.0  # MC → MF boundary
     FI_MODERATELY_FOULED_THRESHOLD: float = 20.0  # MF → F  boundary
     FI_FOULED_THRESHOLD: float = 40.0         # F  → HF boundary
-    
-    # Material Properties (Specific Gravities)
-    DEFAULT_POROSITY: float = 0.4  # Ballast void fraction
-    DEFAULT_BALLAST_DENSITY: float = 2.72  # Gs_b — Koohmishi et al. (2025) Table 1, crushed granite/limestone
-    DEFAULT_FOULING_DENSITY: float = 2.58  # Gs_f — Koohmishi et al. (2025) Table 1, clay fouling
+
+    # ========== SINGLE SOURCE OF TRUTH: MATERIAL PROPERTIES ==========
+    # All material densities defined here. NEVER hardcode elsewhere.
+    # Reference: Koohminski et al. (2025) Table 1
+
+    # Lab Analysis Densities (Specific Gravities for Rb-f calculation)
+    BALLAST_DENSITY_LABANALYSIS: float = 2.72     # Gs_b — crushed granite/limestone
+    FOULING_DENSITY_LABANALYSIS: float = 2.58     # Gs_f — clay fouling
+
+    # Peplinski Model Densities (Dielectric permittivity modeling)
+    FOULING_BULK_DENSITY_PEPLINSKI: float = 1.9   # g/cm³ (for dielectric calculation)
+    FOULING_SAND_DENSITY_PEPLINSKI: float = 2.66  # g/cm³ (sand component in Peplinski)
+
+    # Physics Simulation Density (pymunk/gravity settling)
+    BALLAST_DENSITY_PYMUNK: float = 1.55          # g/cm³ (for physics engine mass/weight)
+
+    # Porosity & Void Properties
+    DEFAULT_POROSITY: float = 0.4                 # Ballast void fraction
+
+    # Legacy aliases (for backward compatibility, map to single source)
+    DEFAULT_BALLAST_DENSITY: float = BALLAST_DENSITY_LABANALYSIS
+    DEFAULT_FOULING_DENSITY: float = FOULING_DENSITY_LABANALYSIS
     
     # Topp's Model Coefficients (Topp et al., 1980)
     # Relates soil moisture to dielectric constant
@@ -145,6 +162,15 @@ class PhysicsConstants:
     
     # Numerical Thresholds
     ZERO_EPSILON: float = 1e-9  # For near-zero checks
+
+    # ========== PHYSICS & SIMULATION PARAMETERS ==========
+    # Gravity Settling (pymunk-based ballast compaction)
+    GRAVITY_SETTLE_TIME_STEP: float = 0.002         # 2 mm per settling step
+    GRAVITY_SETTLE_DAMPING: float = 0.5             # Energy dissipation (from config.py)
+
+    # Rock Growth/Packing Algorithms
+    CIRCLE_GROW_STEP: float = 0.001                 # 1 mm per grow iteration
+    PACKING_TIMEOUT_PER_START: float = 2.0          # 2 seconds per random start
 
     # Synthetic LDCP profiler — quasi-static point resistance (MPa)
     # Values calibrated to P.A.N.D.A. field data ranges (Benz Navarrete et al. 2022)

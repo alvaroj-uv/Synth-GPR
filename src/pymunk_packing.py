@@ -16,6 +16,7 @@ from typing import List, Optional
 
 from .rock_model import Rock, PackingBounds
 from .rock_packing import RockPackingStrategy, GradingCurve
+from .constants import PHC  # single source of truth for material densities
 
 
 class BallastSimulation:
@@ -164,7 +165,7 @@ class BallastSimulation:
                 body = pymunk.Body()
                 body.position = x_pos, y_pos
                 circle = pymunk.Circle(body, radius)
-                circle.density = 1.55
+                circle.density = PHC.BALLAST_DENSITY_PYMUNK  # from constants.py
 
                 intersect = space.shape_query(circle)
                 if len(intersect) == 0:
@@ -220,7 +221,7 @@ class BallastSimulation:
     def run(
         self,
         running_time: float = 2,
-        time_step: float = 0.002,
+        time_step: float = PHC.GRAVITY_SETTLE_TIME_STEP,  # from constants.py
         display: bool = False,
         random_seed: Optional[int] = None,
     ) -> np.ndarray:

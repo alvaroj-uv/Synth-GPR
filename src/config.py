@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .constants import MC  # single source of truth for material EM properties
+from .constants import MC, PHC  # single source of truth for material EM properties
 
 
 
@@ -180,8 +180,8 @@ class GeneratorConfig:
     # Peplinski mixing-model parameters for the fouling fines (clay-dominated).
     fouling_peplinski_sand_frac: float = 0.3
     fouling_peplinski_clay_frac: float = 0.7
-    fouling_peplinski_bulk_density: float = 1.9    # g/cm^3
-    fouling_peplinski_sand_part_density: float = 2.66  # g/cm^3
+    fouling_peplinski_bulk_density: float = PHC.FOULING_BULK_DENSITY_PEPLINSKI    # g/cm^3 (from constants.py)
+    fouling_peplinski_sand_part_density: float = PHC.FOULING_SAND_DENSITY_PEPLINSKI  # g/cm^3 (from constants.py)
     # Volumetric water fraction vs PVC (capillary retention): water = a + b*PVC/100
     fouling_water_frac_base: float = 0.02
     fouling_water_frac_slope: float = 0.20
