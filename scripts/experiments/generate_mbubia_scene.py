@@ -641,7 +641,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan-margin", type=float, default=DEFAULT_SCAN_MARGIN_M)
     parser.add_argument("--render-png", action="store_true", help="Also render a PNG image of the scene.")
     parser.add_argument("--png-dpi", type=int, default=150, help="DPI for the rendered PNG image.")
-    parser.add_argument("--rx-offset", type=float, default=0.0)
+    parser.add_argument("--rx-offset", type=float, default=0.05, help="RX offset from TX in x-direction (m). Standard: 0.05 m for bistatic.")
     return parser.parse_args()
 
 
