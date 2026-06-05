@@ -426,7 +426,8 @@ def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str], mc_y_min) -> N
             linestyle="--", label="MC sampling box",
         ))
     if patches:
-        ax.legend(handles=patches, loc="upper right", fontsize=7, framealpha=0.85)
+        ax.legend(handles=patches, loc="upper left", bbox_to_anchor=(1.02, 1.0),
+                  fontsize=7, framealpha=0.95, borderpad=0.5)
 
 
 def _draw_meta_annotation(ax: Axes, scene: SceneData) -> None:
