@@ -13,7 +13,6 @@ from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
 from .constants import PC, MC, PHC
 from .physics import circle_strip_intersection, classify_fouling_index
-from .layer_config import LayerStack
 import math
 import json
 
@@ -33,17 +32,24 @@ class LabWorker(Worker):
         print(f"[{self.name}] Starting Virtual Sieve Analysis (Horizontal Sampling)...")
         
         # 1. Define Sampling Layer
-        # BallastWorker writes ballast bounds to the work_order blackboard, not to
-        # scene.metadata, so prefer the blackboard with scene.metadata as fallback.
-        ballast = LayerStack.BALLAST
-        ballast_bottom = scene.metadata.get('ballast_bottom_y', ballast.y_bottom)
-        ballast_thickness = scene.metadata.get('ballast_thickness', ballast.height)
+        # Use coordinate_system as single source of truth for layer geometry
+        from src.domain import Layer
+        ballast_bounds = scene.coordinate_system.bounds(Layer.BALLAST)
+        ballast_bottom = ballast_bounds.bottom
+        ballast_thickness = ballast_bounds.height
+        ballast_top = ballast_bounds.top
+
+        # Check work_order override (if present for runtime customization)
         if scene.work_order:
-            ballast_bottom    = scene.work_order.get('ballast_bottom_y',  ballast_bottom)
-            ballast_thickness = scene.work_order.get('ballast_thickness', ballast_thickness)
-        ballast_top = ballast_bottom + ballast_thickness
-        if scene.work_order:
-            ballast_top = scene.work_order.get('ballast_top_y', ballast_top)
+            wo_bottom = scene.work_order.get('ballast_bottom_y', None)
+            wo_thickness = scene.work_order.get('ballast_thickness', None)
+            wo_top = scene.work_order.get('ballast_top_y', None)
+            if wo_bottom is not None:
+                ballast_bottom = wo_bottom
+            if wo_thickness is not None:
+                ballast_thickness = wo_thickness
+            if wo_top is not None:
+                ballast_top = wo_top
             
         # Dynamically adjust ballast_top to the highest settled rock to avoid 
         # sampling empty air above the gravity-settled structure.
@@ -260,6 +266,65 @@ class LabWorker(Worker):
             
         # Serialize to JSON string for metadata
         scene.metadata['Lab_PSD'] = json.dumps(psd_data)
+
+        # --- NEW: Calculate Rb-f (Relative Ballast Fouling Ratio) for Mbubia ---
+        # Rb-f = (Mf / Gv,f) / Mb
+        # Where: Mf = dry mass of fines (< 9.5mm)
+        #        Mb = dry mass of clean ballast (> 9.5mm)
+        #        Gv,f = specific gravity of fines
+        # Reference: Mbubia et al. (2026), based on Indraratna et al.
+
+        # Material densities (Koohminski et al. 2025)
+        ballast_density = PHC.DEFAULT_BALLAST_DENSITY  # 2.72 g/cm³
+        fouling_density = PHC.DEFAULT_FOULING_DENSITY  # 2.58 g/cm³
+
+        # 1. Calculate ballast (clean rocks) mass
+        # Split rocks by 9.5mm sieve size
+        ballast_mass_large = 0.0  # rocks > 9.5mm (clean ballast)
+        ballast_mass_small = 0.0  # rocks < 9.5mm (if any)
+
+        for rock in scene.rock_positions:
+            # Check if rock is in sampled layer
+            if (rock.y + rock.radius) < y_min or (rock.y - rock.radius) > y_max:
+                continue
+
+            diameter_mm = 2 * rock.radius * 1000  # convert m to mm
+
+            # Volume of rock (sphere approximation, but we use cylinder area × layer height)
+            rock_area_m2 = math.pi * (rock.radius ** 2)
+
+            # Estimate mass from volume using ballast density
+            # Using rock area as proxy for volume contribution in sampling layer
+            rock_volume_m3 = rock_area_m2 * (y_max - y_min)
+            rock_mass_kg = rock_volume_m3 * (ballast_density * 1000)  # convert g/cm³ to kg/m³
+
+            if diameter_mm >= 9.5:
+                ballast_mass_large += rock_mass_kg
+            else:
+                ballast_mass_small += rock_mass_kg
+
+        # Use large ballast mass as Mb
+        Mb = ballast_mass_large  # dry mass of ballast (kg)
+
+        # 2. Calculate fouling (fine particles < 9.5mm) mass
+        # All fouling material is < 9.5mm by definition
+        fouling_volume_m3 = (total_fouling_area_mm2 / 1e6) * (y_max - y_min)
+        Mf = fouling_volume_m3 * (fouling_density * 1000)  # kg
+
+        # 3. Calculate Rb-f
+        # Rb-f = (Mf / Gv,f) / Mb
+        Gv_f = fouling_density  # specific gravity of fines (g/cm³, same as density in water = 1)
+
+        if Mb > 0 and Gv_f > 0:
+            mbubia_Rbf = ((Mf / Gv_f) / Mb) * 100.0  # express as percentage
+        else:
+            mbubia_Rbf = 0.0
+
+        scene.metadata['mbubia_FR'] = round(mbubia_Rbf, 2)
+
+        if scene.metadata['mbubia_FR'] > 0:
+            print(f"[{self.name}] Rb-f (Mbubia FR) = {mbubia_Rbf:.2f}% "
+                  f"(Mf={Mf:.4f}kg, Mb={Mb:.4f}kg, Gv_f={Gv_f})")
 
         
 
