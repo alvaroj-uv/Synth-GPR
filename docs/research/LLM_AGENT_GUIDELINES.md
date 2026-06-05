@@ -6,8 +6,8 @@ This document provides guidelines for LLM code agents working on the Synth-GPR p
 ## 1. Output File Placement
 
 ### Primary Reference
-- **[Output File Placement Rules](docs/OUTPUT_FILE_PLACEMENT_RULES.md)**: Comprehensive guidelines
-- **[Quick Reference](docs/OUTPUT_PLACEMENT_QUICKREF.md)**: Fast lookup table
+- **[Output File Placement Rules](../architecture/OUTPUT_FILE_PLACEMENT_RULES.md)**: Comprehensive guidelines
+- **[Documentation Index](../INDEX.md)**: Find docs by category
 
 ### Automated Resolution
 Use the output resolver utility for consistent file placement:

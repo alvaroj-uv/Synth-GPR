@@ -17,6 +17,14 @@ Use `C:\Users\barba\miniconda3\python.exe` as the interpreter on this machine.
 
 This prevents duplication and maintains consistency across the codebase.
 
+## Documentation Standards
+
+- Keep documentation **accurate and up-to-date** with current code state
+- Remove docs once they become stale or superseded by newer ones
+- Use the **Documentation Index** (`docs/INDEX.md`) to find relevant guides
+- Archive docs only if referenced elsewhere or kept for historical record
+- Link to related docs instead of duplicating information
+
 # Research Direction
 
 ## Core Novelty: Waveform-Only Features

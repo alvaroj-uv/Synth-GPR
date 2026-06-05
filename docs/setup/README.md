@@ -34,11 +34,15 @@ The codebase is organized as follows:
 
 - **`.claude/`**: AI-generated temporary files and analysis artifacts.
 
-## Output File Organization
+## Documentation
 
-For consistent file placement across the project, see:
-- **[Output File Placement Rules](docs/OUTPUT_FILE_PLACEMENT_RULES.md)**: Comprehensive guidelines
-- **[Quick Reference](docs/OUTPUT_PLACEMENT_QUICKREF.md)**: Fast lookup guide
+For comprehensive documentation, see the **[Documentation Index](../INDEX.md)**.
+
+For AI assistants working on this codebase:
+- **[LLM Agent Guidelines](../research/LLM_AGENT_GUIDELINES.md)**: Coding standards and conventions
+- **[Development Guidelines](../../.claude/CLAUDE.md)**: Project instructions and research direction
+
+## Output File Organization
 
 **Key Locations:**
 - Generated GPR data (`.in`, `.out`): `output/{experiment_name}/`
@@ -48,11 +52,7 @@ For consistent file placement across the project, see:
 - Reports: `docs/reports/`
 - Temporary files: `scratch/`
 
-## For AI/LLM Code Agents
-
-If you're an AI assistant working on this codebase, please follow:
-- **[LLM Agent Guidelines](docs/LLM_AGENT_GUIDELINES.md)**: Coding standards, file placement, and project conventions
-- Use the `scripts/tools/output_resolver.py` utility for consistent output file placement
+For detailed file placement rules, see [Output File Placement Rules](../architecture/OUTPUT_FILE_PLACEMENT_RULES.md).
 
 ## Getting Started
 
