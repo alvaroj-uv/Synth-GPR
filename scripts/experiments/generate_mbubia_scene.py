@@ -550,7 +550,7 @@ def build_scene_text(args: argparse.Namespace, sample_index: int = 0) -> str:
         tx_x = args.scan_margin
         gprmax_n = int(math.floor((DOMAIN_X - 2.0 * args.scan_margin) / args.scan_step)) + 1
     else:
-        tx_x = DOMAIN_X / 2.0
+        tx_x = 0.5  # A-scan over left rail (paper: antenna centered over rail)
         gprmax_n = 1
     tx_y = STRUCTURE_TOP_Y + ANTENNA_HEIGHT_M
     tx_z = DOMAIN_Z / 2.0
