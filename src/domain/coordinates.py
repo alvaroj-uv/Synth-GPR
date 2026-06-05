@@ -7,7 +7,7 @@ Replaces hardcoded offsets and implicit dependencies.
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 from .value_objects import Point3D
 
@@ -87,20 +87,71 @@ class LayerBounds:
 class CoordinateSystem:
     """
     Service for resolving geometric coordinates.
-    
+
     Translates semantic requests ("Top of Ballast") into absolute coordinates.
     Now supports Type-Safe Layer lookups (Phase 1 Refactoring).
     """
-    
+
     def __init__(self, layer_stack: LayerStack, domain_x: float = 1.0, domain_z: float = 0.005):
         self.stack = layer_stack
         self.domain_x = domain_x
         self.domain_z = domain_z
-        
+
+        # Validate layer stack before computing levels
+        errors = self._validate_layer_stack()
+        if errors:
+            raise ValueError(
+                f"Invalid layer stack configuration:\n" +
+                "\n".join(f"  - {e}" for e in errors)
+            )
+
         # Precompute absolute Y levels
         self._y_levels: Dict[Anchor, float] = {}
         self._compute_levels()
-        
+
+    def _validate_layer_stack(self) -> List[str]:
+        """Validate layer configuration for consistency.
+
+        Returns:
+            List of error messages (empty if valid)
+        """
+        errors = []
+
+        if self.stack.subgrade_thickness <= 0:
+            errors.append(
+                f"subgrade_thickness must be positive, got {self.stack.subgrade_thickness}m"
+            )
+
+        if self.stack.formation_thickness <= 0:
+            errors.append(
+                f"formation_thickness must be positive, got {self.stack.formation_thickness}m"
+            )
+
+        if self.stack.ballast_thickness <= 0:
+            errors.append(
+                f"ballast_thickness must be positive, got {self.stack.ballast_thickness}m"
+            )
+
+        if self.stack.antenna_clearance < 0:
+            errors.append(
+                f"antenna_clearance must be non-negative, got {self.stack.antenna_clearance}m"
+            )
+
+        if self.stack.air_buffer < 0:
+            errors.append(
+                f"air_buffer must be non-negative, got {self.stack.air_buffer}m"
+            )
+
+        # Check that total height is reasonable
+        total = self.stack.total_height
+        if total > 10.0:
+            errors.append(f"total_height exceeds 10m: {total}m (may indicate misconfiguration)")
+
+        if total < 0.5:
+            errors.append(f"total_height below 50cm: {total}m (may be too small)")
+
+        return errors
+
     def _compute_levels(self):
         """Calculate absolute Y heights for all anchors."""
         current_y = 0.0

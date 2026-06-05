@@ -8,7 +8,6 @@ from .gpr_commands import CylinderCommand, BoxCommand, SoilPeplinskiCommand, Fra
 from .constants import MC, PC
 from .physics import classify_pvc
 from .rock_model import PackingBounds, Rock
-from .layer_config import LayerStack
 from .rock_loader import RockLoader
 
 
@@ -39,15 +38,9 @@ class GranularMatrixWorker(Worker):
           6. Stamp rock geometry (#cylinder or #triangle) on top of the fouling box.
         """
         # 1. Resolve geometry bounds
-        if scene.coordinate_system:
-            from src.domain import Layer
-            bounds_obj = scene.coordinate_system.bounds(Layer.BALLAST)
-            start_y, top_y = bounds_obj.bottom, bounds_obj.top
-        else:
-            ballast = LayerStack.BALLAST
-            start_y = scene.metadata.get('ballast_bottom_y', ballast.y_bottom)
-            ballast_thickness = scene.metadata.get('ballast_thickness', ballast.height)
-            top_y = start_y + ballast_thickness
+        from src.domain import Layer
+        bounds_obj = scene.coordinate_system.bounds(Layer.BALLAST)
+        start_y, top_y = bounds_obj.bottom, bounds_obj.top
 
         domain_x, _, domain_z = scene.get_domain_params()
         

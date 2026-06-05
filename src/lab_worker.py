@@ -13,7 +13,6 @@ from typing import List, Dict, Any
 from .worker import Worker, SceneCheckpoint
 from .constants import PC, MC, PHC
 from .physics import circle_strip_intersection, classify_fouling_index
-from .layer_config import LayerStack
 import math
 import json
 
@@ -33,17 +32,24 @@ class LabWorker(Worker):
         print(f"[{self.name}] Starting Virtual Sieve Analysis (Horizontal Sampling)...")
         
         # 1. Define Sampling Layer
-        # BallastWorker writes ballast bounds to the work_order blackboard, not to
-        # scene.metadata, so prefer the blackboard with scene.metadata as fallback.
-        ballast = LayerStack.BALLAST
-        ballast_bottom = scene.metadata.get('ballast_bottom_y', ballast.y_bottom)
-        ballast_thickness = scene.metadata.get('ballast_thickness', ballast.height)
+        # Use coordinate_system as single source of truth for layer geometry
+        from src.domain import Layer
+        ballast_bounds = scene.coordinate_system.bounds(Layer.BALLAST)
+        ballast_bottom = ballast_bounds.bottom
+        ballast_thickness = ballast_bounds.height
+        ballast_top = ballast_bounds.top
+
+        # Check work_order override (if present for runtime customization)
         if scene.work_order:
-            ballast_bottom    = scene.work_order.get('ballast_bottom_y',  ballast_bottom)
-            ballast_thickness = scene.work_order.get('ballast_thickness', ballast_thickness)
-        ballast_top = ballast_bottom + ballast_thickness
-        if scene.work_order:
-            ballast_top = scene.work_order.get('ballast_top_y', ballast_top)
+            wo_bottom = scene.work_order.get('ballast_bottom_y', None)
+            wo_thickness = scene.work_order.get('ballast_thickness', None)
+            wo_top = scene.work_order.get('ballast_top_y', None)
+            if wo_bottom is not None:
+                ballast_bottom = wo_bottom
+            if wo_thickness is not None:
+                ballast_thickness = wo_thickness
+            if wo_top is not None:
+                ballast_top = wo_top
             
         # Dynamically adjust ballast_top to the highest settled rock to avoid 
         # sampling empty air above the gravity-settled structure.
