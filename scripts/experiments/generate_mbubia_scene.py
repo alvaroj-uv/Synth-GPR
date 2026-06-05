@@ -56,6 +56,11 @@ from src.gpr_commands import (  # noqa: E402
 from src.visualization.scene import parse_in_file, render_geometry_figure # type: ignore
 from src.physics import fmt  # noqa: E402
 
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+
 
 DOMAIN_X = 4.0
 DOMAIN_Y = 1.2
@@ -663,16 +668,19 @@ def main() -> int:
     args.pair = original_pair
 
     if args.render_png:
-        print("Rendering PNGs...")
-        for path in written:
-            try:
-                scene_data = parse_in_file(path)
-                fig, ax = render_geometry_figure(scene_data, title=scene_data.title)
-                png_path = path.with_suffix(".png")
-                fig.savefig(png_path, bbox_inches="tight", dpi=args.png_dpi)
-                plt.close(fig) # Close the figure to free up memory
-            except Exception as e:
-                print(f"Error rendering {path.name}: {e}")
+        if plt is None:
+            print("Warning: matplotlib not available, skipping PNG rendering")
+        else:
+            print("Rendering PNGs...")
+            for path in written:
+                try:
+                    scene_data = parse_in_file(path)
+                    fig, _ = render_geometry_figure(scene_data, title=scene_data.title)
+                    png_path = path.with_suffix(".png")
+                    fig.savefig(png_path, bbox_inches="tight", dpi=args.png_dpi)
+                    plt.close(fig)
+                except Exception as e:
+                    print(f"Error rendering {path.name}: {e}")
 
     print(f"Wrote {len(written)} Mbubia-style scene(s):")
     for path in written[:10]:
