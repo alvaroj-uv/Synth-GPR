@@ -14,6 +14,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from scipy.signal import hilbert, find_peaks, spectrogram
+from scipy.stats import skew, kurtosis
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.data_loader import read_ascan
@@ -69,114 +71,161 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     tt_top = 2 * bal_top / v * 1e9
     tt_bot = 2 * bal_bot / v * 1e9
 
-    # --- Figure layout ---
-    fig = plt.figure(figsize=(12, 7))
+    # --- Figure layout: 6-panel comprehensive analysis ---
+    fig = plt.figure(figsize=(16, 10))
     fig.patch.set_facecolor("#0f1117")
-    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.45, wspace=0.32,
-                           left=0.07, right=0.97, top=0.88, bottom=0.10)
+    gs = gridspec.GridSpec(3, 3, figure=fig, hspace=0.35, wspace=0.3,
+                           left=0.06, right=0.98, top=0.92, bottom=0.08)
 
     dark_bg   = "#0f1117"
     panel_bg  = "#1a1e2b"
     accent    = "#00d4ff"
     accent2   = "#ff6b35"
+    accent3   = "#80e080"
     grid_col  = "#2a2f42"
     text_col  = "#c8d0e0"
 
-    # --- Panel 1: Full A-scan ---
+    # --- Panel 1: Full A-scan (top row, span 3 cols) ---
     ax1 = fig.add_subplot(gs[0, :])
     ax1.set_facecolor(panel_bg)
-    ax1.plot(t_ns, signal, color=accent, lw=0.9, alpha=0.92)
+    ax1.plot(t_ns, signal, color=accent, lw=0.8, alpha=0.92)
     ax1.axhline(0, color=grid_col, lw=0.5)
-
-    # mark ballast interfaces (approximate)
-    for tt, lbl, col in [(tt_top, f"ballast top ~{bal_top:.2f} m", "#a0e070"),
-                          (tt_bot, f"ballast bot ~{bal_bot:.2f} m", "#e07050")]:
-        if 0 < tt < t_ns[-1]:
-            ax1.axvline(tt, color=col, lw=1.0, ls="--", alpha=0.7)
-            ax1.text(tt + 0.05, ax1.get_ylim()[1] * 0.92 if ax1.get_ylim()[1] != 0 else 1,
-                     lbl, color=col, fontsize=7.5, va="top")
-
-    ax1.set_xlabel("Two-way travel time  (ns)", color=text_col, fontsize=9)
-    ax1.set_ylabel(f"{component}  (V/m)", color=text_col, fontsize=9)
-    ax1.set_title(f"A-scan — {component}  |  {out_path.name}", color=text_col, fontsize=10)
-    ax1.tick_params(colors=text_col, labelsize=8)
     for spine in ax1.spines.values():
         spine.set_edgecolor(grid_col)
+    ax1.set_xlabel("Time (ns)", color=text_col, fontsize=9)
+    ax1.set_ylabel(f"{component} (V/m)", color=text_col, fontsize=9)
+    ax1.set_title(f"Full A-scan — {component}", color=text_col, fontsize=10, fontweight='bold')
+    ax1.tick_params(colors=text_col, labelsize=8)
     ax1.grid(True, color=grid_col, lw=0.5, alpha=0.6)
 
-    # --- Panel 2: Frequency spectrum ---
+    # --- Panel 2: Early arrivals (zoomed 0-3 ns) ---
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.set_facecolor(panel_bg)
-    fmax = min(2.0, freq_ghz[-1])
-    mask = freq_ghz <= fmax
-    ax2.fill_between(freq_ghz[mask], spectrum[mask], alpha=0.35, color=accent)
-    ax2.plot(freq_ghz[mask], spectrum[mask], color=accent, lw=1.0)
-    ax2.axvline(peak_ghz, color=accent2, lw=1.2, ls="--", label=f"peak {peak_ghz:.3f} GHz")
-    ax2.axvline(0.4, color="#80e080", lw=1.0, ls=":", alpha=0.8, label="400 MHz")
-    ax2.set_xlabel("Frequency  (GHz)", color=text_col, fontsize=9)
-    ax2.set_ylabel("Amplitude", color=text_col, fontsize=9)
-    ax2.set_title("Frequency Spectrum", color=text_col, fontsize=10)
-    ax2.tick_params(colors=text_col, labelsize=8)
-    ax2.legend(fontsize=8, facecolor=panel_bg, labelcolor=text_col, edgecolor=grid_col)
+    idx_zoom = t_ns < 3.0
+    ax2.plot(t_ns[idx_zoom], signal[idx_zoom], color=accent, lw=1.0)
+    # Mark peaks
+    peaks, props = find_peaks(np.abs(signal[idx_zoom]), height=np.std(signal)*2)
+    if len(peaks) > 0:
+        peak_times = t_ns[idx_zoom][peaks]
+        peak_vals = signal[idx_zoom][peaks]
+        ax2.plot(peak_times, peak_vals, color=accent2, marker='*', markersize=10, linestyle='none')
     for spine in ax2.spines.values():
         spine.set_edgecolor(grid_col)
-    ax2.grid(True, color=grid_col, lw=0.5, alpha=0.6)
+    ax2.set_xlabel("Time (ns)", color=text_col, fontsize=8)
+    ax2.set_ylabel(f"{component} (V/m)", color=text_col, fontsize=8)
+    ax2.set_title("Early Arrivals (0-3 ns)", color=text_col, fontsize=9)
+    ax2.tick_params(colors=text_col, labelsize=7)
+    ax2.grid(True, color=grid_col, lw=0.4, alpha=0.5)
 
-    # --- Panel 3: Metadata card ---
+    # --- Panel 3: Hilbert envelope ---
     ax3 = fig.add_subplot(gs[1, 1])
     ax3.set_facecolor(panel_bg)
-    ax3.axis("off")
+    analytic = hilbert(signal)
+    envelope = np.abs(analytic)
+    ax3.plot(t_ns, signal, color=accent, lw=0.5, alpha=0.6, label='Signal')
+    ax3.plot(t_ns, envelope, color=accent2, lw=1.2, label='Envelope')
+    ax3.plot(t_ns, -envelope, color=accent2, lw=0.8, linestyle='--', alpha=0.5)
     for spine in ax3.spines.values():
         spine.set_edgecolor(grid_col)
+    ax3.set_xlabel("Time (ns)", color=text_col, fontsize=8)
+    ax3.set_ylabel("Amplitude (V/m)", color=text_col, fontsize=8)
+    ax3.set_title("Hilbert Envelope", color=text_col, fontsize=9)
+    ax3.tick_params(colors=text_col, labelsize=7)
+    ax3.legend(fontsize=7, facecolor=panel_bg, labelcolor=text_col, edgecolor=grid_col, loc='upper right')
+    ax3.grid(True, color=grid_col, lw=0.4, alpha=0.5)
 
-    # rx Position attr is absent in some .out files (e.g. PINN4GPR) -> guard.
+    # --- Panel 4: Frequency spectrum (log scale) ---
+    ax4 = fig.add_subplot(gs[1, 2])
+    ax4.set_facecolor(panel_bg)
+    fmax = min(3.0, freq_ghz[-1])
+    mask = freq_ghz <= fmax
+    ax4.semilogy(freq_ghz[mask], spectrum[mask], color=accent, lw=1.0)
+    ax4.fill_between(freq_ghz[mask], spectrum[mask], alpha=0.2, color=accent)
+    ax4.axvline(peak_ghz, color=accent2, lw=1.2, ls='--', label=f'{peak_ghz:.2f} GHz')
+    for spine in ax4.spines.values():
+        spine.set_edgecolor(grid_col)
+    ax4.set_xlabel("Frequency (GHz)", color=text_col, fontsize=8)
+    ax4.set_ylabel("Magnitude", color=text_col, fontsize=8)
+    ax4.set_title("Frequency Spectrum (log)", color=text_col, fontsize=9)
+    ax4.tick_params(colors=text_col, labelsize=7)
+    ax4.legend(fontsize=7, facecolor=panel_bg, labelcolor=text_col, edgecolor=grid_col)
+    ax4.grid(True, color=grid_col, lw=0.4, alpha=0.5, which='both')
+
+    # --- Panel 5: Spectrogram ---
+    ax5 = fig.add_subplot(gs[2, :2])
+    ax5.set_facecolor(panel_bg)
+    f, t_spec, Sxx = spectrogram(signal, fs=1/dt, nperseg=512, noverlap=256)
+    pcm = ax5.pcolormesh(t_spec*1e9, f/1e9, 10*np.log10(Sxx+1e-12), shading='auto', cmap='viridis')
+    ax5.set_ylabel("Frequency (GHz)", color=text_col, fontsize=8)
+    ax5.set_xlabel("Time (ns)", color=text_col, fontsize=8)
+    ax5.set_title("Spectrogram (Time-Frequency)", color=text_col, fontsize=9)
+    ax5.tick_params(colors=text_col, labelsize=7)
+    ax5.set_ylim([0, 3])
+    cbar = plt.colorbar(pcm, ax=ax5, label='Power (dB)')
+    cbar.set_label('Power (dB)', color=text_col, fontsize=8)
+    cbar.ax.tick_params(colors=text_col, labelsize=7)
+
+    # --- Panel 6: Statistics & Metadata ---
+    ax6 = fig.add_subplot(gs[2, 2])
+    ax6.set_facecolor(panel_bg)
+    ax6.axis("off")
+    for spine in ax6.spines.values():
+        spine.set_edgecolor(grid_col)
+
+    # Build statistics text
+    rms = np.sqrt(np.mean(signal**2))
+    n_peaks = len(peaks)
+
     if rx_pos[0] is not None and rx_pos[1] is not None:
-        rx_str = f"Rx @ ({rx_pos[0]:.3f}, {rx_pos[1]:.3f}) m"
+        rx_str = f"({rx_pos[0]:.3f}, {rx_pos[1]:.3f}) m"
     else:
-        rx_str = "Rx position n/a"
-    if ascan_idx is not None:
-        rx_str += f"  [B-scan trace {ascan_idx}]"
+        rx_str = "n/a"
 
-    lines = [
-        ("Scenario", out_path.stem),
-        ("Antenna", rx_str),
-        ("dt", f"{dt*1e12:.1f} ps  |  {iterations} steps"),
-        ("─" * 28, ""),
-        ("PVC input",   f"{pvc}%"),
-        ("Moisture",    f"{moisture}"),
-        ("FI class (target)",  fi_class),
-        ("Lab FI",      f"{lab_fi}%  [{lab_class}]"),
-        ("─" * 28, ""),
-        ("bulk eps (CRIM)", str(bulk_eps)),
-        ("surface R",   str(surface_R)),
-        ("clean ballast", f"{clean_mm} mm"),
-        ("─" * 28, ""),
-        ("Peak freq",   f"{peak_ghz:.3f} GHz"),
+    stats_lines = [
+        ("SIGNAL ANALYSIS", ""),
+        ("Duration", f"{t_ns[-1]:.2f} ns"),
+        ("Samples", f"{len(signal):,}"),
+        ("dt", f"{dt*1e12:.3f} ps"),
+        ("─" * 25, ""),
+        ("Peak", f"{np.max(signal):.0f} V/m"),
+        ("Trough", f"{np.min(signal):.0f} V/m"),
+        ("RMS", f"{rms:.0f} V/m"),
+        ("Std Dev", f"{np.std(signal):.0f}"),
+        ("Skewness", f"{skew(signal):.2f}"),
+        ("─" * 25, ""),
+        ("Peaks found", f"{n_peaks}"),
+        ("Dom. Freq", f"{peak_ghz:.2f} GHz"),
+        ("BW est.", "~1-2 GHz"),
+        ("─" * 25, ""),
+        ("File", out_path.stem[:20]),
+        ("PVC input", f"{pvc}%"),
+        ("Lab FI", f"{lab_fi}% [{lab_class}]"),
     ]
 
-    y = 0.97
-    for key, val in lines:
-        if key.startswith("─"):
-            ax3.plot([0.02, 0.98], [y - 0.01, y - 0.01], color=grid_col, lw=0.5,
-                     transform=ax3.transAxes, clip_on=False)
-            y -= 0.04
+    y = 0.98
+    for key, val in stats_lines:
+        if key.startswith("SIGNAL") or key.startswith("─"):
+            if key.startswith("SIGNAL"):
+                ax6.text(0.05, y, key, transform=ax6.transAxes,
+                        color=accent2, fontsize=8, fontweight='bold', va="top", fontfamily="monospace")
+            y -= 0.05
             continue
-        ax3.text(0.03, y, f"{key}:", transform=ax3.transAxes,
-                 color="#80a0c0", fontsize=8.5, va="top", fontfamily="monospace")
-        ax3.text(0.48, y, val, transform=ax3.transAxes,
-                 color=text_col, fontsize=8.5, va="top", fontfamily="monospace")
-        y -= 0.072
+        ax6.text(0.05, y, f"{key}", transform=ax6.transAxes,
+                color="#80a0c0", fontsize=7.5, va="top", fontfamily="monospace")
+        ax6.text(0.65, y, val, transform=ax6.transAxes,
+                color=text_col, fontsize=7.5, va="top", fontfamily="monospace", ha="right")
+        y -= 0.052
 
     # --- Main title ---
     fig.suptitle(
-        f"gprMax A-scan  |  {out_path.stem}  |  PVC={pvc}%  FI={lab_fi}% [{lab_class}]",
-        color=text_col, fontsize=11, y=0.96,
+        f"gprMax A-scan — Comprehensive Analysis  |  {out_path.stem}  |  PVC={pvc}%  FI={lab_fi}% [{lab_class}]",
+        color=text_col, fontsize=12, fontweight='bold', y=0.965,
     )
 
-    out_png = out_path.with_name(out_path.stem + "_ascan.png")
+    out_png = out_path.with_name(out_path.stem + "_ascan_analysis.png")
     fig.savefig(out_png, dpi=150, bbox_inches="tight", facecolor=dark_bg)
     plt.close(fig)
-    print(f"Saved -> {out_png}")
+    print(f"[OK] Comprehensive A-scan analysis saved -> {out_png}")
     return out_png
 
 
