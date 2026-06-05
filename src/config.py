@@ -73,7 +73,7 @@ class GeneratorConfig:
     # Allows for AVO (Amplitude-Versus-Offset) analysis.
     num_receivers: int = 1         # 1 = Single Offset, >1 = Linear Array
     receiver_spacing: float = 0.05 # Distance between receivers in meters
-    monostatic: bool = False       # True: RX co-located with TX (single-antenna)
+    antenna_mode: str = "monostatic"  # "monostatic" (Mbubia-style) or "bistatic" (separate TX/RX)
 
     @classmethod
     def create_physically_perfect(cls, center_freq_hz: float, er_max: float = 14.4, **kwargs):

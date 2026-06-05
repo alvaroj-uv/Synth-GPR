@@ -295,7 +295,8 @@ class AntennaWorker(Worker):
 
         # Determine Horizontal Positions
         tx_x = scene.config.tx_x + offset
-        rx_x = tx_x if scene.config.monostatic else scene.config.rx_x + offset
+        # antenna_mode can be "monostatic" (RX co-located with TX) or "bistatic" (RX offset from TX)
+        rx_x = tx_x if scene.config.antenna_mode == "monostatic" else scene.config.rx_x + offset
         tx_rx_z = scene.config.tx_rx_z
 
         # Create Point3D objects (fixing Primitive Obsession #2)
