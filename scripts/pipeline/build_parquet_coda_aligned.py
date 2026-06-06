@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.data_loader import read_gprmax_hdf5
 from src.signal_processing import dewow
-from src.feature_extraction import extract_features
+from src.feature_extraction import extract_features_from_signal
 from src.constants import PC
 from src.dataset_io import load_features, save_dataset
 
@@ -108,10 +108,7 @@ def main():
         # NOTE for sim↔real comparison: real traces are sampled at 0.1 ns; these
         # synthetic ones at ~0.031 ns. For a fully clean comparison, resample the
         # coda to 0.1 ns before feature extraction. TODO when rebuilding full set.
-        feat_df = extract_features(
-            pd.DataFrame({"Time": np.arange(len(coda)), "sig": coda}),
-            dt=dt) if dt else extract_features(
-            pd.DataFrame({"Time": np.arange(len(coda)), "sig": coda}))
+        feat_df = extract_features_from_signal(coda, dt=dt, signal_name="sig") if dt else extract_features_from_signal(coda, signal_name="sig")
         if feat_df.empty:
             continue
         row = feat_df.iloc[0].drop(labels=["Signal"], errors="ignore").to_dict()

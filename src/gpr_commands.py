@@ -263,6 +263,23 @@ class TriangleCommand(GPRCommand):
         return f"#triangle: {fmt(self.x1)} {fmt(self.y1)} {fmt(self.z1)} {fmt(self.x2)} {fmt(self.y2)} {fmt(self.z2)} {fmt(self.x3)} {fmt(self.y3)} {fmt(self.z3)} {fmt(self.thickness)} {self.material}"
 
 @dataclass
+class PolygonCommand(GPRCommand):
+    """#polygon: n_vertices x1 y1 z1 x2 y2 z2 ... material"""
+    vertices: list   # [(x, y, z), ...]
+    material: str
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 21  # Same as TriangleCommand — renders after background boxes
+
+    def get_cmd_string(self) -> str:
+        n = len(self.vertices)
+        verts = " ".join(f"{fmt(x)} {fmt(y)} {fmt(z)}" for x, y, z in self.vertices)
+        return f"#polygon: {n} {verts} {self.material}"
+
+
+@dataclass
 class SphereCommand(GPRCommand):
     x: float
     y: float

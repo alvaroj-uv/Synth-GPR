@@ -21,7 +21,7 @@ from tqdm import tqdm
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.data_loader import read_gprmax_hdf5
-from src.feature_extraction import extract_features
+from src.feature_extraction import extract_features_from_signal
 from src.signal_processing import preprocess_signal
 from src.dataset_io import save_dataset
 from src.constants import PC
@@ -84,7 +84,7 @@ def _process(out_path: Path) -> dict | None:
     # real sampling interval (synthetic .out dt ≈ 0.031 ns), NOT the 0.1 ns
     # default. Without this, all freq features (mean/median/dominant freq, STFT,
     # bandwidth) are mis-scaled by ~3.2x and won't align with real-trace features.
-    feat_df = extract_features(pd.DataFrame({"Time": time, ez_col: sig}), dt=dt)
+    feat_df = extract_features_from_signal(sig, dt=dt, signal_name=ez_col)
     if feat_df.empty:
         return None
 

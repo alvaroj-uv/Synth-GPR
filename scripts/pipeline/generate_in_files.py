@@ -157,6 +157,8 @@ def generate_single(
     rx_spacing: float,
     render: bool,
     seed: int | None = None,
+    domain_x: float | None = None,
+    dx: float | None = None,
 ) -> Path:
     """Generate a single .in file with optional PNG visualization."""
 
@@ -177,6 +179,11 @@ def generate_single(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create config with frequency scaling
+    extra = {}
+    if domain_x is not None:
+        extra['domain_x'] = domain_x
+    if dx is not None:
+        extra['dx'] = dx
     config = GeneratorConfig.create_physically_perfect(
         center_freq_hz=freq_hz,
         num_receivers=num_rx,
@@ -190,6 +197,7 @@ def generate_single(
         moisture_min=moisture if moisture is not None else 0.0,
         moisture_max=moisture if moisture is not None else 0.3,
         base_seed=seed,
+        **extra,
     )
 
     # Apply seed if provided (for exact geometry reproducibility)
@@ -423,6 +431,18 @@ Examples:
         help="Center frequency in Hz (default: 1.5e9 = 1.5 GHz)",
     )
     parser.add_argument(
+        "--domain-x",
+        type=float,
+        default=None,
+        help="Override domain width in metres (mbubia default: 4.0m)",
+    )
+    parser.add_argument(
+        "--dx",
+        type=float,
+        default=None,
+        help="Override grid resolution in metres (mbubia default: 4mm; use 2mm for finer detail)",
+    )
+    parser.add_argument(
         "--angular",
         action="store_true",
         help="Use polygonal rocks instead of cylinders",
@@ -538,6 +558,8 @@ Examples:
             packing_algo=packing_algo,
             psd_type=psd_type,
             num_rx=num_rx,
+            domain_x=args.domain_x,
+            dx=args.dx,
             rx_spacing=rx_spacing,
             render=args.render,
             seed=seed,

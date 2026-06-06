@@ -19,10 +19,16 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 # Third-party imports
 import numpy as np
+
+try:
+    import pymunk
+    HAS_PYMUNK = True
+except ImportError:
+    HAS_PYMUNK = False
 
 # Local imports
 from .constants import PAC, PHC  # PHC for material properties and simulation parameters
@@ -2413,3 +2419,205 @@ class StripPackingStrategy(RockPackingStrategy):
         """Clear the cached strip for a fresh pack."""
         self.strip_rocks = None
         self.strip_cached = False
+
+
+class CompactionBasedPacking(RockPackingStrategy):
+    """
+    Gravity-based settling using discretized domain compaction.
+
+    Combines initial random sequential placement with gravity-driven settling
+    via discretized slicing and downward movement. Inspired by circle_Compaction.py
+    (GPR-repo) and jagua-rs physics engine.
+
+    Two-phase algorithm:
+    1. Generate initial rocks using RSA with grading curve
+    2. Apply gravity settling via horizontal/vertical compaction passes
+
+    Args:
+        base_strategy: Base packing strategy for phase 1 (default: RSAPacking)
+        layer_thickness: Height of discretization slices (default 0.01m)
+        compaction_pattern: Sequence of (direction, count) tuples
+                           (default: [('vertical', 2), ('horizontal', 1)])
+    """
+
+    def __init__(
+        self,
+        base_strategy: "RockPackingStrategy" = None,
+        layer_thickness: float = 0.01,
+        compaction_pattern: List[Tuple[str, int]] = None
+    ):
+        from .circle_compaction_utils import CompactionConfig
+
+        self.base_strategy = base_strategy or RSAPacking()
+        self.layer_thickness = layer_thickness
+        self.compaction_pattern = (
+            compaction_pattern or [("vertical", 2), ("horizontal", 1)]
+        )
+        self.cfg = CompactionConfig(
+            layer_thickness=layer_thickness,
+            horizontal=False,
+            max_iterations=1
+        )
+
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        max_attempts: int = PAC.MAX_ATTEMPTS,
+        min_gap: float = 0.0,
+        grading_curve: "GradingCurve" = None
+    ) -> List[Rock]:
+        """
+        Generate rocks via RSA placement + discretized gravity compaction.
+
+        Args:
+            bounds: Rectangular bounding box for placement
+            radius_min/max: Rock radius range (metres)
+            target_fill_ratio: Target area fill fraction
+            max_attempts: Safety cap on placement iterations
+            min_gap: Minimum surface-to-surface clearance (metres)
+            grading_curve: Optional GradingCurve for realistic size distribution
+
+        Returns:
+            List of Rock objects after compaction settling
+        """
+        from .circle_compaction_utils import apply_compaction_pattern
+
+        # Phase 1: Generate initial rocks using base strategy
+        rocks = self.base_strategy.generate_rocks(
+            bounds,
+            radius_min,
+            radius_max,
+            target_fill_ratio=target_fill_ratio,
+            max_attempts=max_attempts,
+            min_gap=min_gap,
+            grading_curve=grading_curve
+        )
+
+        if not rocks:
+            return []
+
+        # Phase 2: Apply gravity compaction
+        print(
+            f"[CompactionBased] Generated {len(rocks)} rocks via {self.base_strategy.__class__.__name__}"
+        )
+        print(f"[CompactionBased] Applying compaction pattern: {self.compaction_pattern}")
+
+        rocks = apply_compaction_pattern(
+            rocks,
+            bounds,
+            layer_thickness=self.layer_thickness,
+            pattern=self.compaction_pattern
+        )
+
+        print(f"[CompactionBased] After compaction: {len(rocks)} rocks")
+
+        return rocks
+
+
+# ─── Pymunk-Based Packing ──────────────────────────────────────────────────
+
+class PymunkBallastPacking(RockPackingStrategy):
+    """
+    Rock packing using pymunk physics simulation (RSA + gravity compaction).
+
+    Produces physically realistic ballast configurations by:
+    1. Randomly placing rocks (RSA algorithm)
+    2. Simulating gravity to compact and settle them
+    3. Filtering results to fit the target layer bounds
+
+    Requires pymunk: pip install pymunk
+    Uses BallastSimulation from pymunk_packing module.
+    """
+
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = 0.85,
+        max_attempts: int = 5000,
+        min_gap: float = 0.0,
+        grading_curve: Optional[GradingCurve] = None,
+    ) -> List[Rock]:
+        """
+        Generate rocks using pymunk physics simulation.
+
+        Parameters
+        ----------
+        bounds : PackingBounds
+            Bounding box for rock placement
+        radius_min : float
+            Minimum rock radius (meters)
+        radius_max : float
+            Maximum rock radius (meters)
+        target_fill_ratio : float
+            Target void fill ratio (0.85 = 85% fill)
+        max_attempts : int
+            Max iterations (not used by pymunk, kept for interface)
+        min_gap : float
+            Minimum gap between rocks (not used, kept for interface)
+        grading_curve : GradingCurve, optional
+            Sieve grading curve. If None, uses clean ballast distribution.
+
+        Returns
+        -------
+        List[Rock]
+            List of Rock objects within bounds
+        """
+        if not HAS_PYMUNK:
+            raise ImportError("pymunk required for PymunkBallastPacking. Install: pip install pymunk")
+
+        # Import here to avoid hard dependency
+        from .pymunk_packing import BallastSimulation
+
+        domain_width = bounds.width
+        domain_height = bounds.height
+
+        # Always let BallastSimulation sample its own Gleisschotter sieve curve.
+        # The Synth-GPR GradingCurve format is for circle-based packers and
+        # produces a narrow uniform range that strips BallastSimulation of its
+        # realistic multi-fraction distribution.
+        simulation = BallastSimulation(
+            domain_size=(domain_width, domain_height),
+            radii_distribution=None,  # sample full Gleisschotter sieve bounds
+            buffer_y=0.4,
+            verbose=False,
+        )
+
+        rocks_array = simulation.run(
+            running_time=2.0,
+            time_step=0.002,
+            display=False,
+            random_seed=None,
+        )
+
+        rocks = []
+        for x, y, radius in rocks_array:
+            translated_x = bounds.x_min + x
+            translated_y = bounds.y_min + y
+
+            # BallastSimulation applies grading curves internally — don't filter by
+            # radius_min/radius_max or the fine-particle distribution is lost entirely.
+            if (bounds.x_min <= translated_x <= bounds.x_max and
+                bounds.y_min <= translated_y <= bounds.y_max):
+                rocks.append(self._create_rock(translated_x, translated_y, radius))
+
+        return rocks
+
+    @staticmethod
+    def _grading_curve_to_pinn4gpr_format(grading_curve: GradingCurve) -> np.ndarray:
+        """Convert Synth-GPR GradingCurve to PINN4GPR's radii_distribution format."""
+        sizes = grading_curve._sizes
+        cdf = grading_curve._cdf
+
+        distribution = []
+        for i in range(len(sizes) - 1):
+            r_max = sizes[i + 1]
+            r_min = sizes[i]
+            mass_frac = cdf[i + 1] - cdf[i]
+            distribution.append([r_max, r_min, mass_frac])
+
+        return np.array(distribution)

@@ -1,22 +1,29 @@
 """
-Pymunk-based ballast packing using realistic physics simulation.
+Pymunk-based simulation utilities for ballast packing and Mbubia scene generation.
 
-Integrates PINN4GPR's BallastSimulation (RSA + gravity compaction) into Synth-GPR's
-pluggable rock packing architecture.
+Contains:
+- BallastSimulation: Physics-based RSA + gravity compaction
+- MbubiaPymunkSceneGenerator: Two-layer railway ballast scene generator
+
+Rock packing strategy (PymunkBallastPacking) is in rock_packing.py.
 
 Physics engine: pymunk (2D rigid-body dynamics)
-Algorithm: Random Sequential Adsorption (RSA) + gravity compaction
-Output: Realistic, settled ballast configurations matching real railway conditions
 """
 
+import json
 import pymunk
 import numpy as np
 import time
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict
 
-from .rock_model import Rock, PackingBounds
-from .rock_packing import RockPackingStrategy, GradingCurve
-from .constants import PHC  # single source of truth for material densities
+from .constants import PHC
+
+try:
+    import pygame
+    HAS_PYGAME = True
+except ImportError:
+    HAS_PYGAME = False
 
 
 class BallastSimulation:
@@ -287,111 +294,252 @@ class BallastSimulation:
         return res
 
 
-class PymunkBallastPacking(RockPackingStrategy):
+
+
+# ─── Mbubia Scene Generator ────────────────────────────────────────────────
+
+class MbubiaPymunkSceneGenerator:
     """
-    Rock packing using pymunk physics simulation (RSA + gravity compaction).
+    Two-layer Mbubia railway ballast scene generator.
 
-    Produces physically realistic ballast configurations by:
-    1. Randomly placing rocks (RSA algorithm)
-    2. Simulating gravity to compact and settle them
-    3. Filtering results to fit the target layer bounds
+    Delegates physics (RSA + gravity compaction) to BallastSimulation per layer,
+    then converts settled circle positions to polygon vertex geometry.
 
-    This integrates PINN4GPR's BallastSimulation into Synth-GPR's packing architecture.
+    This avoids duplicating simulation logic and ensures correct gravity scaling,
+    proper sieve-based grading curves, and consistent void fraction targeting.
     """
 
-    def generate_rocks(
+    DOMAIN_X = 4.0
+    DOMAIN_Y = 1.2
+    DOMAIN_Z = 0.05
+    ANTENNA_HEIGHT_ABOVE_SURFACE = 0.30
+    CENTER_FREQUENCY_GHZ = 1.4
+    LAYER_INTERFACE_Y = 0.488
+
+    LAYER_PROPERTIES = {
+        'clean_ballast':        {'epsilon_r': 4.10, 'sigma': 0.001, 'density': 2650},
+        'fouled_ballast':       {'epsilon_r': 4.23, 'sigma': 0.005, 'density': 2500},
+        'highly_fouled_ballast':{'epsilon_r': 4.35, 'sigma': 0.008, 'density': 2400},
+        'subgrade_soil':        {'epsilon_r': 5.50, 'sigma': 0.010, 'density': 2200},
+    }
+
+    @property
+    def ANTENNA_HEIGHT(self):
+        return self.DOMAIN_Y + self.ANTENNA_HEIGHT_ABOVE_SURFACE
+
+    def __init__(
         self,
-        bounds: PackingBounds,
-        radius_min: float,
-        radius_max: float,
-        target_fill_ratio: float = 0.85,
-        max_attempts: int = 5000,
-        min_gap: float = 0.0,
-        grading_curve: Optional[GradingCurve] = None,
-    ) -> List[Rock]:
-        """
-        Generate rocks using pymunk physics simulation.
+        scene_name: str,
+        upper_material: str = "clean_ballast",
+        lower_material: str = "fouled_ballast",
+        output_dir: Path = Path("output/mbubia_pymunk"),
+        verbose: bool = True,
+        domain_x: Optional[float] = None,
+        domain_y: Optional[float] = None,
+        domain_z: Optional[float] = None,
+    ):
+        self.scene_name = scene_name
+        self.upper_material = upper_material
+        self.lower_material = lower_material
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.verbose = verbose
+        self.rocks: List[dict] = []
+        # Allow per-instance domain override (used by MbubiaWorker from pipeline config)
+        if domain_x is not None:
+            self.DOMAIN_X = domain_x
+        if domain_y is not None:
+            self.DOMAIN_Y = domain_y
+        if domain_z is not None:
+            self.DOMAIN_Z = domain_z
 
-        Parameters
-        ----------
-        bounds : PackingBounds
-            Bounding box for rock placement
-        radius_min : float
-            Minimum rock radius (meters)
-        radius_max : float
-            Maximum rock radius (meters)
-        target_fill_ratio : float
-            Target void fill ratio (0.85 = 85% fill)
-        max_attempts : int
-            Max iterations (not used by pymunk, kept for interface)
-        min_gap : float
-            Minimum gap between rocks (not used, kept for interface)
-        grading_curve : GradingCurve, optional
-            Sieve grading curve. If None, uses clean ballast distribution.
-
-        Returns
-        -------
-        List[Rock]
-            List of Rock objects within bounds
-        """
-        domain_width = bounds.width
-        domain_height = bounds.height
-
-        if grading_curve is not None:
-            radii_distribution = self._grading_curve_to_pinn4gpr_format(grading_curve)
-        else:
-            radii_distribution = BallastSimulation.get_clean_ballast_radii_distrib()
-
-        simulation = BallastSimulation(
-            domain_size=(domain_width, domain_height),
-            radii_distribution=radii_distribution,
-            buffer_y=0.4,
-            verbose=False,
-        )
-
-        rocks_array = simulation.run(
-            running_time=2.0,
-            time_step=0.002,
-            display=False,
-            random_seed=None,  # Will use numpy's default RNG
-        )
-
-        rocks = []
-        for x, y, radius in rocks_array:
-            translated_x = bounds.x_min + x
-            translated_y = bounds.y_min + y
-
-            if (bounds.x_min <= translated_x <= bounds.x_max and
-                bounds.y_min <= translated_y <= bounds.y_max and
-                radius >= radius_min and radius <= radius_max):
-                rocks.append(self._create_rock(translated_x, translated_y, radius))
-
-        return rocks
+    def _validate_configuration(self) -> None:
+        errors = []
+        if self.ANTENNA_HEIGHT <= self.DOMAIN_Y:
+            errors.append(
+                f"Antenna height ({self.ANTENNA_HEIGHT}m) must be above domain top ({self.DOMAIN_Y}m). "
+                f"= domain_y({self.DOMAIN_Y}m) + height_above_surface({self.ANTENNA_HEIGHT_ABOVE_SURFACE}m)"
+            )
+        if self.LAYER_INTERFACE_Y <= 0 or self.LAYER_INTERFACE_Y >= self.DOMAIN_Y:
+            errors.append(
+                f"Layer interface ({self.LAYER_INTERFACE_Y}m) must be within domain (0, {self.DOMAIN_Y}m)"
+            )
+        if self.DOMAIN_X <= 0 or self.DOMAIN_Y <= 0 or self.DOMAIN_Z <= 0:
+            errors.append(f"Domain dimensions must be positive: {self.DOMAIN_X} x {self.DOMAIN_Y} x {self.DOMAIN_Z}")
+        if errors:
+            raise ValueError("Configuration validation failed:\n" + "\n".join(f"  * {e}" for e in errors))
+        if self.verbose:
+            print("[OK] Configuration validated")
+            print(f"  Domain: {self.DOMAIN_X}m x {self.DOMAIN_Y}m x {self.DOMAIN_Z}m")
+            print(f"  Layer interface: y={self.LAYER_INTERFACE_Y}m")
+            print(f"  Antenna: y={self.ANTENNA_HEIGHT}m (above surface)")
 
     @staticmethod
-    def _grading_curve_to_pinn4gpr_format(grading_curve: GradingCurve) -> np.ndarray:
-        """
-        Convert Synth-GPR GradingCurve to PINN4GPR's radii_distribution format.
+    def _get_radii_for(material: str) -> np.ndarray:
+        """Map material name to BallastSimulation sieve-based grading curve."""
+        if material == 'clean_ballast':
+            return BallastSimulation.get_clean_ballast_radii_distrib()
+        else:
+            # fouled_ballast, highly_fouled_ballast, subgrade_soil → fouled curve
+            return BallastSimulation.get_fouled_ballast_radii_distrib()
 
-        Parameters
-        ----------
-        grading_curve : GradingCurve
-            Grading curve with _sizes (radii) and _cdf
+    @staticmethod
+    def _circles_to_polygon_dicts(
+        rocks_array: np.ndarray,
+        material: str,
+        rng: np.random.Generator,
+    ) -> List[dict]:
+        """Convert BallastSimulation circle output to polygon vertex dicts."""
+        rocks = []
+        for x, y, radius in rocks_array:
+            n_sides = int(rng.integers(6, 13))
+            angles = np.linspace(0, 2 * np.pi, n_sides, endpoint=False)
+            # 0.35 amplitude gives clearly visible angular shapes at scene scale
+            noise = rng.uniform(-0.35, 0.35, n_sides)
+            vertices = [
+                (x + (radius + radius * noise[i]) * np.cos(angles[i]),
+                 y + (radius + radius * noise[i]) * np.sin(angles[i]))
+                for i in range(n_sides)
+            ]
+            rocks.append({'x': float(x), 'y': float(y), 'vertices': vertices,
+                          'material': material, 'n_sides': n_sides})
+        return rocks
 
-        Returns
-        -------
-        np.ndarray
-            Array of shape (n-1, 3): [[r_max, r_min, mass_frac], ...]
-        """
-        sizes = grading_curve._sizes
-        cdf = grading_curve._cdf
+    def generate(
+        self,
+        running_time: float = 3.0,
+        time_step: float = PHC.GRAVITY_SETTLE_TIME_STEP,
+        display: bool = False,
+    ) -> None:
+        """Generate Mbubia scene: physics via BallastSimulation, geometry as polygons."""
+        self._validate_configuration()
 
-        distribution = []
-        for i in range(len(sizes) - 1):
-            r_max = sizes[i + 1]
-            r_min = sizes[i]
-            mass_frac = cdf[i + 1] - cdf[i]
+        if self.verbose:
+            print(f"Generating Mbubia scene: {self.scene_name}")
+            print(f"Upper layer: {self.upper_material}  Lower layer: {self.lower_material}")
 
-            distribution.append([r_max, r_min, mass_frac])
+        rng = np.random.default_rng()
 
-        return np.array(distribution)
+        upper_height = self.DOMAIN_Y - self.LAYER_INTERFACE_Y
+        lower_height = self.LAYER_INTERFACE_Y
+
+        if self.verbose:
+            print(f"Phase 1 (upper): BallastSimulation {self.DOMAIN_X}m x {upper_height:.3f}m ...")
+        upper_sim = BallastSimulation(
+            domain_size=(self.DOMAIN_X, upper_height),
+            radii_distribution=self._get_radii_for(self.upper_material),
+            buffer_y=0.2,
+            verbose=self.verbose,
+        )
+        upper_array = upper_sim.run(running_time=running_time, time_step=time_step, display=display)
+        upper_array[:, 1] += self.LAYER_INTERFACE_Y  # offset y into upper layer position
+
+        if self.verbose:
+            print(f"Phase 2 (lower): BallastSimulation {self.DOMAIN_X}m x {lower_height:.3f}m ...")
+        lower_sim = BallastSimulation(
+            domain_size=(self.DOMAIN_X, lower_height),
+            radii_distribution=self._get_radii_for(self.lower_material),
+            buffer_y=0.2,
+            verbose=self.verbose,
+        )
+        lower_array = lower_sim.run(running_time=running_time, time_step=time_step, display=display)
+
+        self.rocks = (
+            self._circles_to_polygon_dicts(upper_array, self.upper_material, rng) +
+            self._circles_to_polygon_dicts(lower_array, self.lower_material, rng)
+        )
+
+        if self.verbose:
+            print(f"Final rock count: {len(self.rocks)} ({len(upper_array)} upper + {len(lower_array)} lower)")
+
+    def export_gprmax_in(self) -> Path:
+        """Export scene to gprMax .in format."""
+        output_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.in"
+        upper_props = self.LAYER_PROPERTIES[self.upper_material]
+        lower_props = self.LAYER_PROPERTIES[self.lower_material]
+
+        content = f"""#title: Mbubia Pymunk Scene - {self.scene_name.upper()}
+#domain: {self.DOMAIN_X:.3f} {self.DOMAIN_Y:.3f} {self.DOMAIN_Z:.3f}
+#dx_dy_dz: 0.002 0.002 0.001
+#time_window: 20e-9
+
+# === MBUBIA SCENE WITH PYMUNK ===
+# Generated with pymunk physics engine
+# Upper layer: {self.upper_material} (er={upper_props['epsilon_r']}, s={upper_props['sigma']})
+# Lower layer: {self.lower_material} (er={lower_props['epsilon_r']}, s={lower_props['sigma']})
+# Rocks: {len(self.rocks)} polygon shapes (realistic geometry)
+
+# === MATERIALS ===
+#material: {upper_props['epsilon_r']} {upper_props['sigma']} 1.0 0.0 {self.upper_material}
+#material: {lower_props['epsilon_r']} {lower_props['sigma']} 1.0 0.0 {self.lower_material}
+#material: 5.50 0.010 1.0 0.0 subgrade_soil
+
+# === ANTENNA (MONOSTATIC) ===
+#hertzian_dipole: z {self.DOMAIN_X/2:.2f} {self.ANTENNA_HEIGHT:.2f} 0 myricker
+#rx: {self.DOMAIN_X/2:.2f} {self.ANTENNA_HEIGHT:.2f} 0
+
+# === WAVEFORM ===
+#waveform: ricker 1 {self.CENTER_FREQUENCY_GHZ*1e9:.0f} myricker
+
+# === DOMAIN MATERIAL ===
+#box: 0 0 0 {self.DOMAIN_X:.3f} {self.DOMAIN_Y:.3f} {self.DOMAIN_Z:.3f} {self.upper_material}
+
+# === LAYER BOUNDARIES ===
+#box: 0 0 0 {self.DOMAIN_X:.3f} {self.LAYER_INTERFACE_Y:.3f} {self.DOMAIN_Z:.3f} {self.lower_material}
+
+# === ROCK GEOMETRY (Pymunk-generated polygons) ===
+"""
+
+        for rock in self.rocks:
+            vertices = rock['vertices']
+            verts_str = ' '.join([f"{v[0]:.4f} {v[1]:.4f} 0" for v in vertices])
+            content += f"#polygon: {len(vertices)} {verts_str} {rock['material']}\n"
+
+        content += "\n# === SIMULATION ===\n#run_simulation\n"
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        if self.verbose:
+            print(f"Exported to {output_file}")
+
+        return output_file
+
+    def export_json(self) -> Path:
+        """Export scene data as JSON."""
+        output_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.json"
+
+        data = {
+            'scene_name': self.scene_name,
+            'upper_material': self.upper_material,
+            'lower_material': self.lower_material,
+            'layer_interface_y': self.LAYER_INTERFACE_Y,
+            'domain': {'x': self.DOMAIN_X, 'y': self.DOMAIN_Y, 'z': self.DOMAIN_Z},
+            'antenna_height': float(self.ANTENNA_HEIGHT),
+            'antenna_height_above_surface': self.ANTENNA_HEIGHT_ABOVE_SURFACE,
+            'frequency_ghz': self.CENTER_FREQUENCY_GHZ,
+            'n_rocks': len(self.rocks),
+            'rocks': self.rocks,
+            'material_properties': self.LAYER_PROPERTIES,
+        }
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+
+        if self.verbose:
+            print(f"Exported to {output_file}")
+
+        return output_file
+
+    def export_png(self) -> Path:
+        """Render scene to PNG via the dedicated Mbubia visualizer."""
+        from scripts.visualization.mbubia_visualizer import render_mbubia_pymunk_scene
+        in_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.in"
+        out_png = self.output_dir / f"mbubia_pymunk_{self.scene_name}.png"
+        return render_mbubia_pymunk_scene(
+            in_path=in_file,
+            output_png=out_png,
+            upper_material=self.upper_material,
+            lower_material=self.lower_material,
+            layer_interface_y=self.LAYER_INTERFACE_Y,
+        )

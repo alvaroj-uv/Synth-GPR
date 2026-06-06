@@ -19,13 +19,19 @@ class RecipeBook:
         Get the sequence of workers for the base construction phase.
 
         Args:
-            config: GeneratorConfig (unused, kept for call-site compatibility).
-            product_type: Identifier for the recipe (e.g., 'standard').
+            config: GeneratorConfig.
+            product_type: 'standard' or 'mbubia'.
 
         Returns:
             List of Worker instances in execution order.
         """
         from .granular_worker import GranularMatrixWorker
+
+        # Auto-detect mbubia from packing algorithm
+        algo = getattr(config, 'rock_packing_algorithm', 'standard')
+        if product_type == "mbubia" or algo == "mbubia":
+            from .mbubia_worker import MbubiaWorker
+            return [MbubiaWorker()]
 
         if product_type == "standard":
             return [

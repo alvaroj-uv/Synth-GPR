@@ -334,7 +334,12 @@ class GranularMatrixWorker(Worker):
         import random
         from src.gpr_commands import TriangleCommand
 
-        n_sides = getattr(scene.config, 'rock_sides', 6)
+        # For pymunk packing, randomize sides per rock (6-12) to match realistic
+        # angular variety. For other algorithms, use the fixed config value.
+        if getattr(scene.config, 'rock_packing_algorithm', '') == 'pymunk':
+            n_sides = random.randint(6, 12)
+        else:
+            n_sides = getattr(scene.config, 'rock_sides', 6)
         cx, cy, r = rock.x, rock.y, rock.radius
         domain_x, domain_y, _ = scene.get_domain_params()
 

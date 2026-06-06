@@ -107,18 +107,23 @@ class GeneratorConfig:
         air_buffer = 1.5
         domain_y = layer_height + antenna_clearance + air_buffer
         
+        # Allow explicit overrides (e.g. narrow Mbubia scans, custom resolution)
+        explicit_domain_x = kwargs.pop('domain_x', None)
+        explicit_dx = kwargs.pop('dx', None)
+        resolved_dx = explicit_dx if explicit_dx is not None else recs['dx']
+
         return cls(
             center_freq=center_freq_hz,
-            domain_x=recs['domain_x'],
+            domain_x=explicit_domain_x if explicit_domain_x is not None else recs['domain_x'],
             domain_y=domain_y,
             max_domain_y=domain_y + 0.5,
-            domain_z=recs['dx'],
-            dx=recs['dx'],
-            dy=recs['dx'],
-            dz=recs['dx'],
+            domain_z=resolved_dx,  # 2D: 1 z-cell
+            dx=resolved_dx,
+            dy=resolved_dx,
+            dz=resolved_dx,
             tx_x=tx_x,
             rx_x=rx_x,
-            tx_rx_z=recs['dx'] / 2.0,
+            tx_rx_z=resolved_dx / 2.0,
             antenna_clearance_above_ballast=antenna_clearance,
             **kwargs
         )
@@ -352,6 +357,39 @@ class GeneratorConfig:
         if self.dz > 0 and (self.rock_z_end - self.rock_z_start) < self.dz:
             object.__setattr__(self, "rock_z_start", 0.0)
             object.__setattr__(self, "rock_z_end", self.domain_z)
+
+        # pymunk packing: polygon rocks + 4m scan width
+        if self.rock_packing_algorithm == "pymunk":
+            if not self.angular_rocks:
+                object.__setattr__(self, "angular_rocks", True)
+            if self.domain_x < 4.0:
+                object.__setattr__(self, "domain_x", 4.0)
+                rx_offset = self.rx_x - self.tx_x
+                object.__setattr__(self, "tx_x", 2.0)
+                object.__setattr__(self, "rx_x", 2.0 + rx_offset)
+
+        # mbubia packing: override domain to Mbubia standard (4m × 1.2m × 0.05m).
+        # domain_x uses 4.0m default but respects explicit user override.
+        # Frequency is NOT overridden — the scene structure works at any frequency.
+        # Resolution is fixed at 2mm: adequate for rock geometry (min radius ~2.4mm)
+        # and any supported GPR frequency.
+        if self.rock_packing_algorithm == "mbubia":
+            mbubia_x = self.domain_x if self.domain_x not in (0.6, 2.25) else 4.0
+            # Rock geometry needs dx ≤ 5mm to resolve stones (min radius ~2.4mm).
+            # Frequency-computed dx is often coarser (e.g. 13mm at 400 MHz), so cap at 4mm.
+            # If user explicitly passed a finer dx, keep it.
+            mbubia_dx = self.dx if self.dx <= 0.005 else 0.004
+            object.__setattr__(self, "domain_x",  mbubia_x)
+            # 1.2m ballast + 0.5m air above antenna (y=1.5m) → total 1.7m
+            object.__setattr__(self, "domain_y",  1.7)
+            # 2D simulation: domain_z = dx = dz (single z-cell)
+            object.__setattr__(self, "dx",        mbubia_dx)
+            object.__setattr__(self, "dy",        mbubia_dx)
+            object.__setattr__(self, "dz",        mbubia_dx)
+            object.__setattr__(self, "domain_z",  mbubia_dx)
+            object.__setattr__(self, "tx_x",      mbubia_x / 2.0)
+            object.__setattr__(self, "rx_x",      mbubia_x / 2.0)  # monostatic
+            object.__setattr__(self, "tx_rx_z",   mbubia_dx / 2.0)
 
         # PVC (Percentage Voids Contaminated) must be valid percentage
         if self.pvc_min < 0 or self.pvc_min > 100:

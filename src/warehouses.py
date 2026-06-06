@@ -182,7 +182,7 @@ class ToolWarehouse:
                 return RSAPacking()
             elif algo == "pymunk":
                 try:
-                    from .pymunk_packing import PymunkBallastPacking
+                    from .rock_packing import PymunkBallastPacking
                     return PymunkBallastPacking()
                 except ImportError:
                     raise ImportError(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,7 @@ import re
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import numpy as np
 from matplotlib.axes import Axes
 
 from ..file_reader import parse_metadata_comments
@@ -101,6 +103,15 @@ class SphereGeom(AbstractGeom):
 
 
 @dataclass
+class PolygonGeom(AbstractGeom):
+    vertices: list  # [(x, y), ...]
+    material: str
+
+    def _set_anchor(self) -> None:
+        pass
+
+
+@dataclass
 class AntennaPos:
     x: float
     y: float
@@ -117,13 +128,14 @@ class SceneData:
     cylinders: list[CylinderGeom] = field(default_factory=list)
     triangles: list[TriangleGeom] = field(default_factory=list)
     spheres: list[SphereGeom] = field(default_factory=list)
+    polygons: list[PolygonGeom] = field(default_factory=list)
     tx: Optional[AntennaPos] = None
     receivers: list[AntennaPos] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
 
     @property
     def geometries(self) -> list[AbstractGeom]:
-        return [*self.boxes, *self.cylinders, *self.triangles, *self.spheres]
+        return [*self.boxes, *self.cylinders, *self.triangles, *self.spheres, *self.polygons]
 
 
 # ── Parser ────────────────────────────────────────────────────────────────────
@@ -131,7 +143,7 @@ class SceneData:
 def parse_in_file(path: Path) -> SceneData:
     """Parse a gprMax .in file into SceneData (single 2D + 3D geometry parser).
 
-    Handles: #domain, #title, #box, #fractal_box, #triangle, #cylinder, #sphere,
+    Handles: #domain, #title, #box, #fractal_box, #triangle, #cylinder, #sphere, #polygon,
     #hertzian_dipole, #rx, the ``antenna_like_GSSI(...)`` python-call line, and
     ``## key: value`` metadata comments (JSON-decoded via
     ``file_reader.parse_metadata_comments``). Z-coordinates are captured so the
@@ -217,6 +229,12 @@ def parse_in_file(path: Path) -> SceneData:
                 radius=float(tokens[7]),
                 material=tokens[8],
             ))
+        elif cmd == "#polygon:":
+            # #polygon: n_vertices x1 y1 z1 x2 y2 z2 ... material
+            n = int(tokens[1])
+            verts = [(float(tokens[2 + i*3]), float(tokens[3 + i*3])) for i in range(n)]
+            material = tokens[2 + n*3]
+            scene.polygons.append(PolygonGeom(vertices=verts, material=material))
         elif cmd == "#hertzian_dipole:":
             # #hertzian_dipole: polarisation x y z waveform_id
             scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]),
@@ -271,6 +289,45 @@ _LEGEND_ORDER = [
 
 # ── Geometry renderer ─────────────────────────────────────────────────────────
 
+def _rocks_y_max(scene: SceneData) -> float:
+    """Return the highest Y coordinate of any ballast rock geometry.
+
+    Used to auto-zoom the viewport when rocks occupy only a small fraction of
+    the full domain height (e.g. generic pipeline with a large air gap above).
+    Returns 0.0 if no rock geometry is present.
+    """
+    y = 0.0
+    for tri in scene.triangles:
+        if tri.material.startswith("bal_rock"):
+            y = max(y, tri.y1, tri.y2, tri.y3)
+    for cyl in scene.cylinders:
+        if cyl.material.startswith("bal_rock"):
+            y = max(y, cyl.y + cyl.radius)
+    for poly in scene.polygons:
+        if poly.vertices:
+            y = max(y, max(v[1] for v in poly.vertices))
+    return y
+
+
+def _view_y_max(scene: SceneData, headroom: float = 0.12) -> float:
+    """Y-axis upper limit for rendering.
+
+    - If rocks occupy < 60 % of domain height, zoom in (generic pipeline with air gap).
+    - Always extends to include antenna position when above domain_y (Mbubia scenes).
+    """
+    rock_top = _rocks_y_max(scene)
+    if rock_top > 0 and rock_top < 0.6 * scene.domain_y:
+        y_max = rock_top * (1.0 + headroom)
+    else:
+        y_max = scene.domain_y
+
+    # Include antenna if it sits above the current view (e.g. Mbubia monostatic)
+    if scene.tx and scene.tx.y > y_max:
+        y_max = scene.tx.y * (1.0 + 0.06)  # 6 % headroom above antenna
+
+    return y_max
+
+
 def draw_geometry(ax: Axes, scene: SceneData) -> None:
     """Draw boxes, cylinders, antennas, MC box, boundary lines, and legend."""
     dx, dy = scene.domain_x, scene.domain_y
@@ -290,13 +347,50 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ))
         seen_mats.add(box.material)
 
+    # Base HSV per ballast-rock material for per-rock colour variation.
+    # Triangles are fan-triangulated from the rock centre (x1,y1 is always the
+    # shared apex), so we group by centre to assign one colour per rock.
+    _ROCK_BASE_HSV: dict[str, tuple] = {
+        "bal_rock":              (0.08, 0.20, 0.62),
+        "bal_rock_L1":           (0.07, 0.22, 0.68),
+        "bal_rock_L2":           (0.06, 0.25, 0.58),
+        "bal_rock_L3":           (0.05, 0.28, 0.48),
+        # Mbubia material names (used when rocks are fan-triangulated in pipeline)
+        "clean_ballast":         (0.58, 0.45, 0.80),
+        "fouled_ballast":        (0.06, 0.55, 0.70),
+        "highly_fouled_ballast": (0.55, 0.40, 0.35),
+        "subgrade_soil":         (0.09, 0.50, 0.62),
+    }
+    _rock_groups: dict = defaultdict(list)
+    _other_tris = []
     for tri in scene.triangles:
+        if tri.material in _ROCK_BASE_HSV:
+            _rock_groups[(round(tri.x1, 5), round(tri.y1, 5), tri.material)].append(tri)
+        else:
+            _other_tris.append(tri)
+
+    for tri in _other_tris:
         style = STYLES.get(tri.material, MaterialStyle("#AAAAAA", None, tri.material))
         ax.add_patch(mpatches.Polygon(
             [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
             facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
         ))
         seen_mats.add(tri.material)
+
+    _rng = np.random.default_rng(42)
+    for (_, _, mat), tris in _rock_groups.items():
+        h, s, v = _ROCK_BASE_HSV[mat]
+        color = matplotlib.colors.hsv_to_rgb([
+            float(np.clip(h + _rng.uniform(-0.05, 0.05), 0, 1)),
+            float(np.clip(s + _rng.uniform(-0.12, 0.12), 0.05, 1)),
+            float(np.clip(v + _rng.uniform(-0.20, 0.20), 0.2, 1)),
+        ])
+        for tri in tris:
+            ax.add_patch(mpatches.Polygon(
+                [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
+                facecolor=color, edgecolor=(0, 0, 0, 0.2), linewidth=0.2, zorder=2,
+            ))
+        seen_mats.add(mat)
 
     for cyl in scene.cylinders:
         style = STYLES.get(cyl.material, MaterialStyle("#AAAAAA", None, cyl.material))
@@ -306,6 +400,29 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ))
         seen_mats.add(cyl.material)
 
+    _POLY_BASE_HSV: dict[str, tuple] = {
+        "bal_rock":              (0.08, 0.20, 0.62),
+        "clean_ballast":         (0.58, 0.45, 0.80),
+        "fouled_ballast":        (0.06, 0.55, 0.70),
+        "highly_fouled_ballast": (0.55, 0.40, 0.35),
+        "subgrade_soil":         (0.09, 0.50, 0.62),
+    }
+    for poly in scene.polygons:
+        if poly.material in _POLY_BASE_HSV:
+            h, s, v = _POLY_BASE_HSV[poly.material]
+            color = matplotlib.colors.hsv_to_rgb([
+                float(np.clip(h + _rng.uniform(-0.04, 0.04), 0, 1)),
+                float(np.clip(s + _rng.uniform(-0.15, 0.15), 0.05, 1)),
+                float(np.clip(v + _rng.uniform(-0.20, 0.20), 0.2, 1)),
+            ])
+        else:
+            style = STYLES.get(poly.material, MaterialStyle("#AAAAAA", None, poly.material))
+            color = style.color
+        ax.add_patch(mpatches.Polygon(
+            poly.vertices, closed=True,
+            facecolor=color, edgecolor=(0, 0, 0, 0.2), linewidth=0.2, zorder=2,
+        ))
+        seen_mats.add(poly.material)
 
     if scene.tx:
         ax.plot(scene.tx.x, scene.tx.y, marker="v", color="#E82020",
@@ -357,7 +474,7 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
     ))
 
     ax.set_xlim(0, dx)
-    ax.set_ylim(0, dy)
+    ax.set_ylim(0, _view_y_max(scene))
     ax.set_aspect("equal")
     ax.set_xlabel("x (m)", fontsize=9)
     ax.set_ylabel("y (m)", fontsize=9)
@@ -383,14 +500,31 @@ def render_geometry_figure(
     unified_visualizer.py uses this when it needs a self-contained
     geometry image (not a subplot inside a dashboard).
     """
-    aspect = scene.domain_y / max(scene.domain_x, 1e-6)
-    fig_h  = min(base_width * aspect * 0.75, max_height)
-    fig, ax = plt.subplots(figsize=(base_width, fig_h), dpi=dpi)
+    # Scale both axes proportionally so wide domains get wide figures.
+    # 3.5 inches per metre gives a readable scale for scenes up to ~5m wide.
+    INCHES_PER_METRE = 3.5
+    content_h = _view_y_max(scene)
+    fig_w = min(scene.domain_x * INCHES_PER_METRE, 16.0)
+    fig_h = min(content_h   * INCHES_PER_METRE, max_height)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
     if title:
         ax.set_title(title, fontsize=10, fontweight="bold")
     draw_geometry(ax, scene)
     fig.tight_layout()
     return fig, ax
+
+
+def save_figure(fig, path: Path, dpi: int = 150) -> Path:
+    """Save and close a matplotlib figure.
+
+    Centralises fig.savefig + plt.close so callers outside src/visualization
+    never need to import matplotlib directly.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, bbox_inches="tight", dpi=dpi, facecolor="white")
+    plt.close(fig)
+    return path
 
 
 def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) -> None:

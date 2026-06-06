@@ -12,8 +12,7 @@ from copy import deepcopy
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import GeneratorConfig
-from src.visualization.scene import parse_in_file, draw_geometry
-import matplotlib.pyplot as plt
+from scripts.visualization.mbubia_visualizer import visualize_monostatic_scene
 
 # Use existing test file as base for visualization
 TEST_IN_FILE = Path(__file__).parent.parent.parent / "test_output" / "pymunk_angular_001.in"
@@ -98,56 +97,11 @@ def create_mbubia_png(
     fouling_label: str,
     frequency_ghz: float = 1.4,
 ) -> None:
-    """Create publication-quality PNG for Mbubia scene"""
-
+    """Create publication-quality PNG for Mbubia scene."""
     if not TEST_IN_FILE.exists():
-        print(f"⚠️  Test file not found: {TEST_IN_FILE}")
+        print(f"Test file not found: {TEST_IN_FILE}")
         return
-
-    # Parse existing test file
-    scene = parse_in_file(TEST_IN_FILE)
-
-    # Create visualization
-    fig, ax = plt.subplots(figsize=(14, 8), dpi=300)
-
-    # Draw geometry
-    draw_geometry(ax, scene)
-
-    # Title
-    fouling_title = {
-        "clean": "Clean Ballast (Rb-f < 2%)",
-        "fouled": "Fouled Ballast (Rb-f 2-18%)",
-        "highly_fouled": "Highly Fouled Ballast (Rb-f ≥ 55%)",
-    }
-
-    title = f"Mbubia-Style Scene - {fouling_title.get(fouling_label, fouling_label)}\n"
-    title += f"1.4 GHz, Monostatic Antenna (Real Railway Standard)"
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
-
-    # Metadata box
-    metadata = (
-        f"Reference: Mbubia et al. 2026\n"
-        f"Frequency: {frequency_ghz:.1f} GHz\n"
-        f"Antenna: Monostatic (TX/RX co-located)\n"
-        f"Domain: 4.0m × 1.7m\n"
-        f"\n"
-        f"Fouling Class: {fouling_label.upper()}\n"
-        f"Ballast Fouling Index (Rb-f):\n"
-        f"  Clean: < 2%\n"
-        f"  Fouled: 2-18%\n"
-        f"  Highly fouled: ≥ 55%"
-    )
-
-    ax.text(0.98, 0.02, metadata,
-            transform=ax.transAxes, fontsize=9, verticalalignment='bottom',
-            horizontalalignment='right', family='monospace',
-            bbox=dict(boxstyle='round', facecolor='#E8F4FF', alpha=0.95,
-                      edgecolor='#1060D0', linewidth=2))
-
-    plt.tight_layout()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
+    visualize_monostatic_scene(TEST_IN_FILE, output_path, fouling_label=fouling_label)
 
 
 def main():

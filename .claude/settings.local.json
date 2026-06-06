@@ -16,7 +16,9 @@
       "Bash(grep -r \"parse_gprmax_input\" \"d:\\\\Codigo\\\\Synth-GPR\" --include=\"*.py\" 2>nul)",
       "Bash(cd \"D:\\\\gprMax\" && grep -n \"add_surface_roughness\" gprMax/input_cmds_geometry.py | head; sed -n '888,920p' gprMax/input_cmds_geometry.py)",
       "Read(//d/gprMax/**)",
-      "Bash(C:/Users/barba/miniconda3/python.exe -c ' *)"
+      "Bash(C:/Users/barba/miniconda3/python.exe -c ' *)",
+      "PowerShell(Get-Command gprMax -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command gprmax -ErrorAction SilentlyContinue)"
     ],
     "additionalDirectories": [
       "d:\\Codigo\\Synth-GPR"

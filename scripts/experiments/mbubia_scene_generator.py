@@ -20,8 +20,8 @@ from src.production_line import ProductionLine
 from src.work_order import WorkOrder, WorkOrderSystem
 from src.domain import SceneParameters
 from src.visualization.publication_figures import PublicationFigureGenerator
-from src.visualization.scene import parse_in_file, draw_geometry
-import matplotlib.pyplot as plt
+from src.visualization.scene import parse_in_file
+from scripts.visualization.mbubia_visualizer import visualize_monostatic_scene
 
 
 @dataclass
@@ -176,31 +176,12 @@ def visualize_mbubia_scene(
     # Publication PNG (300 DPI)
     png_path = output_dir / f"{scene_id}_mbubia_300dpi.png"
     try:
-        fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-        draw_geometry(ax, parsed_scene)
-
-        title_text = f"Mbubia-Style Scene (1.4 GHz, Monostatic)\n"
-        title_text += f"Fouling: {config.rbf_class.upper()} (PVC ≈ {config.pvc_map[config.rbf_class]:.0f}%)"
-        ax.set_title(title_text, fontsize=13, fontweight='bold', pad=15)
-
-        info_text = (
-            f"Reference: Mbubia et al. 2026\n"
-            f"Frequency: {config.frequency/1e9:.1f} GHz\n"
-            f"Antenna: Monostatic (co-located TX/RX)\n"
-            f"Domain: {config.domain_x:.1f}m × {config.domain_y:.2f}m"
-        )
-        ax.text(0.98, 0.02, info_text,
-                transform=ax.transAxes, fontsize=9, verticalalignment='bottom',
-                horizontalalignment='right', family='monospace',
-                bbox=dict(boxstyle='round', facecolor='#E8F4FF', alpha=0.95,
-                          edgecolor='#1060D0', linewidth=1.5))
-
-        plt.tight_layout()
-        fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
-        print(f"   ✓ PNG: {png_path.name} ({png_path.stat().st_size / 1024:.1f} KB)")
-        plt.close(fig)
+        in_path = output_dir / f"{scene_id}.in"
+        if in_path.exists():
+            visualize_monostatic_scene(in_path, png_path, fouling_label=config.rbf_class)
+            print(f"   PNG: {png_path.name} ({png_path.stat().st_size / 1024:.1f} KB)")
     except Exception as e:
-        print(f"   ⚠️  PNG generation failed: {e}")
+        print(f"   PNG generation failed: {e}")
 
 
 def main():
