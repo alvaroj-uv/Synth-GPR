@@ -22,7 +22,7 @@ import math
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from .gpr_commands import (
     DomainCommand, DxDyDzCommand, TimeWindowCommand, MaterialCommand,
@@ -100,22 +100,41 @@ def _unique_materials(layers: List[Layer]) -> tuple[list[MaterialCommand], dict]
     return cmds, id_map
 
 
-def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
-                      rock_id: str, seed: Optional[int] = None) -> tuple[int, list[str]]:
-    """Fill [y0, y1] x [0, domain_x] with gravity-settled rocks from the physics packer.
+class PackerProtocol(Protocol):
+    """Minimal packer protocol expected by the builder.
 
-    Rocks are emitted as #triangle fans of their TRUE settled polygon by default
-    (apex = polygon centroid; vertices clamped to the layer band so edge rocks
-    degrade gracefully). Circle-only rocks fall back to #cylinder. When ``seed`` is
-    given the gravity settle + polygon shaping are deterministic.
-
-    Returns (rock_count, rendered_command_strings).
+    Implementations must provide generate_rocks(bounds, random_seed=None) -> iterable
+    of rock-like objects with attributes: x, y, radius, is_polygon, vertices.
     """
-    from .pymunk_packing import MbubiaPymunkSceneGenerator
+
+
+def get_default_packer():
+    """Lazily import and instantiate the existing MbubiaPymunkSceneGenerator.
+
+    Keeps the heavy dependency (pymunk/pygame) out of the import path until
+    actually needed; callers can inject a test/deterministic packer for unit tests.
+    """
+    try:
+        from .pymunk_packing import MbubiaPymunkSceneGenerator
+        return MbubiaPymunkSceneGenerator(scene_name="layer_pack", upper_material="clean_ballast", verbose=False)
+    except Exception:
+        return None
+
+
+def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
+                      rock_id: str, seed: Optional[int] = None, packer: Optional[PackerProtocol] = None) -> tuple[int, list[str]]:
+    """Fill [y0, y1] x [0, domain_x] with gravity-settled rocks using an injected packer.
+
+    If no packer provided, a default packer will be lazily created. This avoids
+    importing heavy dependencies at module import time and enables test stubs to be
+    injected.
+    """
     from .gpr_commands import TriangleCommand
-    packer = MbubiaPymunkSceneGenerator(
-        scene_name="layer_pack", upper_material="clean_ballast", verbose=False,
-    )
+    if packer is None:
+        packer = get_default_packer()
+    if packer is None:
+        # No packer available → no rocks
+        return {"n": 0, "r_min": 0.0, "r_max": 0.0, "r_mean": 0.0}, []
     bounds = PackingBounds(x_min=0.0, x_max=domain_x, y_min=y0, y_max=y1)
     cmds: list[str] = []
     radii: list[float] = []
@@ -296,6 +315,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
                          param_sources: Optional[dict] = None,
                          scenario: Optional[dict] = None,
                          computed_lab: Optional[dict] = None,
+                         packer: Optional[PackerProtocol] = None,
                          filename: Optional[str] = None) -> List[str]:
     """Build the header + sectioned deck (each section annotated with stats)."""
     raw_commands = raw_commands or []
@@ -334,7 +354,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
                 box_lines.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, matrix_id).get_cmd_string())
                 box_info.append((matrix_id, y0, y1, f"matrix for packed '{ly.name}'"))
             rock_id = id_map[(i, "rock")]
-            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed)
+            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed, packer=packer)
             rock_count += stats["n"]
             rock_sections.append((ly.name, y0, y1, stats, rock_id, ly.rock_eps, matrix_id, cmds))
         else:
@@ -351,12 +371,12 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
             if ly.packed:
                 y0_ballast = sum(layers[j].thickness for j in range(i))
                 y1_ballast = y0_ballast + ly.thickness
-                # Rebuild rocks to extract positions (not ideal, but LabWorker needs them)
-                from .pymunk_packing import MbubiaPymunkSceneGenerator
-                packer = MbubiaPymunkSceneGenerator(scene_name="lab", upper_material="clean_ballast", verbose=False)
-                from .rock_model import PackingBounds
-                bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)
-                rock_positions = packer.generate_rocks(bounds, random_seed=params.seed)
+                # Use injected/default packer to reconstruct rock positions for LabWorker
+                packer_to_use = packer or get_default_packer()
+                if packer_to_use is not None:
+                    from .rock_model import PackingBounds
+                    bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)
+                    rock_positions = packer_to_use.generate_rocks(bounds, random_seed=params.seed)
                 break  # Only test first packed layer
 
         if rock_positions:
