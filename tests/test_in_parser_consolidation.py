@@ -14,7 +14,6 @@ import matplotlib
 matplotlib.use("Agg")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "visualization"))
 
 from src.file_reader import parse_metadata_comments, parse_metadata_file
 from src.visualization.scene import AbstractGeom, parse_in_file, SceneData, SphereGeom
@@ -111,7 +110,7 @@ class TestParse3D:
         assert any(b.material == "antenna" for b in s.boxes)
 
     def test_renders_via_render_3d_views(self, tmp_path):
-        from render_3d_in_file import render_3d_views
+        from src.visualization.scene_3d import render_3d_views
         s = parse_in_file(_write(tmp_path, SAMPLE_3D))
         fig = render_3d_views(s, title="t", dpi=80)
         out = tmp_path / "v.png"

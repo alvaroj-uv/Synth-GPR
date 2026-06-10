@@ -19,8 +19,6 @@ matplotlib.use("Agg")
 
 # Project root on path so `src.*` imports inside the visualizer resolve.
 sys.path.insert(0, str(Path(__file__).parent.parent))
-# Visualizer dir on path so it can import its sibling `render_3d_in_file`.
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "visualization"))
 
 from scripts.visualization import unified_visualizer as uv
 

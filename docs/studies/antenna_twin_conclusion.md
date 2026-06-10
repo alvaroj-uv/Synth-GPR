@@ -61,7 +61,7 @@ Left in the codebase, default-off / opt-in, in case the direction is revisited:
 - `config.source_waveform` ("ricker" default | "gaussian") + `gaussian_excitation_freq` — wired in `AntennaWorker`.
 - `scripts/main/waveform_ab.py` — 2D ricker-vs-gaussian harness.
 - `scripts/main/antenna_twin_ab.py` — 3D GSSI-400 twin harness (uses the official `#python` antenna import).
-- 3D renderer (`scripts/visualization/render_3d_in_file.py`) — now parses the GSSI `#python` antenna call + `fouling` material.
+- 3D renderer (`src/visualization/scene_3d.py`) — now parses the GSSI `#python` antenna call + `fouling` material.
 
 **Do not** spend more GPU scaling the antenna twin unless a new hypothesis
 emerges; the negative result is consistent across two methods.

@@ -41,8 +41,7 @@ Dataset generation, simulation, feature extraction, and model training.
 - **`generate_test_in_files.py`**, **`generate_fake_output.py`** — Test data generation
 
 ### `visualization/` — Plotting & Rendering
-- **`unified_visualizer.py`** — Main visualizer (geometry, A-scan, dashboard; auto-detects 2D/3D)
-- **`render_scene.py`**, **`render_3d_in_file.py`** — Scene and 3D domain rendering
+- **`unified_visualizer.py`** — Main visualizer (geometry, A-scan, dashboard; auto-detects 2D/3D; `--title`/`--metadata` annotations)
 - **`visualize_ascan.py`**, **`plot_fouling_classes.py`** — Signal and classification plots
 
 ### Root-level

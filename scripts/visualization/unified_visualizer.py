@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 from src.visualization.scene import parse_in_file, render_geometry_figure, draw_geometry
+from src.visualization.scene_3d import render_3d_views
 from src.visualization.dashboard import render_dashboard
 from src.visualization.panels import SignalPanelConfig
 from src.data_loader import read_gprmax_hdf5, read_ascan
@@ -57,33 +58,46 @@ def detect_3d_file(in_path: Path) -> bool:
         return any("#sphere:" in line for line in f)
 
 
-def render_3d_geometry(in_path: Path, out_path: Path, dpi: int = 150) -> None:
+def render_3d_geometry(in_path: Path, out_path: Path, dpi: int = 150, title: str = None) -> None:
     """Render a 3D .in file using the specialized 3D renderer."""
-    # Ensure this script's directory is importable whether run as a script or
-    # imported as a module (e.g. from the test suite).
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from render_3d_in_file import render_3d_views
-
     logger.info(f"Parsing 3D scene {in_path.name}...")
     scene = parse_in_file(in_path)
-    title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
+    if title is None:
+        title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
     fig = render_3d_views(scene, title=title, dpi=dpi)
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     logger.info(f"✓ Saved: {out_path}")
     plt.close(fig)
 
 
-def visualize_geometry_only(in_path: Path, out_path: Path, dpi: int = 150) -> None:
-    """Render geometry from .in file (auto-detects 2D vs 3D)."""
+def visualize_geometry_only(
+    in_path: Path,
+    out_path: Path,
+    dpi: int = 150,
+    title: str = None,
+    metadata: str = None,
+) -> None:
+    """Render geometry from .in file (auto-detects 2D vs 3D).
+
+    Args:
+        title: Custom plot title (default: file stem)
+        metadata: Optional annotation text drawn in a box at bottom-right
+    """
     if detect_3d_file(in_path):
-        render_3d_geometry(in_path, out_path, dpi)
+        render_3d_geometry(in_path, out_path, dpi, title=title)
         return
 
     logger.info(f"Parsing {in_path.name}...")
     scene = parse_in_file(in_path)
 
     logger.info(f"Rendering geometry...")
-    fig, _ = render_geometry_figure(scene, title=in_path.stem, dpi=dpi)
+    fig, ax = render_geometry_figure(scene, title=title or in_path.stem, dpi=dpi)
+    if metadata:
+        ax.text(0.98, 0.02, metadata,
+                transform=ax.transAxes, fontsize=9, verticalalignment='bottom',
+                horizontalalignment='right', family='monospace',
+                bbox=dict(boxstyle='round', facecolor='#E8F4FF', alpha=0.95,
+                          edgecolor='#1060D0', linewidth=2))
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     logger.info(f"✓ Saved: {out_path}")
     plt.close(fig)
@@ -210,6 +224,10 @@ Examples:
                         help="Generate all three visualizations")
     parser.add_argument("--component", default="Ez",
                         help="Field component for A-scan (default: Ez)")
+    parser.add_argument("--title", default=None,
+                        help="Custom plot title for geometry mode (supports \\n)")
+    parser.add_argument("--metadata", default=None,
+                        help="Annotation text box for geometry mode (supports \\n)")
     parser.add_argument("--no-show", action="store_true",
                         help="Don't display, save only")
     parser.add_argument("--no-dewow", action="store_true",
@@ -267,6 +285,10 @@ Examples:
     logger.info(f"Input file: {in_file.name}")
     logger.info(f"Output dir: {out_path.parent}")
 
+    # Process escape sequences in title/metadata (geometry mode annotations)
+    title = args.title.replace("\\n", "\n") if args.title else None
+    metadata = args.metadata.replace("\\n", "\n") if args.metadata else None
+
     # 3D files only support geometry rendering (no dashboard/signal panels).
     is_3d = in_file.suffix == ".in" and in_file.exists() and detect_3d_file(in_file)
     if is_3d and (args.all or args.dashboard):
@@ -287,7 +309,7 @@ Examples:
         visualize_ascan_only(out_file, out_path, args.component, args.dpi)
     elif args.geometry or is_3d:
         logger.info("Mode: Geometry only" + (" (3D)" if is_3d else ""))
-        visualize_geometry_only(in_file, out_path, args.dpi)
+        visualize_geometry_only(in_file, out_path, args.dpi, title=title, metadata=metadata)
     else:
         # Auto-detect: if .out exists, show dashboard; otherwise geometry
         if out_file and out_file.exists():
@@ -295,7 +317,7 @@ Examples:
             visualize_full_dashboard(in_file, out_path, sig_cfg, args.dpi)
         else:
             logger.info("Mode: Geometry only (no .out file found)")
-            visualize_geometry_only(in_file, out_path, args.dpi)
+            visualize_geometry_only(in_file, out_path, args.dpi, title=title, metadata=metadata)
 
     if not args.no_show:
         logger.info("Opening visualization...")
