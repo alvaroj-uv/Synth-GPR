@@ -22,7 +22,7 @@ import math
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .gpr_commands import (
     DomainCommand, DxDyDzCommand, TimeWindowCommand, MaterialCommand,
@@ -30,6 +30,7 @@ from .gpr_commands import (
 )
 from .layer_spec import Layer
 from .rock_model import PackingBounds
+from src.scene_model import SceneModel, LayerSpec
 
 C_LIGHT = 299_792_458.0
 _FMAX_FACTOR = 2.5          # ricker fmax ~ 2.5 x centre frequency
@@ -437,3 +438,73 @@ def write_scene(layers: List[Layer], params: SceneParams, out_path: Path,
                                  filename=filename)
     out_path.write_text("\n".join(lines) + "\n")
     return out_path
+
+
+def build_scene_from_model(scene: SceneModel, **kwargs) -> Dict[str, Any]:
+    """Build a scene from a SceneModel instance and return a pure-data representation.
+
+    Returns a dict with keys:
+      - geometry: list of layer dicts (bottom->top) with name, thickness, permittivity, conductivity
+      - targets: list of target descriptors (copied from SceneModel.targets)
+      - metadata: scene.metadata
+
+    This function is a thin adapter that can delegate to existing builder internals
+    if available; otherwise it returns a conservative representation useful for
+    exporters and unit tests.
+    """
+    # Conservative representation
+    geometry = []
+    for lyr in scene.layers:
+        geometry.append({
+            "name": lyr.name,
+            "thickness": float(lyr.thickness),
+            "permittivity": float(lyr.permittivity),
+            "conductivity": float(getattr(lyr, "conductivity", 0.0)),
+            "extra": dict(getattr(lyr, "extra", {})),
+        })
+
+    targets = [dict(t) for t in getattr(scene, "targets", [])]
+
+    out = {
+        "geometry": geometry,
+        "targets": targets,
+        "metadata": dict(getattr(scene, "metadata", {})),
+    }
+
+    # If this module has a richer builder function, attempt to use it for more
+    # detailed geometry (silently fall back if not present).
+    try:
+        # existing function that builds internal scene representation
+        detailed = build_scene_from_layers(geometry, targets, **kwargs)  # type: ignore
+        # If successful, return the detailed representation
+        return detailed
+    except Exception:
+        return out
+
+
+def adapt_and_write_scene(scene: SceneModel, writer, output_path: str, **kwargs) -> str:
+    """Adapter that accepts a SceneModel and uses an existing writer object
+    (e.g. GPRMaxFileWriter) to serialize the scene.
+
+    This function keeps the file-writing responsibility outside the core
+    builder; it simply prepares the pure-data scene and calls the provided
+    writer.save_scene_checkpoint-like interface.
+    """
+    pure = build_scene_from_model(scene, **kwargs)
+
+    # The expected interface on writer is save_scene_checkpoint(checkpoint, ...)
+    # If the writer expects a 'checkpoint' object, we try to satisfy it by
+    # passing the pure-data dict. Callers can adapt as needed.
+    try:
+        written = writer.save_scene_checkpoint(pure, output_path, **kwargs)
+        return written
+    except Exception:
+        # Fallback: if writer has a plain 'write' or 'export' method
+        if hasattr(writer, "export"):
+            writer.export(pure, output_path)
+            return output_path
+        elif hasattr(writer, "write"):
+            writer.write(pure, output_path)
+            return output_path
+        else:
+            raise

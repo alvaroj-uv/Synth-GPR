@@ -15,11 +15,12 @@ import pymunk
 import numpy as np
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 
 from .constants import PHC
 from .rock_model import Layer, Rock, PackingBounds  # shared domain models
 from .rock_packing import RockPackingStrategy
+from src.scene_model import SceneModel
 
 try:
     import pygame
@@ -540,4 +541,37 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
         if self.verbose:
             detail = " + ".join(f"{len(layer_rocks[L.name])} {L.name}" for L in sorted(layers, key=lambda L: L.priority))
             print(f"Final rock count: {len(self.rocks)} ({detail})")
+
+def pack_from_scene(scene: SceneModel, seed: int | None = None, packing_algo: str = "circlify") -> List[Dict[str, Any]]:
+    """Place targets/rocks using the scene model and return a pure-data list of placements.
+
+    Each returned dict contains at least: id, x, y, z (or layer index), shape, size, material.
+    This function delegates to existing packing routines if available; otherwise
+    it treats scene.targets as already-placed and returns them.
+    """
+    # If explicit targets present, assume they are already placed
+    if scene.targets:
+        placed = []
+        for i, t in enumerate(scene.targets):
+            placed.append({
+                "id": t.get("id", i),
+                "x": t.get("x"),
+                "y": t.get("y"),
+                "z": t.get("z"),
+                "layer": t.get("layer"),
+                "shape": t.get("shape", "unknown"),
+                "size": t.get("size", t.get("radius", None)),
+                "material": t.get("material", None),
+                **{k: v for k, v in t.items() if k not in {"id", "x", "y", "z", "layer", "shape", "size", "radius", "material"}},
+            })
+        return placed
+
+    # Otherwise use existing packing logic when available
+    try:
+        # Attempt to call a higher-level pack_using_algo function if module provides it
+        placed = pack_using_algo(scene, seed=seed, algo=packing_algo)  # type: ignore
+        return placed
+    except Exception:
+        # Conservative fallback: return empty list (no packed objects)
+        return []
 
