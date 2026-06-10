@@ -100,23 +100,113 @@ def _unique_materials(layers: List[Layer]) -> tuple[list[MaterialCommand], dict]
 
 
 def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
-                      rock_id: str) -> list[CylinderCommand]:
-    """Fill [y0, y1] x [0, domain_x] with rocks from the physics packer."""
+                      rock_id: str, seed: Optional[int] = None) -> tuple[int, list[str]]:
+    """Fill [y0, y1] x [0, domain_x] with gravity-settled rocks from the physics packer.
+
+    Rocks are emitted as #triangle fans of their TRUE settled polygon by default
+    (apex = polygon centroid; vertices clamped to the layer band so edge rocks
+    degrade gracefully). Circle-only rocks fall back to #cylinder. When ``seed`` is
+    given the gravity settle + polygon shaping are deterministic.
+
+    Returns (rock_count, rendered_command_strings).
+    """
     from .pymunk_packing import MbubiaPymunkSceneGenerator
+    from .gpr_commands import TriangleCommand
     packer = MbubiaPymunkSceneGenerator(
         scene_name="layer_pack", upper_material="clean_ballast", verbose=False,
     )
     bounds = PackingBounds(x_min=0.0, x_max=domain_x, y_min=y0, y_max=y1)
-    cmds: list[CylinderCommand] = []
-    for r in packer.generate_rocks(bounds):
+    cmds: list[str] = []
+    radii: list[float] = []
+    for r in packer.generate_rocks(bounds, random_seed=seed):
         if r.radius <= 0:
             continue
-        if r.y - r.radius < y0 - 1e-6 or r.y + r.radius > y1 + 1e-6:
-            continue
-        cmds.append(CylinderCommand(
-            x1=r.x, y1=r.y, z1=0.0, x2=r.x, y2=r.y, z2=dz, radius=r.radius, material=rock_id,
-        ))
-    return cmds
+        if r.is_polygon and len(r.vertices) >= 3:
+            verts = [(min(max(vx, 0.0), domain_x), min(max(vy, y0), y1)) for vx, vy in r.vertices]
+            n = len(verts)
+            cx = sum(v[0] for v in verts) / n
+            cy = sum(v[1] for v in verts) / n
+            for i in range(n):
+                v1, v2 = verts[i], verts[(i + 1) % n]
+                cmds.append(TriangleCommand(cx, cy, 0.0, v1[0], v1[1], 0.0,
+                                            v2[0], v2[1], 0.0, dz, rock_id).get_cmd_string())
+            radii.append(r.radius)
+        else:
+            if r.y - r.radius < y0 - 1e-6 or r.y + r.radius > y1 + 1e-6:
+                continue
+            cmds.append(CylinderCommand(r.x, r.y, 0.0, r.x, r.y, dz, r.radius, rock_id).get_cmd_string())
+            radii.append(r.radius)
+
+    stats = {
+        "n": len(radii),
+        "r_min": min(radii) if radii else 0.0,
+        "r_max": max(radii) if radii else 0.0,
+        "r_mean": (sum(radii) / len(radii)) if radii else 0.0,
+    }
+    return stats, cmds
+
+
+def _run_lab_worker(y0_ballast: float, y1_ballast: float, domain_x: float, domain_y: float,
+                     rock_positions: list, geometry_cmds: list) -> dict:
+    """Run LabWorker virtual lab test on the scene geometry; return computed lab results.
+
+    Returns dict with FI, FH, qs_mean, etc. for embedding in .in header.
+    """
+    try:
+        from dataclasses import dataclass
+
+        @dataclass
+        class MinimalCheckpoint:
+            """Minimal checkpoint-like object for LabWorker (no pipeline coupling)."""
+            coordinate_system: object = None
+            work_order: object = None
+            metadata: dict = None
+            rock_positions: list = None
+            geometry: list = None
+            config: object = None
+
+            def __post_init__(self):
+                if self.metadata is None:
+                    self.metadata = {}
+                if self.rock_positions is None:
+                    self.rock_positions = []
+                if self.geometry is None:
+                    self.geometry = []
+
+        @dataclass
+        class MinimalConfig:
+            domain_x: float = 1.0
+            domain_y: float = 1.0
+            fouling_psd_type: str = "standard"
+
+        scene = MinimalCheckpoint(
+            metadata={'ballast_bottom_y': y0_ballast, 'ballast_top_y': y1_ballast},
+            rock_positions=rock_positions,
+            geometry=geometry_cmds,
+            config=MinimalConfig(domain_x=domain_x, domain_y=domain_y),
+        )
+
+        from .lab_worker import LabWorker
+        lab = LabWorker()
+        lab.execute(scene, {}, None, None)
+
+        # Extract compact results for header
+        results = {}
+        if 'Lab_FI' in scene.metadata:
+            results['FI'] = f"{scene.metadata['Lab_FI']:.1f}"
+        if 'Lab_Class' in scene.metadata:
+            results['Class'] = scene.metadata['Lab_Class']
+        if 'Lab_LDCP_FH' in scene.metadata:
+            results['FH'] = f"{scene.metadata['Lab_LDCP_FH']:.1f}%"
+        if 'Lab_LDCP_qs_mean' in scene.metadata:
+            results['qs_mean'] = f"{scene.metadata['Lab_LDCP_qs_mean']:.1f}"
+        if 'Lab_Porosity' in scene.metadata:
+            results['porosity'] = f"{scene.metadata['Lab_Porosity']:.3f}"
+
+        return results
+    except Exception as e:
+        print(f"[WARN] LabWorker failed: {e}")
+        return {}
 
 
 def effective_toml(params: SceneParams, layers: List[Layer]) -> str:
@@ -145,11 +235,12 @@ def effective_toml(params: SceneParams, layers: List[Layer]) -> str:
     return "\n".join(out)
 
 
-def _build_header(layers: List[Layer], params: SceneParams, dx: float,
-                  domain_y: float, param_sources: dict, embed_toml: str) -> list[str]:
+def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
+                  time_window, rock_count, param_sources, scenario=None, computed_lab=None):
     names = ", ".join(f"{ly.name}*" if ly.packed else ly.name for ly in layers)
     mode = "monostatic" if params.rx_spacing == 0 else f"bistatic {params.rx_spacing:g}m"
     seed = params.seed if params.seed is not None else "None"
+    ant_label = "TX=RX" if params.rx_spacing == 0 else "TX/RX"
 
     lines = [
         _BAR,
@@ -162,36 +253,50 @@ def _build_header(layers: List[Layer], params: SceneParams, dx: float,
         "## DEFAULTS",
         f"## Frequency: {params.freq_hz/1e6:.0f} MHz",
         f"## Source: single Hertzian dipole ({mode}), {params.source_waveform}",
+        "## Rock geometry: gravity-settled polygons as #triangle fans",
         f"## Layers ({len(layers)}, bottom->top): {names}   (* = packed)",
         f"## Discretisation: dx={dx*1e3:.1f} mm   Domain: {params.domain_x:g} x {domain_y:.3f} m",
         _BAR,
+        "## GEOMETRY (per-section stats annotated inline in the deck below)",
+        f"## Time window: {time_window:g} s",
+        f"## Antenna ({ant_label}): x={params.domain_x/2:g} y={antenna_y:.3f} z={dx/2:g} m",
+        f"## Subsurface top: {subsurface_top:.3f} m    Total rocks: {rock_count}",
+        _BAR,
     ]
-    cfg = {
-        "center_freq_hz": f"{params.freq_hz:g}",
-        "domain_x": f"{params.domain_x:g}",
-        "dx": f"{dx:g}",
-        "antenna_clearance": f"{params.antenna_clearance:g}",
-        "air_buffer": f"{params.air_buffer:g}",
-        "rx_spacing": f"{params.rx_spacing:g}",
-        "num_layers": str(len(layers)),
-    }
-    for k, v in cfg.items():
-        lines.append(f"## CONFIG_{k}: {v}")
-        lines.append(f"## SOURCE_{k}: {param_sources.get(k, 'DEFAULT')}")
     lines.append(_BAR)
 
-    if embed_toml:
-        lines.append("## --- embedded config (reproducible) ---")
-        lines += [f"## {ln}" for ln in embed_toml.splitlines()]
-        lines.append(_BAR)
+    # Add antenna position to GEOMETRY section
+    lines += [f"## Antenna position: y={antenna_y:.3f} m (above surface at {subsurface_top:.3f} m)"]
+
+    # Add ballast layer bounds for visualization
+    y_bottom = 0.0
+    for ly in layers:
+        if ly.packed:
+            y_top = y_bottom + ly.thickness
+            lines += [f"## Ballast layer: y=[{y_bottom:.3f}, {y_top:.3f}] m  (packed rocks)"]
+            break
+        y_bottom += ly.thickness
+
+    if scenario:
+        lines += ["", "==== SCENARIO (target) ===="]
+        for k, v in scenario.items():
+            lines.append(f"## {k}: {v}")
+
+    if computed_lab:
+        lines += ["", "==== COMPUTED LAB ===="]
+        for k, v in computed_lab.items():
+            lines.append(f"## {k}: {v}")
+
     return lines
 
 
 def build_scene_commands(layers: List[Layer], params: SceneParams,
                          raw_commands: Optional[List[str]] = None,
                          param_sources: Optional[dict] = None,
-                         embed_toml: str = "") -> List[str]:
-    """Build the ordered list of rendered gprMax lines (header + deck) for the scene."""
+                         scenario: Optional[dict] = None,
+                         computed_lab: Optional[dict] = None,
+                         filename: Optional[str] = None) -> List[str]:
+    """Build the header + sectioned deck (each section annotated with stats)."""
     raw_commands = raw_commands or []
     param_sources = param_sources or {}
 
@@ -212,58 +317,123 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
         v_min = C_LIGHT / math.sqrt(er_max)
         time_window = (2.0 * subsurface_top / v_min) * 1.6 + 3e-9
 
-    if not embed_toml:
-        embed_toml = effective_toml(params, layers)
-    header = _build_header(layers, params, dx, domain_y, param_sources, embed_toml)
-
-    deck_header = [
-        DomainCommand(params.domain_x, domain_y, dz).get_cmd_string(),
-        DxDyDzCommand(dx, dx, dz).get_cmd_string(),
-        TimeWindowCommand(time_window).get_cmd_string(),
-    ]
-
     mat_cmds, id_map = _unique_materials(layers)
-    materials = [m.get_cmd_string() for m in mat_cmds]
 
-    wave_id = "the_wave"
-    source = [
-        WaveformCommand(params.source_waveform, params.source_amplitude,
-                        params.freq_hz, wave_id).get_cmd_string(),
-        HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0,
-                              wave_id).get_cmd_string(),
-        RxCommand(rx_x, antenna_y, dz / 2.0).get_cmd_string(),
-    ]
-
-    geometry = [BoxCommand(0.0, 0.0, 0.0, params.domain_x, domain_y, dz, "free_space").get_cmd_string()]
-    rock_cmds: list[str] = []
+    # --- background boxes (painter order, bottom->top) + packed rock layers ---
+    box_lines = [BoxCommand(0.0, 0.0, 0.0, params.domain_x, domain_y, dz, "free_space").get_cmd_string()]
+    box_info = [("free_space", 0.0, domain_y, "full domain (air voids)")]
+    rock_sections = []  # (name, y0, y1, stats, rock_id, rock_eps, matrix_id, cmds)
+    rock_count = 0
     y0 = 0.0
     for i, ly in enumerate(layers):
         y1 = y0 + ly.thickness
         if ly.packed:
             matrix_id = id_map[(i, "matrix")]
             if matrix_id != "free_space":
-                geometry.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, matrix_id).get_cmd_string())
+                box_lines.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, matrix_id).get_cmd_string())
+                box_info.append((matrix_id, y0, y1, f"matrix for packed '{ly.name}'"))
             rock_id = id_map[(i, "rock")]
-            for c in _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id):
-                rock_cmds.append(c.get_cmd_string())
+            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed)
+            rock_count += stats["n"]
+            rock_sections.append((ly.name, y0, y1, stats, rock_id, ly.rock_eps, matrix_id, cmds))
         else:
-            geometry.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, id_map[(i, "box")]).get_cmd_string())
+            box_id = id_map[(i, "box")]
+            box_lines.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, box_id).get_cmd_string())
+            box_info.append((box_id, y0, y1, f"layer '{ly.name}'"))
         y0 = y1
 
-    out = header + [""] + deck_header + [""] + materials + [""] + source + [""] + geometry + rock_cmds
+    # Run LabWorker virtual lab test on the packed ballast layer (if any)
+    if not computed_lab and any(ly.packed for ly in layers):
+        # Collect rock positions from packed layers
+        rock_positions = []
+        for i, ly in enumerate(layers):
+            if ly.packed:
+                y0_ballast = sum(layers[j].thickness for j in range(i))
+                y1_ballast = y0_ballast + ly.thickness
+                # Rebuild rocks to extract positions (not ideal, but LabWorker needs them)
+                from .pymunk_packing import MbubiaPymunkSceneGenerator
+                packer = MbubiaPymunkSceneGenerator(scene_name="lab", upper_material="clean_ballast", verbose=False)
+                from .rock_model import PackingBounds
+                bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)
+                rock_positions = packer.generate_rocks(bounds, random_seed=params.seed)
+                break  # Only test first packed layer
+
+        if rock_positions:
+            # Collect geometry for LabWorker
+            geom_cmds = box_lines  # Background boxes
+            computed_lab = _run_lab_worker(y0_ballast, y1_ballast, params.domain_x, domain_y, rock_positions, geom_cmds)
+
+    header = _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
+                           time_window, rock_count, param_sources, scenario=scenario, computed_lab=computed_lab)
+
+    out: list[str] = list(header)
+    out += ["",
+            "## === DOMAIN & TIME WINDOW ===",
+            f"##   domain: x={params.domain_x:g} m (scan width)  y={domain_y:.3f} m (air+subsurface)  z={dz:g} m (2-D, extruded)",
+            f"##   discretization: dx=dy={dx*1e3:.1f} mm  dz={dz*1e3:.1f} mm",
+            f"##   time_window: {time_window:g} s ({time_window*1e9:.1f} ns)  for {subsurface_top:.3f} m subsurface depth",
+            DomainCommand(params.domain_x, domain_y, dz).get_cmd_string(),
+            DxDyDzCommand(dx, dx, dz).get_cmd_string(),
+            TimeWindowCommand(time_window).get_cmd_string()]
+
+    # --- MATERIALS section ---
+    out += ["", f"## === MATERIALS ({len(mat_cmds)}) ==="]
+    for m in mat_cmds:
+        out.append(f"##   {m.identifier:18s} eps={m.eps:g}  sigma={m.sigma:g} S/m")
+    out += [m.get_cmd_string() for m in mat_cmds]
+
+    # --- SOURCE section ---
+    wave_id = "the_wave"
+    out += ["", "## === SOURCE (single monostatic Hertzian dipole) ===",
+            WaveformCommand(params.source_waveform, params.source_amplitude, params.freq_hz, wave_id).get_cmd_string(),
+            HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wave_id).get_cmd_string(),
+            RxCommand(rx_x, antenna_y, dz / 2.0).get_cmd_string()]
+
+    # --- BACKGROUND BOXES section ---
+    out += ["", f"## === BACKGROUND BOXES ({len(box_lines)}, painter order bottom->top) ==="]
+    for bid, by0, by1, descr in box_info:
+        out.append(f"##   {bid:18s} y=[{by0:.3f}, {by1:.3f}] m  ({by1-by0:.3f} m thick)  {descr}")
+    out += box_lines
+
+    # --- one section per packed ROCK LAYER (drawn last → rocks contrast over matrix) ---
+    for name, ly0, ly1, stats, rock_id, rock_eps, matrix_id, cmds in rock_sections:
+        out += ["",
+                f"## === ROCK LAYER: {name} (mbubia gravity-settled, #triangle) ===",
+                f"##   height: {ly1-ly0:.3f} m    y=[{ly0:.3f}, {ly1:.3f}] m",
+                f"##   rocks: {stats['n']}    radius approx: "
+                f"min={stats['r_min']*1e3:.1f} mm  max={stats['r_max']*1e3:.1f} mm  mean={stats['r_mean']*1e3:.1f} mm",
+                f"##   rock material: {rock_id} (eps={rock_eps:g})    matrix: {matrix_id}",
+                f"##   #triangle commands: {len(cmds)}"]
+        out += cmds
+
+    # Add #title, #messages, #geometry_view (standard gprMax metadata)
+    out += [""]
+    if filename:
+        out.append(f"#title: {filename}")
+    out.append("#messages: n")
+
+    # Add default #geometry_view (commented by default for visualization) if not in raw_commands
+    has_geometry_view = any("geometry_view" in (c or "") for c in (raw_commands or []))
+    if not has_geometry_view:
+        out.append(f"##geometry_view: 0 0 0 {params.domain_x:g} {domain_y:.3f} {dz:g} {dx*1e3:.0f} {dx*1e3:.0f} {dz*1e3:.0f} y n")
+
     if raw_commands:
-        out += ["", "## --- passthrough commands ([[command]]) ---", *raw_commands]
+        out += ["", "## === PASSTHROUGH COMMANDS ([[command]]) ==="]
+        out += raw_commands
     return out
 
 
 def write_scene(layers: List[Layer], params: SceneParams, out_path: Path,
                 raw_commands: Optional[List[str]] = None,
                 param_sources: Optional[dict] = None,
-                embed_toml: str = "") -> Path:
+                scenario: Optional[dict] = None,
+                computed_lab: Optional[dict] = None) -> Path:
     """Build the scene and write it to ``out_path`` (.in)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    filename = out_path.name
     lines = build_scene_commands(layers, params, raw_commands=raw_commands,
-                                 param_sources=param_sources, embed_toml=embed_toml)
+                                 param_sources=param_sources, scenario=scenario, computed_lab=computed_lab,
+                                 filename=filename)
     out_path.write_text("\n".join(lines) + "\n")
     return out_path

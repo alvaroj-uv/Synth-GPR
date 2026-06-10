@@ -197,19 +197,20 @@ class SceneConfig:
     """A complete scene config parsed from a TOML file.
 
     ``sim`` and ``source`` are the raw ``[sim]`` / ``[source]`` tables;
+    ``lab`` is the ``[lab]`` ground-truth table (fouling_class, lab measurements, etc.);
     ``raw_commands`` are passthrough gprMax commands from ``[[command]]`` (raw=...);
-    ``toml_text`` is the original file text, embedded verbatim in the .in header
-    for exact reproducibility.
+    ``toml_text`` is the original file text for reproducibility.
     """
     layers: List[Layer]
     sim: dict = field(default_factory=dict)
     source: dict = field(default_factory=dict)
+    lab: dict = field(default_factory=dict)
     raw_commands: List[str] = field(default_factory=list)
     toml_text: str = ""
 
 
 def parse_config_file(path: Union[str, Path]) -> SceneConfig:
-    """Parse a full scene-config TOML: [sim], [source], [[layer]], [[command]]."""
+    """Parse a full scene-config TOML: [sim], [source], [lab], [[layer]], [[command]]."""
     path = Path(path)
     text = path.read_text()
     with open(path, "rb") as fh:
@@ -227,6 +228,7 @@ def parse_config_file(path: Union[str, Path]) -> SceneConfig:
         layers=layers,
         sim=data.get("sim", {}) or {},
         source=data.get("source", {}) or {},
+        lab=dict(data.get("scenario", {})) if "scenario" in data else {},  # [scenario] → stored as lab for .in header
         raw_commands=raw_commands,
         toml_text=text,
     )

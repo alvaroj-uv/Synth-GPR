@@ -363,12 +363,15 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
         max_attempts: int = 5000,
         min_gap: float = 0.0,
         grading_curve=None,
+        random_seed: Optional[int] = None,
     ) -> List[Rock]:
         """
         RockPackingStrategy interface — single-layer generation within bounds.
 
-        Runs BallastSimulation for the given bounds, applies polygon conversion
-        via the inherited polygonize() helper, and returns List[Rock].
+        Runs BallastSimulation (pymunk gravity settling) for the given bounds,
+        applies polygon conversion via the inherited polygonize() helper, and
+        returns List[Rock]. When ``random_seed`` is given, both the gravity
+        simulation and the polygon shaping are deterministic.
 
         For multi-layer painter's algorithm scenes use generate() instead.
         """
@@ -378,8 +381,11 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
             buffer_y=0.2,
             verbose=self.verbose,
         )
-        rng = np.random.default_rng()
-        circle_array = sim.run(running_time=2.0, time_step=PHC.GRAVITY_SETTLE_TIME_STEP, display=False)
+        rng = np.random.default_rng(random_seed)
+        circle_array = sim.run(
+            running_time=2.0, time_step=PHC.GRAVITY_SETTLE_TIME_STEP,
+            display=False, random_seed=random_seed,
+        )
         circle_array[:, 0] += bounds.x_min
         circle_array[:, 1] += bounds.y_min
 

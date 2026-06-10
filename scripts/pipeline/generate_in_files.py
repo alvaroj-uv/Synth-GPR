@@ -369,7 +369,7 @@ def generate_layers(args) -> int:
 
     written = write_scene(config.layers, params, output_path,
                           raw_commands=config.raw_commands, param_sources=ps,
-                          embed_toml=embed_toml)
+                          scenario=config.lab if config.lab else None)
     print(f"[OK] Wrote .in file: {written}")
 
     if args.render:

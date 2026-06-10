@@ -1,0 +1,34 @@
+# 400 MHz, three-layer (subgrade / formation / ballast), mbubia packing — FOULED.
+# Fouled ballast = stones with fines filling the voids (matrix = fouling).
+#
+#   python scripts/pipeline/generate_in_files.py \
+#       test_output/three_layer_400mhz_fouled.in \
+#       --layers-file examples/scenes/three_layer_400mhz_fouled.toml --render
+
+[sim]
+title             = "400 MHz 3-layer mbubia — fouled"
+freq_hz           = 400e6
+domain_x          = 1.0
+antenna_clearance = 0.5
+air_buffer        = 0.1
+rx_spacing        = 0.0
+seed              = 42
+
+[scenario]
+target_fouling    = "fouled"
+target_eps        = 5.0
+target_sigma      = 0.005
+
+[[layer]]
+name = "subgrade"             # eps=8
+thickness = 0.20
+
+[[layer]]
+name = "formation"            # eps=10
+thickness = 0.10
+
+[[layer]]
+name = "ballast"              # mbubia-packed rocks (eps=4) ...
+thickness = 0.25
+packed = true
+matrix = "fouling"            # ... in a fouling matrix (eps=5, light/partial fouling)

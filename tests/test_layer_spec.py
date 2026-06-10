@@ -183,11 +183,12 @@ raw = "#geometry_view: 0 0 0 1.2 1 0.004 0.004 0.004 scene n"
     assert cfg.source["waveform"] == "gaussian"
     assert len(cfg.layers) == 2 and cfg.layers[1].packed
     assert cfg.raw_commands == ["#geometry_view: 0 0 0 1.2 1 0.004 0.004 0.004 scene n"]
+    # config stores the source TOML text, but it's no longer embedded in .in files
     assert "[sim]" in cfg.toml_text
 
 
 def test_header_and_passthrough_in_deck():
-    """Flat scene: header (provenance + CONFIG + embedded TOML), source override, passthrough."""
+    """Flat scene: header (provenance + CONFIG + SOURCE), source override, passthrough."""
     layers = parse_layers("subgrade:0.20, sand:0.25:9:0.01")
     params = SceneParams(freq_hz=600e6, domain_x=1.0, seed=7,
                          source_waveform="gaussian", source_amplitude=2.0)
@@ -201,9 +202,8 @@ def test_header_and_passthrough_in_deck():
     assert "## Git Version:" in text
     assert "## CONFIG_center_freq_hz: 6e+08" in text
     assert "## SOURCE_center_freq_hz: CLI_OVERRIDE" in text
-    # embedded reproducible TOML
-    assert "## --- embedded config (reproducible) ---" in text
-    assert "## [sim]" in text
+    # no embedded TOML (removed for cleaner .in files)
+    assert "## --- embedded config" not in text
     # source override honoured
     assert "#waveform: gaussian 2" in text
     # passthrough command present
@@ -216,6 +216,34 @@ def test_time_window_override():
     lines = build_scene_commands(layers, SceneParams(freq_hz=400e6, time_window=4.2e-8))
     tw = next(l for l in lines if l.startswith("#time_window:"))
     assert abs(float(tw.split()[1]) - 4.2e-8) < 1e-12
+
+
+# --------------------------------------------------------------------------- #
+# Packed layer: triangles by default, section headers with stats, determinism
+# (these run the pymunk gravity packer — a few seconds each)
+# --------------------------------------------------------------------------- #
+def test_packed_layer_emits_triangles_and_section_headers():
+    layers = parse_layers("subgrade:0.10, ballast:0.15:packed")
+    lines = build_scene_commands(layers, SceneParams(freq_hz=400e6, domain_x=0.4, seed=1))
+    text = "\n".join(lines)
+    # rocks are #triangle fans, never bounding cylinders
+    assert text.count("#triangle:") > 0
+    assert text.count("#cylinder:") == 0
+    # per-section headers with stats
+    assert "## === MATERIALS" in text
+    assert "## === SOURCE" in text
+    assert "## === BACKGROUND BOXES" in text
+    assert "## === ROCK LAYER: ballast" in text
+    assert "height:" in text and "rocks:" in text and "radius approx" in text
+
+
+def test_packed_layer_deterministic_with_seed():
+    layers = parse_layers("ballast:0.15:packed")
+    a = build_scene_commands(layers, SceneParams(freq_hz=400e6, domain_x=0.4, seed=7))
+    b = build_scene_commands(layers, SceneParams(freq_hz=400e6, domain_x=0.4, seed=7))
+    tri_a = [l for l in a if l.startswith("#triangle:")]
+    tri_b = [l for l in b if l.startswith("#triangle:")]
+    assert len(tri_a) > 0 and tri_a == tri_b
 
 
 if __name__ == "__main__":
