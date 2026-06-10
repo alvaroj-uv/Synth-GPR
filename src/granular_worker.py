@@ -11,6 +11,17 @@ from .rock_model import PackingBounds, Rock
 from .rock_loader import RockLoader
 
 
+def _polygon_area(verts) -> float:
+    """Shoelace area of a 2D polygon given as [(x, y), ...]."""
+    n = len(verts)
+    s = 0.0
+    for i in range(n):
+        x1, y1 = verts[i]
+        x2, y2 = verts[(i + 1) % n]
+        s += x1 * y2 - x2 * y1
+    return abs(s) * 0.5
+
+
 class GranularMatrixWorker(Worker):
     """
     Unified rock + fouling worker.
@@ -127,58 +138,83 @@ class GranularMatrixWorker(Worker):
         scene.add_material(rock_mat)
         scene.add_material(foul_mat)
         
-        # Split initial pools based on a physical threshold for "rock" vs "fine"
-        rock_threshold = getattr(scene.config, 'fouling_particle_size_max', 0.008) * 2 # say >16mm is rock
-        
-        rock_pool = [c for c in all_circles if c.radius >= rock_threshold]
-        void_pool = [c for c in all_circles if c.radius < rock_threshold]
+        # The mbubia_ballast packer returns the FULL settled polygon packing
+        # already confined to the ballast bounds. Keep every rock (no rock/fine
+        # size threshold, no target-fill cap, no extra gravity settle) so the
+        # pattern matches the standalone MbubiaWorker scene. Area is computed from
+        # the true polygon (shoelace), and each rock's radius is replaced by the
+        # area-equivalent radius so the density and fouling-void maths stay valid
+        # for the irregular shapes.
+        mbubia_ballast = (scene.config.rock_packing_algorithm == "mbubia_ballast")
 
-        # A. Assign Rocks
-        # Sort largest first so we get big rocks forming the skeleton
-        rock_pool.sort(key=lambda c: c.radius, reverse=True)
-        
-        assigned_rocks = []
-        current_rock_area = 0.0
-        target_rock_area = bounds.area * target_rock_fill
-        
-        for c in rock_pool:
-            if current_rock_area < target_rock_area:
+        if mbubia_ballast:
+            assigned_rocks = []
+            current_rock_area = 0.0
+            for c in all_circles:
+                verts = getattr(c, 'vertices', None)
+                if verts and len(verts) >= 3:
+                    area = _polygon_area(verts)
+                    if area > 0:
+                        c.radius = math.sqrt(area / math.pi)  # area-equivalent
+                        current_rock_area += area
+                    else:
+                        current_rock_area += math.pi * c.radius ** 2
+                else:
+                    current_rock_area += math.pi * c.radius ** 2
                 assigned_rocks.append(c)
-                current_rock_area += math.pi * c.radius**2
-            else:
-                # Demoted to void pool
-                void_pool.append(c)
+        else:
+            # Split initial pools based on a physical threshold for "rock" vs "fine"
+            rock_threshold = getattr(scene.config, 'fouling_particle_size_max', 0.008) * 2 # say >16mm is rock
 
-        # Apply Gravity Settle to assigned rocks to prevent them from floating
-        # where tiny "Air" circles used to support them.
-        try:
-            from tqdm import tqdm as _tqdm
-        except ImportError:
-            _tqdm = None
+            rock_pool = [c for c in all_circles if c.radius >= rock_threshold]
+            void_pool = [c for c in all_circles if c.radius < rock_threshold]
 
-        assigned_rocks.sort(key=lambda r: r.y) # Sort bottom to top
-        settled_rocks = []
-        rock_iter = (
-            _tqdm(assigned_rocks, desc="  Gravity settle", unit="rock",
-                  ncols=72, file=__import__('sys').stdout, leave=False)
-            if _tqdm else assigned_rocks
-        )
-        for r in rock_iter:
-            step = 0.002 # 2mm drop per step
-            while r.y - r.radius > start_y:
-                collision = False
-                for sr in settled_rocks:
-                    dist_sq = (r.x - sr.x)**2 + (r.y - step - sr.y)**2
-                    if dist_sq < (r.radius + sr.radius)**2:
-                        collision = True
+            # A. Assign Rocks
+            # Sort largest first so we get big rocks forming the skeleton
+            rock_pool.sort(key=lambda c: c.radius, reverse=True)
+
+            assigned_rocks = []
+            current_rock_area = 0.0
+            target_rock_area = bounds.area * target_rock_fill
+
+            for c in rock_pool:
+                if current_rock_area < target_rock_area:
+                    assigned_rocks.append(c)
+                    current_rock_area += math.pi * c.radius**2
+                else:
+                    # Demoted to void pool
+                    void_pool.append(c)
+
+            # Apply Gravity Settle to assigned rocks to prevent them from floating
+            # where tiny "Air" circles used to support them.
+            try:
+                from tqdm import tqdm as _tqdm
+            except ImportError:
+                _tqdm = None
+
+            assigned_rocks.sort(key=lambda r: r.y) # Sort bottom to top
+            settled_rocks = []
+            rock_iter = (
+                _tqdm(assigned_rocks, desc="  Gravity settle", unit="rock",
+                      ncols=72, file=__import__('sys').stdout, leave=False)
+                if _tqdm else assigned_rocks
+            )
+            for r in rock_iter:
+                step = 0.002 # 2mm drop per step
+                while r.y - r.radius > start_y:
+                    collision = False
+                    for sr in settled_rocks:
+                        dist_sq = (r.x - sr.x)**2 + (r.y - step - sr.y)**2
+                        if dist_sq < (r.radius + sr.radius)**2:
+                            collision = True
+                            break
+                    if collision:
                         break
-                if collision:
-                    break
-                r.y -= step
-            settled_rocks.append(r)
+                    r.y -= step
+                settled_rocks.append(r)
 
-        assigned_rocks = settled_rocks
-                
+            assigned_rocks = settled_rocks
+
         achieved_density = current_rock_area / bounds.area
         porosity = 1.0 - achieved_density
         
@@ -243,7 +279,11 @@ class GranularMatrixWorker(Worker):
         
         # Stamp the structural rocks ON TOP of the background box (Painter's Algorithm)
         for r in assigned_rocks:
-            if getattr(scene.config, 'angular_rocks', False):
+            verts = getattr(r, 'vertices', None)
+            if mbubia_ballast and verts and len(verts) >= 3:
+                # Stamp the TRUE settled polygon (mbubia shape), not a synthetic one
+                self._stamp_polygon(scene, r, z_start, z_end)
+            elif getattr(scene.config, 'angular_rocks', False):
                 self._add_angular_rock(scene, r, z_start, z_end)
             else:
                 scene.add_geometry(CylinderCommand(
@@ -318,6 +358,31 @@ class GranularMatrixWorker(Worker):
             scene.add_geometry(AddSurfaceRoughnessCommand(
                 x_start, y_top, 0.0, domain_x, y_top, domain_z,
                 cfg.fouling_fractal_dimension, lower, y_top, "foul_fb", seed=seed,
+            ))
+
+    def _stamp_polygon(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
+        """Stamp a rock's TRUE polygon (mbubia settled shape) as fan triangles.
+
+        Vertices are clamped to the domain; the fan apex is the recomputed
+        centroid of the clamped polygon (matching MbubiaWorker's stamping), so
+        edge rocks degrade gracefully instead of producing inverted triangles.
+        """
+        from .gpr_commands import TriangleCommand
+        domain_x, domain_y, _ = scene.get_domain_params()
+        verts = [(max(0.0, min(v[0], domain_x)), max(0.0, min(v[1], domain_y)))
+                 for v in rock.vertices]
+        n = len(verts)
+        cx = sum(v[0] for v in verts) / n
+        cy = sum(v[1] for v in verts) / n
+        for i in range(n):
+            v1 = verts[i]
+            v2 = verts[(i + 1) % n]
+            scene.add_geometry(TriangleCommand(
+                cx, cy, z_start,
+                v1[0], v1[1], z_start,
+                v2[0], v2[1], z_start,
+                z_end - z_start,
+                MC.BALLAST_ROCK,
             ))
 
     def _add_angular_rock(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:

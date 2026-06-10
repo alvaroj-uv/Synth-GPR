@@ -30,6 +30,13 @@ class GeneratorConfig:
     # Max realistic height: subgrade(0.5) + formation(0.1) + ballast(0.45) + antenna(0.5) + buffer(0.1) = 1.65m
     max_domain_y: float = 1.65  # Hard limit from literature
 
+    # Physics-packer scan width (m) for pymunk / mbubia / mbubia_ballast.
+    # Parametric: when applied, the antenna auto-centres at domain_x/2 so it
+    # follows the scan width instead of a hardcoded position.
+    scan_width: float = 4.0
+    # Standalone "mbubia" two-layer scene total domain height (m) = ballast + air.
+    mbubia_domain_y: float = 1.7
+
     # Spatial discretization — Khosravi Largani et al. (2025) FDTD guideline:
     #   dx <= lambda_min / 10,  lambda_min = c / (fmax * sqrt(er_max))
     # At fc=1.5 GHz, fmax=2.317 GHz:
@@ -359,15 +366,21 @@ class GeneratorConfig:
             object.__setattr__(self, "rock_z_start", 0.0)
             object.__setattr__(self, "rock_z_end", self.domain_z)
 
-        # pymunk packing: polygon rocks + 4m scan width
-        if self.rock_packing_algorithm == "pymunk":
-            if not self.angular_rocks:
+        # pymunk / mbubia_ballast packing: polygon rocks + 4m scan width.
+        # mbubia_ballast = dense mbubia physics packing inside the STANDARD layer
+        # stack; it shares pymunk's wide-scan geometry (and keeps the standard,
+        # frequency-appropriate dx — unlike the standalone "mbubia" full override).
+        if self.rock_packing_algorithm in ("pymunk", "mbubia_ballast"):
+            if self.rock_packing_algorithm == "pymunk" and not self.angular_rocks:
+                # mbubia_ballast stamps its TRUE settled polygons, so it does not
+                # need the synthetic-angular path that pymunk's circles do.
                 object.__setattr__(self, "angular_rocks", True)
-            if self.domain_x < 4.0:
-                object.__setattr__(self, "domain_x", 4.0)
+            if self.domain_x < self.scan_width:
                 rx_offset = self.rx_x - self.tx_x
-                object.__setattr__(self, "tx_x", 2.0)
-                object.__setattr__(self, "rx_x", 2.0 + rx_offset)
+                object.__setattr__(self, "domain_x", self.scan_width)
+                # Antenna is parametric: centred on the (new) domain width.
+                object.__setattr__(self, "tx_x", self.domain_x / 2.0)
+                object.__setattr__(self, "rx_x", self.domain_x / 2.0 + rx_offset)
 
         # mbubia packing: override domain to Mbubia standard (4m × 1.2m × 0.05m).
         # domain_x uses 4.0m default but respects explicit user override.
@@ -378,14 +391,18 @@ class GeneratorConfig:
             # 0.6m and 2.25m are the legacy create_physically_perfect defaults at
             # 1.4 GHz and 400 MHz respectively — treat them as "not user-overridden".
             _LEGACY_DEFAULTS = (0.6, 2.25)
-            mbubia_x = self.domain_x if self.domain_x not in _LEGACY_DEFAULTS else 4.0
+            mbubia_x = self.domain_x if self.domain_x not in _LEGACY_DEFAULTS else self.scan_width
             # Rock geometry needs dx ≤ 5mm to resolve stones (min radius ~2.4mm).
             # Frequency-computed dx is often coarser (e.g. 13mm at 400 MHz), so cap at 4mm.
             # If user explicitly passed a finer dx, keep it.
             mbubia_dx = self.dx if self.dx <= 0.005 else 0.004
+            rx_offset = self.rx_x - self.tx_x
             object.__setattr__(self, "domain_x",  mbubia_x)
-            # 1.2m ballast + 0.5m air above antenna (y=1.5m) → total 1.7m
-            object.__setattr__(self, "domain_y",  1.7)
+            # Parametric height: ballast + air above antenna (see mbubia_domain_y).
+            object.__setattr__(self, "domain_y",  self.mbubia_domain_y)
+            # Antenna is parametric: centred on the (new) domain width.
+            object.__setattr__(self, "tx_x",      self.domain_x / 2.0)
+            object.__setattr__(self, "rx_x",      self.domain_x / 2.0 + rx_offset)
             # 2D simulation: domain_z = dx = dz (single z-cell)
             object.__setattr__(self, "dx",        mbubia_dx)
             object.__setattr__(self, "dy",        mbubia_dx)

@@ -189,6 +189,25 @@ class ToolWarehouse:
                         "pymunk packing requires 'pymunk' package. "
                         "Install with: pip install pymunk"
                     )
+            elif algo == "mbubia_ballast":
+                # Dense mbubia physics packing confined to the ballast region,
+                # for use inside the STANDARD layer stack (Air/Subgrade/Formation/
+                # Fouling). Returns full-grading polygon rocks; GranularMatrixWorker
+                # keeps ALL of them (no size filter, no fill cap) so the pattern
+                # matches the standalone MbubiaWorker scene. clean_ballast grading
+                # gives the rock skeleton (fouling is added separately as a layer).
+                try:
+                    from .pymunk_packing import MbubiaPymunkSceneGenerator
+                    return MbubiaPymunkSceneGenerator(
+                        scene_name="ballast_pack",
+                        upper_material="clean_ballast",
+                        verbose=False,
+                    )
+                except ImportError:
+                    raise ImportError(
+                        "mbubia_ballast packing requires 'pymunk' package. "
+                        "Install with: pip install pymunk"
+                    )
             else:
                 from .rock_packing import RSAPacking
                 return RSAPacking()
