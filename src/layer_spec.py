@@ -163,17 +163,12 @@ def parse_layers(spec: str) -> List[Layer]:
     return layers
 
 
-def parse_layers_file(path: Union[str, Path]) -> List[Layer]:
-    """Parse a TOML layer file: an array of ``[[layer]]`` tables, bottom -> top."""
-    with open(path, "rb") as fh:
-        data = tomllib.load(fh)
-
-    table = data.get("layer")
+def _layers_from_table(table) -> List[Layer]:
+    """Build + validate the layer stack from an array of [[layer]] tables."""
     if not isinstance(table, list) or not table:
         raise ValueError(
             "layer TOML must contain a non-empty array of [[layer]] tables"
         )
-
     layers: List[Layer] = []
     for i, obj in enumerate(table):
         if "name" not in obj or "thickness" not in obj:
@@ -188,6 +183,53 @@ def parse_layers_file(path: Union[str, Path]) -> List[Layer]:
         ))
     _validate_stack(layers)
     return layers
+
+
+def parse_layers_file(path: Union[str, Path]) -> List[Layer]:
+    """Parse a TOML layer file: an array of ``[[layer]]`` tables, bottom -> top."""
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+    return _layers_from_table(data.get("layer"))
+
+
+@dataclass
+class SceneConfig:
+    """A complete scene config parsed from a TOML file.
+
+    ``sim`` and ``source`` are the raw ``[sim]`` / ``[source]`` tables;
+    ``raw_commands`` are passthrough gprMax commands from ``[[command]]`` (raw=...);
+    ``toml_text`` is the original file text, embedded verbatim in the .in header
+    for exact reproducibility.
+    """
+    layers: List[Layer]
+    sim: dict = field(default_factory=dict)
+    source: dict = field(default_factory=dict)
+    raw_commands: List[str] = field(default_factory=list)
+    toml_text: str = ""
+
+
+def parse_config_file(path: Union[str, Path]) -> SceneConfig:
+    """Parse a full scene-config TOML: [sim], [source], [[layer]], [[command]]."""
+    path = Path(path)
+    text = path.read_text()
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+
+    layers = _layers_from_table(data.get("layer"))
+
+    raw_commands: List[str] = []
+    for i, cmd in enumerate(data.get("command", [])):
+        if "raw" not in cmd:
+            raise ValueError(f"[[command]] #{i}: requires a 'raw' string")
+        raw_commands.append(str(cmd["raw"]))
+
+    return SceneConfig(
+        layers=layers,
+        sim=data.get("sim", {}) or {},
+        source=data.get("source", {}) or {},
+        raw_commands=raw_commands,
+        toml_text=text,
+    )
 
 
 def _validate_stack(layers: List[Layer]) -> None:

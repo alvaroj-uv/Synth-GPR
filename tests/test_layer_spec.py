@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.constants import MC
-from src.layer_spec import Layer, parse_layers, parse_layers_file
+from src.layer_spec import Layer, parse_layers, parse_layers_file, parse_config_file
 from src.layer_scene_builder import SceneParams, build_scene_commands
 
 
@@ -146,6 +146,76 @@ def test_flat_builder_domain_height():
     # subsurface 0.55 + clearance 0.5 + buffer 0.1 = 1.15 m tall
     y = float(domain_line.split()[2])
     assert abs(y - 1.15) < 1e-6
+
+
+# --------------------------------------------------------------------------- #
+# Full scene-config TOML ([sim] / [source] / [[layer]] / [[command]])
+# --------------------------------------------------------------------------- #
+def test_full_config_toml(tmp_path):
+    toml = """
+[sim]
+title = "demo"
+freq_hz = 600e6
+domain_x = 1.2
+antenna_clearance = 0.4
+seed = 7
+
+[source]
+waveform = "gaussian"
+amplitude = 2.0
+
+[[layer]]
+name = "subgrade"
+thickness = 0.2
+
+[[layer]]
+name = "ballast"
+thickness = 0.25
+packed = true
+
+[[command]]
+raw = "#geometry_view: 0 0 0 1.2 1 0.004 0.004 0.004 scene n"
+"""
+    f = tmp_path / "scene.toml"
+    f.write_text(toml)
+    cfg = parse_config_file(f)
+    assert cfg.sim["freq_hz"] == 600e6 and cfg.sim["domain_x"] == 1.2
+    assert cfg.source["waveform"] == "gaussian"
+    assert len(cfg.layers) == 2 and cfg.layers[1].packed
+    assert cfg.raw_commands == ["#geometry_view: 0 0 0 1.2 1 0.004 0.004 0.004 scene n"]
+    assert "[sim]" in cfg.toml_text
+
+
+def test_header_and_passthrough_in_deck():
+    """Flat scene: header (provenance + CONFIG + embedded TOML), source override, passthrough."""
+    layers = parse_layers("subgrade:0.20, sand:0.25:9:0.01")
+    params = SceneParams(freq_hz=600e6, domain_x=1.0, seed=7,
+                         source_waveform="gaussian", source_amplitude=2.0)
+    raw = ["#geometry_view: 0 0 0 1 1 0.01 0.01 0.01 v n"]
+    lines = build_scene_commands(layers, params, raw_commands=raw,
+                                 param_sources={"center_freq_hz": "CLI_OVERRIDE"})
+    text = "\n".join(lines)
+
+    # provenance + replication header
+    assert "## Generated gprMax Input File" in text
+    assert "## Git Version:" in text
+    assert "## CONFIG_center_freq_hz: 6e+08" in text
+    assert "## SOURCE_center_freq_hz: CLI_OVERRIDE" in text
+    # embedded reproducible TOML
+    assert "## --- embedded config (reproducible) ---" in text
+    assert "## [sim]" in text
+    # source override honoured
+    assert "#waveform: gaussian 2" in text
+    # passthrough command present
+    assert "#geometry_view: 0 0 0 1 1 0.01 0.01 0.01 v n" in text
+    assert text.count("#hertzian_dipole:") == 1
+
+
+def test_time_window_override():
+    layers = parse_layers("subgrade:0.20, sand:0.25:9:0.01")
+    lines = build_scene_commands(layers, SceneParams(freq_hz=400e6, time_window=4.2e-8))
+    tw = next(l for l in lines if l.startswith("#time_window:"))
+    assert abs(float(tw.split()[1]) - 4.2e-8) < 1e-12
 
 
 if __name__ == "__main__":

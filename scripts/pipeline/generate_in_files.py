@@ -298,43 +298,81 @@ def generate_single(
     return Path(written_path)
 
 
-def generate_layers(
-    output_path: Path,
-    layers_inline: str | None,
-    layers_file: str | None,
-    freq_hz: float,
-    domain_x: float,
-    dx: float | None,
-    rx_spacing: float,
-    render: bool,
-    seed: int | None,
-) -> int:
-    """Generate one arbitrary N-layer .in file from --layers / --layers-file."""
-    from src.layer_spec import parse_layers, parse_layers_file
+def generate_layers(args) -> int:
+    """Generate one arbitrary N-layer .in file.
+
+    The TOML config ([sim]/[source]/[[layer]]/[[command]]) is the source of truth;
+    CLI flags (--freq/--domain-x/--dx/--rx-spacing/--seed) override [sim] when given.
+    """
+    from src.layer_spec import parse_layers, parse_config_file, SceneConfig
     from src.layer_scene_builder import SceneParams, write_scene
 
-    if not layers_inline and not layers_file:
+    output_path = Path(args.output)
+    if not args.layers and not args.layers_file:
         print("[FAIL] layers mode requires --layers \"...\" or --layers-file FILE.toml")
         return 1
 
-    layers = parse_layers_file(layers_file) if layers_file else parse_layers(layers_inline)
+    if args.layers_file:
+        config = parse_config_file(args.layers_file)
+        embed_toml = config.toml_text
+    else:
+        config = SceneConfig(layers=parse_layers(args.layers))
+        embed_toml = ""  # builder generates an effective TOML to embed
+
+    sim, src = config.sim, config.source
+
+    def pick(cli_val, cli_default, key, builtin):
+        """Precedence: explicit CLI flag > [sim] table > built-in default."""
+        if cli_val is not None and cli_val != cli_default:
+            return cli_val, "CLI_OVERRIDE"
+        if key in sim:
+            return sim[key], "TOML"
+        return builtin, "DEFAULT"
+
+    ps: dict[str, str] = {}
+    freq, ps["center_freq_hz"] = pick(args.freq, 1.5e9, "freq_hz", 400e6)
+    domain_x, ps["domain_x"] = pick(args.domain_x, None, "domain_x", 1.0)
+    dx, ps["dx"] = pick(args.dx, None, "dx", None)
+    rx_spacing, ps["rx_spacing"] = pick(args.rx_spacing, 0.05, "rx_spacing", 0.0)
+    seed, _ = pick(args.seed, None, "seed", None)
+    ps["antenna_clearance"] = "TOML" if "antenna_clearance" in sim else "DEFAULT"
+    ps["air_buffer"] = "TOML" if "air_buffer" in sim else "DEFAULT"
+
+    params = SceneParams(
+        freq_hz=float(freq),
+        domain_x=float(domain_x),
+        dx=float(dx) if dx is not None else None,
+        antenna_clearance=float(sim.get("antenna_clearance", 0.5)),
+        air_buffer=float(sim.get("air_buffer", 0.1)),
+        rx_spacing=float(rx_spacing),
+        title=str(sim.get("title", f"N-layer ({len(config.layers)} layers) {float(freq)/1e6:.0f} MHz")),
+        time_window=float(sim["time_window"]) if "time_window" in sim else None,
+        seed=int(seed) if seed is not None else None,
+        source_waveform=str(src.get("waveform", "ricker")),
+        source_amplitude=float(src.get("amplitude", 1.0)),
+        source_polarization=str(src.get("polarization", "z")),
+    )
 
     print(f"\n{'='*70}\nN-LAYER MODE: Generate One .in File\n{'='*70}")
     print(f"Output File: {output_path}")
-    print(f"Frequency: {freq_hz/1e6:.0f} MHz   Domain X: {domain_x} m")
-    print(f"Layers (bottom -> top): {len(layers)}")
-    for i, ly in enumerate(layers):
+    print(f"Source: {'TOML ' + str(args.layers_file) if args.layers_file else 'inline --layers'}")
+    print(f"Frequency: {params.freq_hz/1e6:.0f} MHz   Domain X: {params.domain_x} m   "
+          f"Source waveform: {params.source_waveform}")
+    print(f"Layers (bottom -> top): {len(config.layers)}")
+    for i, ly in enumerate(config.layers):
         kind = (f"PACKED rocks(eps={ly.rock_eps}) in matrix '{ly.matrix_name}'"
                 if ly.packed else f"flat (eps={ly.eps}, sigma={ly.sigma})")
         print(f"  [{i}] {ly.name:18s} thickness={ly.thickness:.3f} m  {kind}")
+    if config.raw_commands:
+        print(f"Passthrough commands: {len(config.raw_commands)}")
     print(f"{'='*70}\n")
 
-    params = SceneParams(freq_hz=freq_hz, domain_x=domain_x, dx=dx, rx_spacing=rx_spacing,
-                         title=f"N-layer ({len(layers)} layers) {freq_hz/1e6:.0f} MHz")
-    written = write_scene(layers, params, output_path, seed=seed)
+    written = write_scene(config.layers, params, output_path,
+                          raw_commands=config.raw_commands, param_sources=ps,
+                          embed_toml=embed_toml)
     print(f"[OK] Wrote .in file: {written}")
 
-    if render:
+    if args.render:
         try:
             import subprocess
             png_path = output_path.with_suffix(".png")
@@ -417,10 +455,10 @@ Examples:
     # Mode selection
     parser.add_argument(
         "--mode",
-        choices=["batch", "single", "layers"],
+        choices=["batch", "single"],
         default="batch",
-        help="Generation mode: batch (per-class dataset), single (one file), "
-             "or layers (arbitrary N-layer scene from --layers / --layers-file)",
+        help="Generation mode: batch (per-class dataset) or single (one file). "
+             "An N-layer scene is auto-selected when --layers / --layers-file is given.",
     )
 
     # Positional argument (interpreted based on mode)
@@ -488,14 +526,16 @@ Examples:
         "--layers",
         type=str,
         default=None,
-        help='Inline N-layer spec (layers mode), bottom->top, e.g. '
-             '"subgrade:0.20, formation:0.10, ballast:0.25:packed"',
+        help='Inline N-layer spec (bottom->top), e.g. '
+             '"subgrade:0.20, formation:0.10, ballast:0.25:packed". '
+             'Presence selects the N-layer creator.',
     )
     parser.add_argument(
         "--layers-file",
         type=str,
         default=None,
-        help="TOML file with an N-layer spec ([[layer]] tables). Overrides --layers.",
+        help="TOML scene config ([sim]/[source]/[[layer]]/[[command]]). "
+             "Presence selects the N-layer creator; overrides --layers.",
     )
 
     # Common options
@@ -566,18 +606,9 @@ Examples:
 
     args = parser.parse_args()
 
-    if args.mode == "layers":
-        return generate_layers(
-            output_path=Path(args.output),
-            layers_inline=args.layers,
-            layers_file=args.layers_file,
-            freq_hz=args.freq,
-            domain_x=args.domain_x if args.domain_x is not None else 1.0,
-            dx=args.dx,
-            rx_spacing=args.rx_spacing if args.rx_spacing != 0.05 else 0.0,
-            render=args.render,
-            seed=args.seed,
-        )
+    # An N-layer scene is auto-detected from --layers / --layers-file — no mode needed.
+    if args.layers or args.layers_file:
+        return generate_layers(args)
 
     if args.mode == "batch":
         output_dir = Path(args.output)
