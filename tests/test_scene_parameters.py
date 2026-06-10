@@ -12,7 +12,8 @@ class TestSceneParameters:
         params = SceneParameters()
         assert params.pvc == 0.0
         assert params.moisture == 0.0
-        assert params.ballast_thickness == 0.45
+        # Default updated from 0.45 -> 0.25 (see SceneParameters; old value outdated)
+        assert params.ballast_thickness == 0.25
         
     def test_custom_values(self):
         """SceneParameters accepts custom values."""

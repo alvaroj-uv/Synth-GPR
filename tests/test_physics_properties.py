@@ -201,11 +201,20 @@ def sorted_psd_points(draw):
     # Clamp to 100
     percent_passing = [min(p, 100) for p in percent_passing]
 
-    # Deduplicate by diameter — a valid PSD maps each diameter to exactly one value
-    seen: dict = {}
+    # Deduplicate by diameter — a valid PSD maps each diameter to exactly one
+    # value AND has *distinct* sieve sizes. diameters are already ascending; drop
+    # any point within a relative tolerance of the previously kept one, otherwise
+    # 10**log_d can produce two diameters that differ only at float epsilon
+    # (e.g. 1.0 vs 1.0000000000024853) with different % passing — a degenerate
+    # PSD on which exact-point lookup is inherently ambiguous.
+    points: list = []
+    last_d = None
     for d, p in zip(diameters, percent_passing):
-        seen[d] = p
-    return sorted(seen.items())
+        if last_d is not None and d <= last_d * (1 + 1e-6):
+            continue
+        points.append((d, p))
+        last_d = d
+    return points
 
 
 @given(psd=sorted_psd_points())

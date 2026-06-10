@@ -32,12 +32,19 @@ class LabWorker(Worker):
         print(f"[{self.name}] Starting Virtual Sieve Analysis (Horizontal Sampling)...")
         
         # 1. Define Sampling Layer
-        # Use coordinate_system as single source of truth for layer geometry
+        # Use coordinate_system as single source of truth for layer geometry.
+        # Fallback to metadata bounds when no coordinate_system is attached (e.g.
+        # LabWorker run in isolation / unit tests, outside the production line).
         from src.domain import Layer
-        ballast_bounds = scene.coordinate_system.bounds(Layer.BALLAST)
-        ballast_bottom = ballast_bounds.bottom
-        ballast_thickness = ballast_bounds.height
-        ballast_top = ballast_bounds.top
+        if scene.coordinate_system is not None:
+            ballast_bounds = scene.coordinate_system.bounds(Layer.BALLAST)
+            ballast_bottom = ballast_bounds.bottom
+            ballast_thickness = ballast_bounds.height
+            ballast_top = ballast_bounds.top
+        else:
+            ballast_bottom = scene.metadata.get('ballast_bottom_y', 0.0)
+            ballast_top = scene.metadata.get('ballast_top_y', scene.config.domain_y)
+            ballast_thickness = ballast_top - ballast_bottom
 
         # Check work_order override (if present for runtime customization)
         if scene.work_order:

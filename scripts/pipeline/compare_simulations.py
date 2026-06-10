@@ -20,18 +20,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import h5py
 
 
 def load_ascan(out_path: Path):
-    """Load Ez A-scan from gprMax .out HDF5 file. Returns (t_ns, ez) or (None, None)."""
+    """Load Ez A-scan from a gprMax .out file. Returns (t_ns, ez) or (None, None).
+
+    Reads through src.data_loader (the sanctioned .out I/O boundary) rather than
+    the raw HDF5 library directly — see tests/test_io_boundary.py.
+    """
     if not out_path.exists():
         return None, None
-    with h5py.File(out_path, "r") as f:
-        dt  = float(f.attrs["dt"])
-        ez  = f["rxs"]["rx1"]["Ez"][:]
-        t   = np.arange(len(ez)) * dt * 1e9
-    return t, ez
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from src.data_loader import read_ascan
+    a = read_ascan(str(out_path), component="Ez")
+    return a["t_ns"], a["signal"]
 
 
 def waveform_stats(t_ns, ez):

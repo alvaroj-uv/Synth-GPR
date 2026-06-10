@@ -26,7 +26,9 @@ class TestDataGeneration(unittest.TestCase):
     def test_load_config(self):
         """Test if config can be loaded from INI."""
         cfg = GeneratorConfig.from_ini(str(self.test_config_path))
-        self.assertTrue(cfg.granular_mode)
+        # granular_mode was removed (granular pipeline is now the default); verify
+        # a real [Granular] value parsed instead.
+        self.assertEqual(cfg.pvc_max, 50.0)
         # n_samples is not in GeneratorConfig, it's a dataset generation param
         self.assertEqual(cfg.domain_x, 0.5)
 
@@ -40,7 +42,7 @@ class TestDataGeneration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_dir = Path(tmp_dir)
 
-            files, metadata = generator.generate_samples(
+            files = generator.generate_samples(
                 output_dir=out_dir,
                 n_samples=1,
                 start_id=start_id
@@ -51,9 +53,8 @@ class TestDataGeneration(unittest.TestCase):
             file_path = out_dir / f"s_{start_id:04d}.in"
             self.assertTrue(file_path.exists())
 
-            csv_path = out_dir / "metadata.csv"
-            self.assertTrue(csv_path.exists())
-
+            # generate_samples embeds all metadata in the .in CONFIG_* headers;
+            # it does not emit a separate metadata.csv (that's FilesystemRepository).
             content = file_path.read_text()
             self.assertIn("#domain", content)
 

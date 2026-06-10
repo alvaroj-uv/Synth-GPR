@@ -20,12 +20,14 @@ class TestMaterialConstantsSSOT:
 
     def test_canonical_values_present(self):
         # (permittivity, conductivity) tuples — the values that actually generate.
+        # Values re-locked to the current literature-cited constants (constants.py).
+        # If these change again, update intentionally — this guard locks them.
         assert MC.AIR_PROPS == (1.0, 0.0)
-        assert MC.SUBGRADE_PROPS[0] == 10.0
-        assert MC.FORMATION_PROPS[0] == 10.0
-        assert MC.BALLAST_ROCK_PROPS == (5.0, 0.001)
-        assert MC.FOULING_BASE_PROPS == (6.0, 0.002)
-        assert MC.FOULING_DENSE_PROPS == (8.0, 0.01)
+        assert MC.SUBGRADE_PROPS[0] == 8.0          # dry/compact railway formation (PMC9003199)
+        assert MC.FORMATION_PROPS[0] == 10.0        # S&W
+        assert MC.BALLAST_ROCK_PROPS == (4.0, 0.001)   # clean dry granite/limestone, 400 MHz (Tosti 2018)
+        assert MC.FOULING_BASE_PROPS == (5.0, 0.005)   # lightly fouled ~10-24% (Benedetto 2017)
+        assert MC.FOULING_DENSE_PROPS == (6.5, 0.012)  # fully fouled dry fines (Shang 2021)
 
 
 class TestConfigTracesToMC:
