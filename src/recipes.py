@@ -17,13 +17,10 @@ class RecipeBook:
         """
         Get the worker sequence for the base construction phase.
 
-        Mbubia scenes are auto-detected from config.rock_packing_algorithm.
+        All scenes use the standard layer stack; config.rock_packing_algorithm
+        only controls how the ballast region is packed (see warehouses.py).
         """
         from .granular_worker import GranularMatrixWorker
-
-        if product_type == "mbubia" or config.rock_packing_algorithm == "mbubia":
-            from .mbubia_worker import MbubiaWorker
-            return [MbubiaWorker()]
 
         if product_type == "standard":
             return [

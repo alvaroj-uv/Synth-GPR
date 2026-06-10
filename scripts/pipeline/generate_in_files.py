@@ -298,6 +298,63 @@ def generate_single(
     return Path(written_path)
 
 
+def generate_layers(
+    output_path: Path,
+    layers_inline: str | None,
+    layers_file: str | None,
+    freq_hz: float,
+    domain_x: float,
+    dx: float | None,
+    rx_spacing: float,
+    render: bool,
+    seed: int | None,
+) -> int:
+    """Generate one arbitrary N-layer .in file from --layers / --layers-file."""
+    from src.layer_spec import parse_layers, parse_layers_file
+    from src.layer_scene_builder import SceneParams, write_scene
+
+    if not layers_inline and not layers_file:
+        print("[FAIL] layers mode requires --layers \"...\" or --layers-file FILE.toml")
+        return 1
+
+    layers = parse_layers_file(layers_file) if layers_file else parse_layers(layers_inline)
+
+    print(f"\n{'='*70}\nN-LAYER MODE: Generate One .in File\n{'='*70}")
+    print(f"Output File: {output_path}")
+    print(f"Frequency: {freq_hz/1e6:.0f} MHz   Domain X: {domain_x} m")
+    print(f"Layers (bottom -> top): {len(layers)}")
+    for i, ly in enumerate(layers):
+        kind = (f"PACKED rocks(eps={ly.rock_eps}) in matrix '{ly.matrix_name}'"
+                if ly.packed else f"flat (eps={ly.eps}, sigma={ly.sigma})")
+        print(f"  [{i}] {ly.name:18s} thickness={ly.thickness:.3f} m  {kind}")
+    print(f"{'='*70}\n")
+
+    params = SceneParams(freq_hz=freq_hz, domain_x=domain_x, dx=dx, rx_spacing=rx_spacing,
+                         title=f"N-layer ({len(layers)} layers) {freq_hz/1e6:.0f} MHz")
+    written = write_scene(layers, params, output_path, seed=seed)
+    print(f"[OK] Wrote .in file: {written}")
+
+    if render:
+        try:
+            import subprocess
+            png_path = output_path.with_suffix(".png")
+            result = subprocess.run(
+                [sys.executable, "scripts/visualization/unified_visualizer.py",
+                 str(written), "-o", str(png_path), "--geometry", "--no-show", "--dpi", "150"],
+                capture_output=True, text=True,
+                cwd=str(Path(__file__).resolve().parent.parent.parent),
+            )
+            if result.returncode == 0:
+                print(f"[OK] Rendered visualization: {png_path}")
+            else:
+                print(f"[WARN] Rendering failed: {result.stderr}")
+        except Exception as e:
+            print(f"[WARN] Could not render PNG: {e}")
+
+    print(f"\n{'='*70}\n")
+    return 0
+
+
 def extract_parameters(source_path: Path) -> dict:
     """Extract generation parameters from an existing .in file.
 
@@ -360,9 +417,10 @@ Examples:
     # Mode selection
     parser.add_argument(
         "--mode",
-        choices=["batch", "single"],
+        choices=["batch", "single", "layers"],
         default="batch",
-        help="Generation mode: batch (per-class dataset) or single (one file)",
+        help="Generation mode: batch (per-class dataset), single (one file), "
+             "or layers (arbitrary N-layer scene from --layers / --layers-file)",
     )
 
     # Positional argument (interpreted based on mode)
@@ -423,6 +481,21 @@ Examples:
         type=str,
         default=None,
         help="Extract generation parameters from existing .in file and use them (single mode only)",
+    )
+
+    # N-layer mode
+    parser.add_argument(
+        "--layers",
+        type=str,
+        default=None,
+        help='Inline N-layer spec (layers mode), bottom->top, e.g. '
+             '"subgrade:0.20, formation:0.10, ballast:0.25:packed"',
+    )
+    parser.add_argument(
+        "--layers-file",
+        type=str,
+        default=None,
+        help="TOML file with an N-layer spec ([[layer]] tables). Overrides --layers.",
     )
 
     # Common options
@@ -492,6 +565,19 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    if args.mode == "layers":
+        return generate_layers(
+            output_path=Path(args.output),
+            layers_inline=args.layers,
+            layers_file=args.layers_file,
+            freq_hz=args.freq,
+            domain_x=args.domain_x if args.domain_x is not None else 1.0,
+            dx=args.dx,
+            rx_spacing=args.rx_spacing if args.rx_spacing != 0.05 else 0.0,
+            render=args.render,
+            seed=args.seed,
+        )
 
     if args.mode == "batch":
         output_dir = Path(args.output)

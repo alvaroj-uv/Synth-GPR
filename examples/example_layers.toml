@@ -1,0 +1,32 @@
+# Example N-layer scene for the .in creator (bottom -> top).
+#
+#   python scripts/pipeline/generate_in_files.py out.in --mode layers \
+#       --layers-file examples/example_layers.toml --freq 400e6 --render
+#
+# Each [[layer]] is one stratum. Fields:
+#   name       material name (resolved from constants) OR a label when eps/sigma given
+#   thickness  metres
+#   eps,sigma  optional explicit material (omit to use the named material)
+#   packed     true -> fill with rocks (named material = ROCK; matrix below)
+#   matrix     packed only: inter-rock void material (default "free_space" = air).
+#              Must differ from the rock material (zero-contrast rocks are rejected).
+
+[[layer]]
+name = "subgrade"          # PMC9003199 dry railway subgrade (eps=8)
+thickness = 0.20
+
+[[layer]]
+name = "formation"         # sub-ballast / transition (eps=10)
+thickness = 0.10
+
+[[layer]]
+name = "ballast"           # clean ballast rocks (eps=4) in air voids
+thickness = 0.25
+packed = true
+matrix = "free_space"      # clean, dry: stones in air. Use "fouling" for a fouled bed.
+
+[[layer]]
+name = "clay_cap"          # explicit material — not in the named registry
+thickness = 0.06
+eps = 12.0
+sigma = 0.05

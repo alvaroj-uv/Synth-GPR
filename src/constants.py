@@ -85,7 +85,7 @@ class MaterialConstants:
     FOULING_BASE_PROPS: tuple = (5.0, 0.005)  # lightly fouled ~10-24% (Benedetto 2017)
     FOULING_DENSE_PROPS: tuple = (6.5, 0.012) # fully fouled dry fines (Shang 2021)
 
-    # Mbubia two-layer scene materials (used by MbubiaPymunkSceneGenerator)
+    # Ballast scene materials (referenced by config + the pymunk ballast packer)
     CLEAN_BALLAST_PROPS: tuple    = (4.0,  0.001)  # Tosti & Benedetto (2018)
     FOULED_BALLAST_PROPS: tuple   = (5.0,  0.005)  # Benedetto et al. (2017)
     HF_BALLAST_PROPS: tuple       = (6.5,  0.012)  # Shang et al. (2021) fully fouled

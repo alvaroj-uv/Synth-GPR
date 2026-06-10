@@ -90,10 +90,8 @@ class ProductionLine:
         )
 
         # PRE-FLIGHT CHECK: Ensure domain is tall enough for antenna
-        # Mbubia scenes manage their own domain — skip the standard layer check.
         required_height = coords.get_y(Anchor.DOMAIN_TOP)
-        is_mbubia = self.config.rock_packing_algorithm == 'mbubia'
-        if not is_mbubia and self.config.domain_y < required_height:
+        if self.config.domain_y < required_height:
             msg = (
                 f"Domain height insufficient for layer stack:\n"
                 f"  Config domain_y: {self.config.domain_y:.4f} m\n"
@@ -129,22 +127,14 @@ class ProductionLine:
         # ========================================================================
         # PHASE 2: Checkpoint (for future variant support)
         # ========================================================================
-        # Mbubia scenes configure their own antenna inside MbubiaWorker.
-        # clone() resets antenna config, so we preserve the original scene.
-        checkpoint = scene if is_mbubia else scene.clone()
+        checkpoint = scene.clone()
         if work_order_system:
             work_order_system.log("Base Checkpoint Created", "System")
         
         # ========================================================================
         # PHASE 3: Finalization
         # ========================================================================
-        # Mbubia scenes self-assemble — skip the standard finalization chain
-        # (AntennaWorker, AssemblerWorker) which expect the standard layer stack.
-        if is_mbubia:
-            from .workers import AssemblerWorker
-            finalization_workers = [AssemblerWorker()]
-        else:
-            finalization_workers = RecipeBook.get_finalization_recipe()
+        finalization_workers = RecipeBook.get_finalization_recipe()
         
         for worker in finalization_workers:
             self._execute_worker(worker, checkpoint, self.keeper)

@@ -193,9 +193,9 @@ class ToolWarehouse:
                 # Dense mbubia physics packing confined to the ballast region,
                 # for use inside the STANDARD layer stack (Air/Subgrade/Formation/
                 # Fouling). Returns full-grading polygon rocks; GranularMatrixWorker
-                # keeps ALL of them (no size filter, no fill cap) so the pattern
-                # matches the standalone MbubiaWorker scene. clean_ballast grading
-                # gives the rock skeleton (fouling is added separately as a layer).
+                # keeps ALL of them (no size filter, no fill cap) for a dense,
+                # settled ballast skeleton. clean_ballast grading gives the rock
+                # skeleton (fouling is added separately as a layer).
                 try:
                     from .pymunk_packing import MbubiaPymunkSceneGenerator
                     return MbubiaPymunkSceneGenerator(

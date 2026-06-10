@@ -342,7 +342,7 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
         self.output_dir         = Path(output_dir) if output_dir is not None else None
         self.verbose            = verbose
         self.randomize_rock_materials = randomize_rock_materials
-        # Caller (MbubiaWorker) provides pool so this class stays EM-agnostic
+        # Caller provides the pool so this class stays EM-agnostic
         self.random_material_pool = random_material_pool or [upper_material, lower_material]
         self.rocks: List[Rock] = []
 

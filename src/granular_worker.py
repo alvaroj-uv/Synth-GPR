@@ -140,8 +140,8 @@ class GranularMatrixWorker(Worker):
         
         # The mbubia_ballast packer returns the FULL settled polygon packing
         # already confined to the ballast bounds. Keep every rock (no rock/fine
-        # size threshold, no target-fill cap, no extra gravity settle) so the
-        # pattern matches the standalone MbubiaWorker scene. Area is computed from
+        # size threshold, no target-fill cap, no extra gravity settle) for a
+        # dense, settled ballast skeleton. Area is computed from
         # the true polygon (shoelace), and each rock's radius is replaced by the
         # area-equivalent radius so the density and fouling-void maths stay valid
         # for the irregular shapes.
