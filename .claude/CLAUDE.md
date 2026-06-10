@@ -8,7 +8,7 @@ Use `C:\Users\barba\miniconda3\python.exe` as the interpreter on this machine.
 # Development Guidelines
 
 ## Code Review Before Creating New Scripts
-
+**Always ask if creating new folder**
 **Always check existing code first** before writing new scripts or functions:
 1. Search for similar functionality in existing files (use Grep/Glob)
 2. Review existing implementations to understand patterns and conventions
