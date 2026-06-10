@@ -1,5 +1,285 @@
+"""
+signal_processing.py — GPR signal processing utilities.
+
+Direct wave removal methods follow Wang & Liu (2017), Signal Processing 132:227-242.
+  - time_gate():               Wang §2.2 — deterministic, single-trace
+  - background_subtraction():  Wang Eq.19-24 — requires multiple traces (B-scan)
+  - mean_trace():               Compute the common-mode direct wave from a B-scan
+"""
 import numpy as np
-from scipy.signal import butter, filtfilt, convolve, hilbert, spectrogram
+from scipy.signal import butter, filtfilt, convolve, hilbert, spectrogram, get_window
+
+
+# ── Direct wave removal (Wang & Liu 2017) ─────────────────────────────────────
+
+def time_gate(signal: np.ndarray, dt: float, gate_ns: float) -> np.ndarray:
+    """
+    Remove direct wave arrivals by zeroing samples before gate_ns.
+
+    Wang §2.2: The direct wave energy is concentrated in the early part of the
+    trace. Setting those samples to zero removes it without distorting later
+    subsurface reflections.
+
+    Works on a single trace — no reference trace required.
+
+    Args:
+        signal:  1-D numpy array (A-scan trace).
+        dt:      Time step in seconds (from .out file dt attribute).
+        gate_ns: Gate time in nanoseconds.
+                 Rule of thumb: gate_ns = 2 * air_gap / c + 1/center_freq
+                 where air_gap is antenna height above surface (m).
+
+    Returns:
+        Gated trace with same length as input; first gate_samples set to zero.
+    """
+    gate_samples = int(np.ceil(gate_ns / (dt * 1e9)))
+    gated = signal.copy()
+    gated[:gate_samples] = 0.0
+    return gated
+
+
+def mean_trace(signals: np.ndarray) -> np.ndarray:
+    """
+    Compute the common-mode direct wave from a B-scan (multiple traces).
+
+    Wang Eq.19-24: The direct wave is separable — r(x,t) = r1(t)*r2(x).
+    For a common-offset survey with fixed geometry, r2(x) is constant and
+    the per-sample mean across all traces estimates r1(t)*r2(x).
+
+    Args:
+        signals: 2-D array of shape (n_traces, n_samples).
+
+    Returns:
+        1-D mean trace of shape (n_samples,) representing the direct wave.
+    """
+    return np.mean(np.atleast_2d(signals), axis=0)
+
+
+def background_subtraction(signal: np.ndarray, background: np.ndarray) -> np.ndarray:
+    """
+    Remove direct wave arrivals by subtracting a background (reference) trace.
+
+    Wang Eq.19-24: Subtracting the common-mode trace removes r1(t)*r2(x),
+    leaving only the material-dependent subsurface reflections.
+
+    Can be used two ways:
+      1. Single fixed reference:  background = air_only_trace
+      2. Mean of B-scan:          background = mean_trace(all_traces)
+
+    Args:
+        signal:     1-D numpy array — trace to process.
+        background: 1-D numpy array — reference direct wave (same length).
+
+    Returns:
+        Residual trace with direct wave removed.
+    """
+    if signal.shape != background.shape:
+        raise ValueError(
+            f"signal ({signal.shape}) and background ({background.shape}) must have the same shape"
+        )
+    return signal - background
+
+
+def remove_direct_wave(
+    signal: np.ndarray,
+    dt: float,
+    method: str = "time_gate",
+    *,
+    gate_ns: float = None,
+    background: np.ndarray = None,
+    center_freq_hz: float = None,
+    air_gap_m: float = 0.3,
+) -> np.ndarray:
+    """
+    Unified direct wave removal dispatcher.
+
+    Chooses between time gating (Wang §2.2) and background subtraction
+    (Wang Eq.19-24) based on `method`.
+
+    Args:
+        signal:         1-D numpy array — A-scan trace from .out file.
+        dt:             Time step in seconds (f.attrs['dt'] in gprMax HDF5).
+        method:         'time_gate' or 'background_subtraction'.
+        gate_ns:        Gate time in ns (for 'time_gate').
+                        If None and center_freq_hz is given, auto-computed as:
+                        gate_ns = 2*air_gap_m/c + 1/center_freq_hz  (in ns)
+        background:     Reference trace (for 'background_subtraction').
+                        Use mean_trace(all_traces) for B-scan background.
+        center_freq_hz: Center frequency in Hz (used for auto gate_ns).
+        air_gap_m:      Antenna height above surface in metres (auto gate_ns).
+
+    Returns:
+        Trace with direct wave removed.
+
+    Examples:
+        # Single trace — time gating at 400 MHz, 0.3m air gap
+        cleaned = remove_direct_wave(ez, dt, method='time_gate',
+                                     center_freq_hz=400e6, air_gap_m=0.3)
+
+        # B-scan — background subtraction
+        bg = mean_trace(np.stack([ez1, ez2, ez3, ...]))
+        cleaned = remove_direct_wave(ez1, dt, method='background_subtraction',
+                                     background=bg)
+    """
+    if method == "time_gate":
+        if gate_ns is None:
+            if center_freq_hz is None:
+                raise ValueError("Provide gate_ns or center_freq_hz for 'time_gate' method")
+            C = 3e8
+            gate_ns = (2 * air_gap_m / C) * 1e9 + (1.0 / center_freq_hz) * 1e9
+        return time_gate(signal, dt, gate_ns)
+
+    elif method == "background_subtraction":
+        if background is None:
+            raise ValueError("Provide background trace for 'background_subtraction' method")
+        return background_subtraction(signal, background)
+
+    elif method == "svd":
+        # Liu §3.2: zero first singular value on B-scan matrix.
+        # signal must be 2-D (n_traces, n_samples) here.
+        return svd_remove_direct_wave(signal)
+
+    else:
+        raise ValueError(
+            f"Unknown method '{method}'. "
+            f"Choose 'time_gate', 'background_subtraction', or 'svd'"
+        )
+
+
+# ── SVD-based processing (Liu, Song & Lu 2017) ───────────────────────────────
+# Liu et al., Journal of Applied Geophysics 144 (2017) 125-133
+# "Random noise de-noising and direct wave eliminating based on SVD method"
+#
+# Key results vs. other methods (Table 1 — synthetic data at SNR=10):
+#   SVD:               SNR=15.5 dB,  0.012 s  ← best accuracy + fastest
+#   Wavelet threshold: SNR=10.9 dB,  1.244 s
+#   Bandpass filter:   SNR= 4.7 dB,  2.098 s
+#
+# All SVD methods operate on the B-scan data MATRIX A (shape: n_traces × n_samples).
+# Single-trace inputs are automatically promoted to a (1, n_samples) matrix.
+
+
+def _to_bscan(signals: np.ndarray) -> np.ndarray:
+    """Ensure signals is 2-D (n_traces, n_samples)."""
+    s = np.atleast_2d(signals)
+    # If passed as (n_samples, n_traces) — transpose to (n_traces, n_samples)
+    return s
+
+
+def svd_select_p(singular_values: np.ndarray, target_snr: float) -> int:
+    """
+    Quantitative criterion for choosing p singular values (Liu Eq. 6).
+
+    Iterates over candidate values of p (number of components to KEEP) and
+    returns the smallest p such that the reconstructed-data SNR >= target_snr.
+
+    Liu Eq. 6:
+        f_SNR = Σ(σᵢ² for i=1..p) / (Σ(σᵢ² for i=1..r) - Σ(σᵢ² for i=1..p))
+
+    If SNR is unknown, try target_snr ≈ 10 (typical GPR field data).
+
+    Args:
+        singular_values: 1-D array of singular values in decreasing order.
+        target_snr:      Target SNR ratio (linear, not dB).
+                         Convert: target_snr = 10 ** (target_snr_db / 10)
+
+    Returns:
+        p: Number of singular values to keep.
+    """
+    sv2 = singular_values ** 2
+    total_energy = np.sum(sv2)
+    for p in range(1, len(singular_values) + 1):
+        kept   = np.sum(sv2[:p])
+        removed = total_energy - kept
+        if removed < 1e-12:
+            return p
+        f_snr = kept / removed
+        if f_snr >= target_snr:
+            return p
+    return len(singular_values)
+
+
+def svd_denoise(
+    signals: np.ndarray,
+    p: int = None,
+    target_snr: float = 10.0,
+) -> np.ndarray:
+    """
+    Denoise a GPR B-scan by zeroing small singular values (Liu §3.1).
+
+    The B-scan matrix A is decomposed as A = UDV^T (Liu Eq. 2–4).
+    Singular values are ranked by energy; small ones correspond to noise.
+    Keeping the top-p components and zeroing the rest recovers the signal.
+
+    Liu (Table 1): SVD achieves SNR=15.5 dB in 0.012 s vs wavelet threshold
+    at 10.9 dB / 1.2 s and bandpass at 4.7 dB / 2.1 s.
+
+    Args:
+        signals:    2-D array (n_traces, n_samples) — B-scan data matrix.
+                    Also accepts 1-D (single trace), auto-promoted.
+        p:          Number of singular values to keep (None = auto via criterion).
+        target_snr: Target SNR for auto-selection via Liu Eq. 6 (linear, default=10).
+                    Ignored when p is explicitly provided.
+
+    Returns:
+        Denoised array with same shape as input.
+    """
+    A    = _to_bscan(signals).astype(float)
+    U, s, Vt = np.linalg.svd(A, full_matrices=False)
+
+    if p is None:
+        p = svd_select_p(s, target_snr)
+    p = max(1, min(p, len(s)))
+
+    # Reconstruct using only top-p singular values
+    s_filtered    = np.zeros_like(s)
+    s_filtered[:p] = s[:p]
+    denoised = U @ np.diag(s_filtered) @ Vt
+
+    return denoised.squeeze() if signals.ndim == 1 else denoised
+
+
+def svd_remove_direct_wave(signals: np.ndarray) -> np.ndarray:
+    """
+    Remove direct wave by zeroing the first singular value (Liu §3.2).
+
+    The direct wave is the dominant coherent event — it maps to the FIRST
+    (largest) singular value σ₁. Setting σ₁=0 and reconstructing with
+    σ₂...σᵣ removes the direct wave while preserving subsurface reflections.
+
+    Liu criterion (§3.2, p.130):
+        "Set the first singular value to zero and use all other singular values."
+
+    Advantage over mean-trace subtraction (Wang Eq.19-24):
+        - Does NOT create false reflectors when the interface is undulating
+        - Robust to missing traces in the B-scan
+        - Preserves phase better near t=0 (Fig. 21 in Liu)
+
+    Args:
+        signals: 2-D array (n_traces, n_samples) — B-scan data matrix.
+                 For a single A-scan, use background_subtraction() instead.
+
+    Returns:
+        Array with direct wave removed, same shape as input.
+
+    Raises:
+        ValueError: If signals has fewer than 2 traces (SVD rank-1 removal
+                    requires at least 2 traces to retain any signal).
+    """
+    A = _to_bscan(signals).astype(float)
+    if A.shape[0] < 2:
+        raise ValueError(
+            "svd_remove_direct_wave requires >= 2 traces (B-scan). "
+            "For a single trace use background_subtraction() or time_gate()."
+        )
+
+    U, s, Vt = np.linalg.svd(A, full_matrices=False)
+    s_filtered    = s.copy()
+    s_filtered[0] = 0.0          # zero the direct wave component
+
+    result = U @ np.diag(s_filtered) @ Vt
+    return result
+
 
 def dewow(signal, window_size=50):
     """
@@ -141,24 +421,59 @@ def apply_gain(signal, dt, type='power', alpha=1.0, window_std=None):
         print(f"Warning: Unknown gain type '{type}'. Returning original signal.")
         return signal
 
-def preprocess_signal(signal, dt, use_dewow=True, use_gain=False, gain_params=None, use_time_zero=True):
+def preprocess_signal(
+    signal,
+    dt,
+    use_dewow=True,
+    use_gain=False,
+    gain_params=None,
+    use_time_zero=True,
+    direct_wave_removal="time_gate",
+    direct_wave_kwargs=None,
+):
     """
-    Applies processing steps to the signal.
-    
+    Apply standard GPR processing chain to a single A-scan trace.
+
+    **DEFAULT: Direct wave removal is ENABLED** via time gating (Wang §2.2).
+    This removes the air-ballast surface reflection that dominates raw GPR signals.
+
     Args:
-        signal (np.array): Input trace.
-        dt (float): Time step.
-        use_dewow (bool): Whether to apply dewow.
-        use_gain (bool): Whether to apply gain.
-        gain_params (dict): Params for gain {'type': 'power', 'alpha': 1.0}.
-        use_time_zero (bool): Whether to apply time-zero correction (shift to first break).
-    
+        signal:                1-D numpy array — raw trace from .out file.
+        dt:                    Time step in seconds.
+        use_dewow:             Apply dewow (running-mean low-freq removal).
+        use_gain:              Apply time-varying gain after filtering.
+        gain_params:           Dict for gain, e.g. {'type': 'power', 'alpha': 1.0}.
+        use_time_zero:         Shift trace so first break is at sample 0.
+        direct_wave_removal:   **DEFAULT: 'time_gate'** (single-trace, antenna-height
+                               based). Alternatives: 'background_subtraction' (requires
+                               B-scan mean via `direct_wave_kwargs`), or None to disable.
+                               Applied FIRST, before dewow.
+                               (Wang & Liu 2017, Signal Processing 132:227-242)
+        direct_wave_kwargs:    Dict of keyword args for remove_direct_wave().
+                               For 'time_gate': {'center_freq_hz': 400e6, 'air_gap_m': 0.3}
+                               For 'background_subtraction': {'background': mean_trace}
+                               Default (time_gate): center_freq=400MHz, air_gap=0.3m.
+
     Returns:
         treated_signal (np.array)
-        start_idx (int): Index where the effective signal starts (Time-Zero).
+        start_idx (int): First-break sample index (after direct wave removal).
     """
     treated_signal = signal.copy()
-    
+
+    # 0. Direct wave removal (Wang & Liu 2017) — applied FIRST
+    # DEFAULT: time_gate with 400 MHz antenna, 0.3m air gap
+    if direct_wave_removal is not None:
+        dw_kw = direct_wave_kwargs or {}
+        # Auto-populate time_gate defaults if not provided
+        if direct_wave_removal == "time_gate":
+            dw_kw.setdefault("center_freq_hz", 400e6)
+            dw_kw.setdefault("air_gap_m", 0.3)
+        treated_signal = remove_direct_wave(
+            treated_signal, dt,
+            method=direct_wave_removal,
+            **dw_kw
+        )
+
     # 1. Dewow (Low-frequency removal)
     # Often applied FIRST to remove DC drift/bias
     if use_dewow:
@@ -209,27 +524,130 @@ def preprocess_signal(signal, dt, use_dewow=True, use_gain=False, gain_params=No
         
     return treated_signal, start_idx
 
-def compute_spectrum(signal, dt):
+
+# ── Predictive Deconvolution (Xiong et al. 2024, GPRlab) ────────────────────
+# Xiong et al., SoftwareX 26 (2024): "Predictive deconvolution, a convolution-based
+# inverse filtering method, is typically used to suppress periodic multiple interference."
+#
+# For railway ballast: removes ringing from layer bounces that obscure material-
+# dependent reflections.
+
+
+def predictive_deconvolution(signal: np.ndarray, lag: int = 10, alpha: float = 0.01) -> np.ndarray:
+    """
+    Suppress periodic multiple reflections via predictive deconvolution.
+
+    In railway ballast GPR, multiple reflections from layer boundaries (surface
+    bounce between air and ballast, ballast and subgrade) ring and obscure weak
+    material-dependent reflections. Predictive deconvolution removes coherent
+    multiples via least-squares prediction filtering.
+
+    Algorithm: Solve min_h || signal[lag:] - H(signal[:-lag]) ||^2 + alpha||h||^2,
+    where H is a convolution with prediction filter h. The deconvolved signal is
+    the prediction error: signal - convolved_prediction.
+
+    Args:
+        signal (np.ndarray): 1-D input A-scan.
+        lag (int): Prediction lag in samples. Default 10 targets multiples ~5-10ns
+                   at typical 1-5 GHz sampling. Increase for deeper bounces.
+        alpha (float): Tikhonov regularization (0.001-0.1). Higher = more damping
+                       on the inverse filter. Default 0.01 is conservative.
+
+    Returns:
+        np.ndarray: Deconvolved signal (same shape as input).
+
+    Reference:
+        Xiong et al. (2024). GPRlab: A ground penetrating radar data processing
+        and analysis software based on MATLAB. SoftwareX 26:101720.
+        Claerbout, J. F. (1992). Earth Soundings Analysis: Processing versus Inversion.
+    """
+    sig = np.asarray(signal, dtype=float)
+    n = len(sig)
+
+    if lag >= n or lag < 1:
+        return sig.copy()
+
+    # Build multi-tap Wiener prediction problem
+    # A @ h = b, where A[i,j] = sig[i + lag - j - 1], b = sig[i + lag]
+    n_taps = min(lag, n // 2)
+    n_samples = n - lag
+
+    A = np.zeros((n_samples, n_taps))
+    for j in range(n_taps):
+        idx = lag - j - 1
+        if idx >= 0:
+            A[:, j] = sig[idx : idx + n_samples]
+
+    b = sig[lag : lag + n_samples]
+
+    # Regularized least-squares (Tikhonov)
+    AtA = A.T @ A + alpha * np.eye(n_taps)
+    Atb = A.T @ b
+
+    try:
+        h = np.linalg.solve(AtA, Atb)
+    except np.linalg.LinAlgError:
+        h = np.linalg.lstsq(AtA, Atb, rcond=None)[0]
+
+    # Convolve with prediction filter and subtract (prediction error = deconvolution)
+    predicted = convolve(sig, h, mode="same")
+    deconvolved = sig - predicted
+
+    return deconvolved
+
+
+def apply_window(signal, window="hann"):
+    """
+    Apply a taper window to a finite signal with coherent-gain correction.
+
+    A finite-duration record has hard edges that smear the FFT (spectral
+    leakage). Tapering with a smooth window (Hann/Hamming/Blackman) suppresses
+    leakage at the cost of widening the main lobe. This is the central lesson of
+    Unpingco, "Python for Signal Processing": always window before the FFT.
+
+    Coherent-gain correction divides by mean(window) so the amplitude of a
+    sinusoid is preserved. A rectangular ("boxcar") window has mean 1, so it is
+    a true no-op — making window=None / "boxcar" identical to the un-windowed FFT.
+
+    Args:
+        signal (np.array): Input 1-D signal.
+        window (str | None): scipy window name (e.g. "hann", "hamming",
+            "blackman", "boxcar"). None means no window (rectangular).
+
+    Returns:
+        np.array: Windowed signal (same length), amplitude-corrected.
+    """
+    if window is None or window == "boxcar":
+        return np.asarray(signal, dtype=float)
+    w = get_window(window, len(signal), fftbins=True)
+    coherent_gain = np.mean(w)           # Hann ≈ 0.5, Hamming ≈ 0.54, boxcar = 1
+    return np.asarray(signal, dtype=float) * w / coherent_gain
+
+
+def compute_spectrum(signal, dt, window=None):
     """
     Computes the frequency spectrum (magnitude) of the signal.
 
     Args:
         signal (np.array): Input signal.
         dt (float): Time step in seconds.
+        window (str | None): Taper applied before the FFT to control spectral
+            leakage (Unpingco). None (default) = rectangular = no leakage control,
+            preserving the original behaviour. Use "hann" for clean peak picking.
 
     Returns:
         freqs (np.array): Frequency axis (Hz).
         spectrum (np.array): Magnitude spectrum.
     """
-    # Compute FFT
-    fft_vals = np.abs(np.fft.fft(signal))
-    freqs = np.fft.fftfreq(len(signal), d=dt)
+    windowed = apply_window(signal, window)
+    fft_vals = np.abs(np.fft.fft(windowed))
+    freqs = np.fft.fftfreq(len(windowed), d=dt)
 
     # Keep only positive frequencies
     pos_mask = freqs >= 0
     return freqs[pos_mask], fft_vals[pos_mask]
 
-def compute_padded_spectrum(signal, dt, pad_factor=2):
+def compute_padded_spectrum(signal, dt, pad_factor=2, window=None):
     """
     Magnitude spectrum via a zero-padded real FFT, plus the peak frequency.
 
@@ -237,18 +655,25 @@ def compute_padded_spectrum(signal, dt, pad_factor=2):
     the rFFT, giving finer frequency resolution for clean peak picking. This is
     the spectrum used by the A-scan visualizers.
 
+    Windowing (Unpingco) is applied to the ORIGINAL N samples BEFORE zero-padding
+    — never to the padded zeros — so the taper acts only on real data while the
+    padding still buys interpolated frequency resolution.
+
     Args:
         signal (np.array): Input 1-D signal.
         dt (float): Time step in seconds.
         pad_factor (int): Extra power-of-two padding beyond the next power of two.
+        window (str | None): Taper applied before padding (e.g. "hann"). None
+            (default) preserves the original un-windowed behaviour.
 
     Returns:
         freqs (np.array): Positive frequency axis (Hz).
         spectrum (np.array): Magnitude spectrum.
         peak (float): Frequency of the spectral peak (Hz).
     """
-    n_fft = 2 ** int(np.ceil(np.log2(len(signal))) + pad_factor)
-    spectrum = np.abs(np.fft.rfft(signal, n=n_fft))
+    windowed = apply_window(signal, window)   # taper the real samples first
+    n_fft = 2 ** int(np.ceil(np.log2(len(windowed))) + pad_factor)
+    spectrum = np.abs(np.fft.rfft(windowed, n=n_fft))  # rfft zero-pads to n_fft
     freqs = np.fft.rfftfreq(n_fft, d=dt)
     peak = freqs[np.argmax(spectrum)]
     return freqs, spectrum, peak

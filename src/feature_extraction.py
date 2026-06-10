@@ -161,9 +161,9 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
     max_power = np.max(fft_spectrum)
     
     # Heuristics
+    cumulative = np.cumsum(fft_spectrum)
     if area_fourier > 0:
         mean_freq = np.sum(freqs * fft_spectrum) / area_fourier
-        cumulative = np.cumsum(fft_spectrum)
         median_idx = np.searchsorted(cumulative, area_fourier / 2)
         median_freq = freqs[min(median_idx, len(freqs)-1)]
     else:

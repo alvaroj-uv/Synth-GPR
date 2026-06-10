@@ -14,6 +14,8 @@
 *.zip
 *.parquet
 *.joblib
+*.DZT
+*.dzt
 
 # Images (keep output/test_images tracked)
 test_*.png

@@ -92,7 +92,7 @@ class ProductionLine:
         # PRE-FLIGHT CHECK: Ensure domain is tall enough for antenna
         # Mbubia scenes manage their own domain — skip the standard layer check.
         required_height = coords.get_y(Anchor.DOMAIN_TOP)
-        is_mbubia = getattr(self.config, 'rock_packing_algorithm', '') == 'mbubia'
+        is_mbubia = self.config.rock_packing_algorithm == 'mbubia'
         if not is_mbubia and self.config.domain_y < required_height:
             msg = (
                 f"Domain height insufficient for layer stack:\n"
@@ -154,7 +154,23 @@ class ProductionLine:
                 raise RuntimeError("Production line failed in Finalization Phase")
         
         # ========================================================================
-        # PHASE 4: Validation & Statistics
+        # PHASE 4: Pre-flight Geometry Validation
+        # ========================================================================
+        # Catch common gprMax modelling mistakes before the caller submits to FDTD.
+        # Checks: PML clearance, dispersion, time window, material properties,
+        # object bounds, painter's algorithm order.
+        from .geometry_validator import GeometryValidator, Severity
+        geo_report = GeometryValidator().validate(checkpoint)
+        geo_report.print_report()
+        if work_order_system:
+            for issue in geo_report.issues:
+                if issue.severity == Severity.ERROR:
+                    work_order_system.log_issue("GeometryValidator", "geo_error", "high", str(issue))
+                elif issue.severity == Severity.WARNING:
+                    work_order_system.log(f"  [GEO WARNING] {issue}", "System")
+
+        # ========================================================================
+        # PHASE 5: Validation & Statistics
         # ========================================================================
         if not checkpoint.assembled:
             if work_order_system:
@@ -193,7 +209,12 @@ class ProductionLine:
                 work_order_system.log(f"  Resolution: {dx:.4f}×{dy:.4f}×{dz:.4f}m", "System")
         
         if work_order_system:
-            work_order_system.log("Production Line Completed", "System")
+            nw = len(geo_report.warnings())
+            ne = len(geo_report.errors())
+            work_order_system.log(
+                f"Production Line Completed "
+                f"(geometry: {ne} error(s), {nw} warning(s))", "System"
+            )
         return checkpoint
 
     def _execute_worker(self, worker, scene, params):
@@ -232,8 +253,7 @@ class ProductionLine:
             sys.stderr.flush()
             
     def _has_critical_errors(self, work_order: WorkOrderSystem) -> bool:
-        """Check if any critical issues were logged recently."""
-        # This is a bit simplistic. In a real system we'd check the issue list.
-        # But WorkOrderSystem.export_issues() returns a list.
-        issues = work_order.export_issues()
-        return any(i['severity'] == 'critical' for i in issues)
+        """Check if any critical issues were logged."""
+        if work_order is None:
+            return False
+        return any(i['severity'] == 'critical' for i in work_order.export_issues())

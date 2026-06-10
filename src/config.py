@@ -167,7 +167,7 @@ class GeneratorConfig:
     # Mineral grain permittivity for CRIM fouling material model.
     # Clay minerals (kaolinite/illite): ~5.5 (Santamarina et al. 2002, Table 3.1).
     # Sand/quartz fines: ~4.5. Use higher value for clay-dominated fouling.
-    fouling_mineral_eps: float = 5.5
+    fouling_mineral_eps: float = MC.FOULED_BALLAST_PROPS[0]
 
     # Fouling PSD type: "standard" (coarser, 30% P200) or "a4" (Benedetto et al. 2016, 84.7% P200)
     fouling_psd_type: str = "standard"
@@ -220,6 +220,7 @@ class GeneratorConfig:
     # Angular Ballast (Realistic sharp rocks via triangulation - gprMax-Designer)
     angular_rocks: bool = False  # If True, rocks are rendered as polygons instead of cylinders
     rock_sides: int = 6         # Number of sides for the angular rock approximation (6=Hexagon)
+    randomize_rock_materials: bool = False  # If True, each rock gets a random material (useful to visualize individual rocks)
     # Sphericity index ψ ∈ [0, 1]: 1.0 = perfect circle, 0.0 = maximally irregular.
     # Controls coherent surface roughness amplitude via cosine-harmonic perturbation
     # (Kerimov et al. 2018, JGR: lower ψ → wider pore size distribution, higher fouling sensitivity).
@@ -374,7 +375,10 @@ class GeneratorConfig:
         # Resolution is fixed at 2mm: adequate for rock geometry (min radius ~2.4mm)
         # and any supported GPR frequency.
         if self.rock_packing_algorithm == "mbubia":
-            mbubia_x = self.domain_x if self.domain_x not in (0.6, 2.25) else 4.0
+            # 0.6m and 2.25m are the legacy create_physically_perfect defaults at
+            # 1.4 GHz and 400 MHz respectively — treat them as "not user-overridden".
+            _LEGACY_DEFAULTS = (0.6, 2.25)
+            mbubia_x = self.domain_x if self.domain_x not in _LEGACY_DEFAULTS else 4.0
             # Rock geometry needs dx ≤ 5mm to resolve stones (min radius ~2.4mm).
             # Frequency-computed dx is often coarser (e.g. 13mm at 400 MHz), so cap at 4mm.
             # If user explicitly passed a finer dx, keep it.
@@ -407,7 +411,44 @@ class GeneratorConfig:
         if self.moisture_min > self.moisture_max:
             raise ValueError(f"moisture_min ({self.moisture_min}) cannot exceed moisture_max ({self.moisture_max})")
 
+        self._auto_set_time_window()
         self._check_fdtd_compliance()
+
+    def _auto_set_time_window(self) -> None:
+        """
+        Auto-compute time_window when not explicitly set by the user.
+
+        The physically-correct time window must accommodate:
+          t_pulse  = 1 / center_freq        (Ricker pulse half-duration)
+          t_return = 2 * domain_y / v_min   (two-way travel to domain bottom)
+          v_min    = c / sqrt(eps_max)       (slowest wave speed in the model)
+
+        A 20% safety margin is added so late-arriving reflections are not cut off.
+
+        Only fires when time_window is still at the hardcoded default (2e-8 s),
+        so explicit user overrides via config or CLI are never silently replaced.
+        """
+        import math
+        _DEFAULT_TIME_WINDOW = 2.0e-8  # matches the field default above
+
+        if self.time_window != _DEFAULT_TIME_WINDOW:
+            return  # user explicitly set a value — respect it
+
+        C = 3e8
+        eps_max = max(
+            self.bal_foul_eps_max if hasattr(self, 'bal_foul_eps_max') else 0,
+            10.0,  # conservative floor (subgrade ~ 8-15)
+        )
+        v_min    = C / math.sqrt(eps_max)
+        t_pulse  = 1.0 / self.center_freq
+        t_return = 2.0 * self.domain_y / v_min
+        t_needed = (t_pulse + t_return) * 1.20   # 20% safety margin
+
+        # Round up to nearest 5 ns for clean values
+        _5ns = 5e-9
+        t_rounded = math.ceil(t_needed / _5ns) * _5ns
+
+        object.__setattr__(self, "time_window", t_rounded)
 
     def _check_fdtd_compliance(self) -> None:
         """Warn when FDTD discretization or domain-size guidelines are violated.

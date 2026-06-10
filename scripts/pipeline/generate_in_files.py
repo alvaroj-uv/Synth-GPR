@@ -159,6 +159,7 @@ def generate_single(
     seed: int | None = None,
     domain_x: float | None = None,
     dx: float | None = None,
+    randomize_rock_materials: bool = False,
 ) -> Path:
     """Generate a single .in file with optional PNG visualization."""
 
@@ -197,6 +198,7 @@ def generate_single(
         moisture_min=moisture if moisture is not None else 0.0,
         moisture_max=moisture if moisture is not None else 0.3,
         base_seed=seed,
+        randomize_rock_materials=randomize_rock_materials,
         **extra,
     )
 
@@ -478,6 +480,11 @@ Examples:
         help="RX spacing in meters (default: 0.05 = 5cm)",
     )
     parser.add_argument(
+        "--randomize-rocks",
+        action="store_true",
+        help="Assign a random material to each rock (useful to visualize individual rocks and voxelization loss)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -563,6 +570,7 @@ Examples:
             rx_spacing=rx_spacing,
             render=args.render,
             seed=seed,
+            randomize_rock_materials=args.randomize_rocks,
         )
         return 0
 

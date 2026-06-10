@@ -8,28 +8,20 @@ from .worker import Worker
 from .workers import AirWorker, SubgradeWorker, FormationWorker, BallastWorker
 from .lab_worker import LabWorker
 
+
 class RecipeBook:
-    """
-    Catalog of standard production recipes.
-    """
+    """Catalog of standard production recipes."""
 
     @staticmethod
     def get_base_recipe(config, product_type: str = "standard") -> List[Worker]:
         """
-        Get the sequence of workers for the base construction phase.
+        Get the worker sequence for the base construction phase.
 
-        Args:
-            config: GeneratorConfig.
-            product_type: 'standard' or 'mbubia'.
-
-        Returns:
-            List of Worker instances in execution order.
+        Mbubia scenes are auto-detected from config.rock_packing_algorithm.
         """
         from .granular_worker import GranularMatrixWorker
 
-        # Auto-detect mbubia from packing algorithm
-        algo = getattr(config, 'rock_packing_algorithm', 'standard')
-        if product_type == "mbubia" or algo == "mbubia":
+        if product_type == "mbubia" or config.rock_packing_algorithm == "mbubia":
             from .mbubia_worker import MbubiaWorker
             return [MbubiaWorker()]
 
@@ -41,33 +33,15 @@ class RecipeBook:
                 BallastWorker(),
                 GranularMatrixWorker(),
             ]
-        else:
-            raise ValueError(f"Unknown recipe: {product_type}")
+
+        raise ValueError(f"Unknown recipe: {product_type}")
 
     @staticmethod
     def get_finalization_recipe() -> List[Worker]:
-        """
-        Get the sequence of workers for the finalization phase.
-        
-        These workers run after the base construction is complete and checkpointed.
-        They perform final assembly, validation, and analysis.
-        
-        Returns:
-            List of Worker instances in execution order.
-        """
+        """Worker sequence for finalization: antenna placement, assembly, lab analysis."""
         from .workers import AntennaWorker, AssemblerWorker
         return [
-            AntennaWorker(),    # Position antennas based on final ballast height
-            AssemblerWorker(),  # Final validation and geometry view
-            LabWorker()         # Virtual sieve analysis on final clipped geometry
+            AntennaWorker(),
+            AssemblerWorker(),
+            LabWorker(),
         ]
-    
-    @staticmethod
-    def get_variant_recipe(variant_type: str) -> List[Worker]:
-        """
-        Get workers for the variant/customization phase.
-
-        Reserved for future multi-variant generation
-        (e.g., different antenna offsets, moisture variations, etc.)
-        """
-        raise NotImplementedError(f"No variant recipe defined for '{variant_type}'")

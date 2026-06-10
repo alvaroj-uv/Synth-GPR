@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Dict
 
 from .constants import PHC
+from .rock_model import Layer, Rock, PackingBounds  # shared domain models
+from .rock_packing import RockPackingStrategy
 
 try:
     import pygame
@@ -298,67 +300,100 @@ class BallastSimulation:
 
 # ─── Mbubia Scene Generator ────────────────────────────────────────────────
 
-class MbubiaPymunkSceneGenerator:
+class MbubiaPymunkSceneGenerator(RockPackingStrategy):
     """
-    Two-layer Mbubia railway ballast scene generator.
+    Multi-layer pymunk-based scene generator for railway ballast and soil layers.
 
-    Delegates physics (RSA + gravity compaction) to BallastSimulation per layer,
-    then converts settled circle positions to polygon vertex geometry.
+    Generates rocks in any number of layers via physics-based RSA + gravity compaction.
+    Delegates physics to BallastSimulation per layer, then converts circles to polygons.
 
-    This avoids duplicating simulation logic and ensures correct gravity scaling,
-    proper sieve-based grading curves, and consistent void fraction targeting.
+    Extends RockPackingStrategy so it integrates natively with the packing hierarchy:
+    - generate_rocks() fulfils the abstract interface (single-layer, no domain config)
+    - generate() is the multi-layer entry point (painter's algorithm, domain config)
+
+    Typical use: Two-layer Mbubia (upper ballast + lower subgrade)
+    But supports 1, 2, 3+ layers for other applications.
     """
 
-    DOMAIN_X = 4.0
-    DOMAIN_Y = 1.2
-    DOMAIN_Z = 0.05
-    ANTENNA_HEIGHT_ABOVE_SURFACE = 0.30
-    CENTER_FREQUENCY_GHZ = 1.4
-    LAYER_INTERFACE_Y = 0.488
-
-    LAYER_PROPERTIES = {
-        'clean_ballast':        {'epsilon_r': 4.10, 'sigma': 0.001, 'density': 2650},
-        'fouled_ballast':       {'epsilon_r': 4.23, 'sigma': 0.005, 'density': 2500},
-        'highly_fouled_ballast':{'epsilon_r': 4.35, 'sigma': 0.008, 'density': 2400},
-        'subgrade_soil':        {'epsilon_r': 5.50, 'sigma': 0.010, 'density': 2200},
-    }
-
-    @property
-    def ANTENNA_HEIGHT(self):
-        return self.DOMAIN_Y + self.ANTENNA_HEIGHT_ABOVE_SURFACE
+    # Default domain geometry (Mbubia standard)
+    _DEFAULT_DOMAIN_X          = 4.0
+    _DEFAULT_DOMAIN_Y          = 1.2
+    _DEFAULT_DOMAIN_Z          = 0.05
+    _DEFAULT_ANTENNA_CLEARANCE = 0.30
+    _DEFAULT_LAYER_INTERFACE_Y = 0.488
 
     def __init__(
         self,
         scene_name: str,
         upper_material: str = "clean_ballast",
         lower_material: str = "fouled_ballast",
-        output_dir: Path = Path("output/mbubia_pymunk"),
+        output_dir: Path = None,
         verbose: bool = True,
         domain_x: Optional[float] = None,
         domain_y: Optional[float] = None,
         domain_z: Optional[float] = None,
+        layer_interface_y: Optional[float] = None,
+        randomize_rock_materials: bool = False,
+        random_material_pool: Optional[List[str]] = None,
     ):
-        self.scene_name = scene_name
-        self.upper_material = upper_material
-        self.lower_material = lower_material
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.verbose = verbose
-        self.rocks: List[dict] = []
-        # Allow per-instance domain override (used by MbubiaWorker from pipeline config)
-        if domain_x is not None:
-            self.DOMAIN_X = domain_x
-        if domain_y is not None:
-            self.DOMAIN_Y = domain_y
-        if domain_z is not None:
-            self.DOMAIN_Z = domain_z
+        self.scene_name         = scene_name
+        self.upper_material     = upper_material
+        self.lower_material     = lower_material
+        self.output_dir         = Path(output_dir) if output_dir is not None else None
+        self.verbose            = verbose
+        self.randomize_rock_materials = randomize_rock_materials
+        # Caller (MbubiaWorker) provides pool so this class stays EM-agnostic
+        self.random_material_pool = random_material_pool or [upper_material, lower_material]
+        self.rocks: List[Rock] = []
+
+        self.DOMAIN_X          = domain_x          if domain_x          is not None else self._DEFAULT_DOMAIN_X
+        self.DOMAIN_Y          = domain_y          if domain_y          is not None else self._DEFAULT_DOMAIN_Y
+        self.DOMAIN_Z          = domain_z          if domain_z          is not None else self._DEFAULT_DOMAIN_Z
+        self.LAYER_INTERFACE_Y = layer_interface_y if layer_interface_y is not None else self._DEFAULT_LAYER_INTERFACE_Y
+        self.ANTENNA_HEIGHT    = self.DOMAIN_Y + self._DEFAULT_ANTENNA_CLEARANCE
+
+    # ── RockPackingStrategy interface ────────────────────────────────────────
+
+    def generate_rocks(
+        self,
+        bounds: PackingBounds,
+        radius_min: float = 0.0,
+        radius_max: float = float("inf"),
+        target_fill_ratio: float = 0.85,
+        max_attempts: int = 5000,
+        min_gap: float = 0.0,
+        grading_curve=None,
+    ) -> List[Rock]:
+        """
+        RockPackingStrategy interface — single-layer generation within bounds.
+
+        Runs BallastSimulation for the given bounds, applies polygon conversion
+        via the inherited polygonize() helper, and returns List[Rock].
+
+        For multi-layer painter's algorithm scenes use generate() instead.
+        """
+        sim = BallastSimulation(
+            domain_size=(bounds.width, bounds.height),
+            radii_distribution=self._get_radii_for(self.upper_material),
+            buffer_y=0.2,
+            verbose=self.verbose,
+        )
+        rng = np.random.default_rng()
+        circle_array = sim.run(running_time=2.0, time_step=PHC.GRAVITY_SETTLE_TIME_STEP, display=False)
+        circle_array[:, 0] += bounds.x_min
+        circle_array[:, 1] += bounds.y_min
+
+        rocks = [Rock(x=float(x), y=float(y), radius=float(r)) for x, y, r in circle_array]
+        self.polygonize(rocks, rng=rng)
+        return rocks
+
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _validate_configuration(self) -> None:
         errors = []
         if self.ANTENNA_HEIGHT <= self.DOMAIN_Y:
             errors.append(
-                f"Antenna height ({self.ANTENNA_HEIGHT}m) must be above domain top ({self.DOMAIN_Y}m). "
-                f"= domain_y({self.DOMAIN_Y}m) + height_above_surface({self.ANTENNA_HEIGHT_ABOVE_SURFACE}m)"
+                f"Antenna height ({self.ANTENNA_HEIGHT}m) must be above domain top ({self.DOMAIN_Y}m)."
             )
         if self.LAYER_INTERFACE_Y <= 0 or self.LAYER_INTERFACE_Y >= self.DOMAIN_Y:
             errors.append(
@@ -379,167 +414,124 @@ class MbubiaPymunkSceneGenerator:
         """Map material name to BallastSimulation sieve-based grading curve."""
         if material == 'clean_ballast':
             return BallastSimulation.get_clean_ballast_radii_distrib()
-        else:
-            # fouled_ballast, highly_fouled_ballast, subgrade_soil → fouled curve
-            return BallastSimulation.get_fouled_ballast_radii_distrib()
+        return BallastSimulation.get_fouled_ballast_radii_distrib()
 
-    @staticmethod
-    def _circles_to_polygon_dicts(
-        rocks_array: np.ndarray,
+    def _generate_layer(
+        self,
+        phase: int,
         material: str,
+        domain_height: float,
+        y_offset: float,
+        running_time: float,
+        time_step: float,
+        display: bool,
         rng: np.random.Generator,
-    ) -> List[dict]:
-        """Convert BallastSimulation circle output to polygon vertex dicts."""
+    ) -> List[Rock]:
+        """
+        Generate rocks for one layer via BallastSimulation + polygonize().
+
+        Runs physics, offsets circles into layer position, converts to
+        polygon Rock objects using the inherited polygonize() helper.
+        Material and optional randomization are set directly on Rock.material.
+        """
+        if self.verbose:
+            label = 'upper' if phase == 1 else 'lower'
+            print(f"Phase {phase} ({label}): BallastSimulation {self.DOMAIN_X}m x {domain_height:.3f}m ...")
+
+        sim = BallastSimulation(
+            domain_size=(self.DOMAIN_X, domain_height),
+            radii_distribution=self._get_radii_for(material),
+            buffer_y=0.2,
+            verbose=self.verbose,
+        )
+        circle_array = sim.run(running_time=running_time, time_step=time_step, display=display)
+
+        if y_offset != 0:
+            circle_array[:, 1] += y_offset
+
+        # Build Rock objects — material set per rock (random or layer material)
         rocks = []
-        for x, y, radius in rocks_array:
-            n_sides = int(rng.integers(6, 13))
-            angles = np.linspace(0, 2 * np.pi, n_sides, endpoint=False)
-            # 0.35 amplitude gives clearly visible angular shapes at scene scale
-            noise = rng.uniform(-0.35, 0.35, n_sides)
-            vertices = [
-                (x + (radius + radius * noise[i]) * np.cos(angles[i]),
-                 y + (radius + radius * noise[i]) * np.sin(angles[i]))
-                for i in range(n_sides)
-            ]
-            rocks.append({'x': float(x), 'y': float(y), 'vertices': vertices,
-                          'material': material, 'n_sides': n_sides})
+        for x, y, radius in circle_array:
+            mat = rng.choice(self.random_material_pool) if self.randomize_rock_materials else material
+            rocks.append(Rock(x=float(x), y=float(y), radius=float(radius), material=mat))
+
+        # Convert circles to polygon rocks using the shared RockPackingStrategy helper
+        self.polygonize(rocks, rng=rng)
         return rocks
 
     def generate(
         self,
+        layers: Optional[List[Layer]] = None,
         running_time: float = 3.0,
         time_step: float = PHC.GRAVITY_SETTLE_TIME_STEP,
         display: bool = False,
     ) -> None:
-        """Generate Mbubia scene: physics via BallastSimulation, geometry as polygons."""
+        """
+        Generate overlapping rock layers using painter's algorithm.
+
+        Each layer is generated independently with gravity settling.
+        Layers are written to .in file in priority order (painter's algorithm):
+        lower priority (drawn first) → higher priority (drawn last, appears on top).
+
+        Args:
+            layers: List of Layer objects (name, material, y_min, y_max, priority).
+                   If None, uses default two-layer Mbubia setup.
+            running_time: Gravity settling duration per layer (seconds)
+            time_step: FDTD time step for settling
+            display: Display simulation progress
+
+        Example - Two-layer (default Mbubia, no overlap):
+            gen.generate()
+
+        Example - Three overlapping layers (painter's algorithm):
+            gen.generate(layers=[
+                Layer(name="subgrade", material="subgrade_soil", y_min=0.0, y_max=0.8, priority=1),
+                Layer(name="fouled", material="fouled_ballast", y_min=0.4, y_max=0.9, priority=2),
+                Layer(name="clean", material="clean_ballast", y_min=0.6, y_max=1.2, priority=3),
+            ])
+            # Result: subgrade drawn first, fouled on top of it, clean on top of fouled
+            # Painter's algorithm creates visual mixing where they overlap
+        """
         self._validate_configuration()
 
+        # Use default two-layer Mbubia if no layers specified
+        if layers is None:
+            upper_height = self.DOMAIN_Y - self.LAYER_INTERFACE_Y
+            lower_height = self.LAYER_INTERFACE_Y
+            layers = [
+                Layer(name="lower", material=self.lower_material, y_min=0.0, y_max=self.LAYER_INTERFACE_Y, priority=1),
+                Layer(name="upper", material=self.upper_material, y_min=self.LAYER_INTERFACE_Y, y_max=self.DOMAIN_Y, priority=2),
+            ]
+
         if self.verbose:
-            print(f"Generating Mbubia scene: {self.scene_name}")
-            print(f"Upper layer: {self.upper_material}  Lower layer: {self.lower_material}")
+            print(f"Generating scene: {self.scene_name}")
+            print(f"Layers: {', '.join(f'{L.name}({L.material}, priority={L.priority})' for L in sorted(layers, key=lambda L: L.priority))}")
+            print(f"(Painter's algorithm: lower priority drawn first)")
 
         rng = np.random.default_rng()
+        layer_rocks = {}
 
-        upper_height = self.DOMAIN_Y - self.LAYER_INTERFACE_Y
-        lower_height = self.LAYER_INTERFACE_Y
+        # Generate rocks for each layer independently (no inter-layer collisions)
+        for phase, layer in enumerate(sorted(layers, key=lambda L: L.priority), 1):
+            rocks = self._generate_layer(
+                phase=phase,
+                material=layer.material,
+                domain_height=layer.height,
+                y_offset=layer.y_min,
+                running_time=running_time,
+                time_step=time_step,
+                display=display,
+                rng=rng,
+            )
+            layer_rocks[layer.name] = rocks
 
-        if self.verbose:
-            print(f"Phase 1 (upper): BallastSimulation {self.DOMAIN_X}m x {upper_height:.3f}m ...")
-        upper_sim = BallastSimulation(
-            domain_size=(self.DOMAIN_X, upper_height),
-            radii_distribution=self._get_radii_for(self.upper_material),
-            buffer_y=0.2,
-            verbose=self.verbose,
-        )
-        upper_array = upper_sim.run(running_time=running_time, time_step=time_step, display=display)
-        upper_array[:, 1] += self.LAYER_INTERFACE_Y  # offset y into upper layer position
-
-        if self.verbose:
-            print(f"Phase 2 (lower): BallastSimulation {self.DOMAIN_X}m x {lower_height:.3f}m ...")
-        lower_sim = BallastSimulation(
-            domain_size=(self.DOMAIN_X, lower_height),
-            radii_distribution=self._get_radii_for(self.lower_material),
-            buffer_y=0.2,
-            verbose=self.verbose,
-        )
-        lower_array = lower_sim.run(running_time=running_time, time_step=time_step, display=display)
-
-        self.rocks = (
-            self._circles_to_polygon_dicts(upper_array, self.upper_material, rng) +
-            self._circles_to_polygon_dicts(lower_array, self.lower_material, rng)
-        )
+        # Combine rocks in priority order (painter's algorithm)
+        # Lower priority rocks drawn first, higher priority rocks drawn last (on top)
+        self.rocks = []
+        for layer in sorted(layers, key=lambda L: L.priority):
+            self.rocks.extend(layer_rocks[layer.name])
 
         if self.verbose:
-            print(f"Final rock count: {len(self.rocks)} ({len(upper_array)} upper + {len(lower_array)} lower)")
+            detail = " + ".join(f"{len(layer_rocks[L.name])} {L.name}" for L in sorted(layers, key=lambda L: L.priority))
+            print(f"Final rock count: {len(self.rocks)} ({detail})")
 
-    def export_gprmax_in(self) -> Path:
-        """Export scene to gprMax .in format."""
-        output_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.in"
-        upper_props = self.LAYER_PROPERTIES[self.upper_material]
-        lower_props = self.LAYER_PROPERTIES[self.lower_material]
-
-        content = f"""#title: Mbubia Pymunk Scene - {self.scene_name.upper()}
-#domain: {self.DOMAIN_X:.3f} {self.DOMAIN_Y:.3f} {self.DOMAIN_Z:.3f}
-#dx_dy_dz: 0.002 0.002 0.001
-#time_window: 20e-9
-
-# === MBUBIA SCENE WITH PYMUNK ===
-# Generated with pymunk physics engine
-# Upper layer: {self.upper_material} (er={upper_props['epsilon_r']}, s={upper_props['sigma']})
-# Lower layer: {self.lower_material} (er={lower_props['epsilon_r']}, s={lower_props['sigma']})
-# Rocks: {len(self.rocks)} polygon shapes (realistic geometry)
-
-# === MATERIALS ===
-#material: {upper_props['epsilon_r']} {upper_props['sigma']} 1.0 0.0 {self.upper_material}
-#material: {lower_props['epsilon_r']} {lower_props['sigma']} 1.0 0.0 {self.lower_material}
-#material: 5.50 0.010 1.0 0.0 subgrade_soil
-
-# === ANTENNA (MONOSTATIC) ===
-#hertzian_dipole: z {self.DOMAIN_X/2:.2f} {self.ANTENNA_HEIGHT:.2f} 0 myricker
-#rx: {self.DOMAIN_X/2:.2f} {self.ANTENNA_HEIGHT:.2f} 0
-
-# === WAVEFORM ===
-#waveform: ricker 1 {self.CENTER_FREQUENCY_GHZ*1e9:.0f} myricker
-
-# === DOMAIN MATERIAL ===
-#box: 0 0 0 {self.DOMAIN_X:.3f} {self.DOMAIN_Y:.3f} {self.DOMAIN_Z:.3f} {self.upper_material}
-
-# === LAYER BOUNDARIES ===
-#box: 0 0 0 {self.DOMAIN_X:.3f} {self.LAYER_INTERFACE_Y:.3f} {self.DOMAIN_Z:.3f} {self.lower_material}
-
-# === ROCK GEOMETRY (Pymunk-generated polygons) ===
-"""
-
-        for rock in self.rocks:
-            vertices = rock['vertices']
-            verts_str = ' '.join([f"{v[0]:.4f} {v[1]:.4f} 0" for v in vertices])
-            content += f"#polygon: {len(vertices)} {verts_str} {rock['material']}\n"
-
-        content += "\n# === SIMULATION ===\n#run_simulation\n"
-
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(content)
-
-        if self.verbose:
-            print(f"Exported to {output_file}")
-
-        return output_file
-
-    def export_json(self) -> Path:
-        """Export scene data as JSON."""
-        output_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.json"
-
-        data = {
-            'scene_name': self.scene_name,
-            'upper_material': self.upper_material,
-            'lower_material': self.lower_material,
-            'layer_interface_y': self.LAYER_INTERFACE_Y,
-            'domain': {'x': self.DOMAIN_X, 'y': self.DOMAIN_Y, 'z': self.DOMAIN_Z},
-            'antenna_height': float(self.ANTENNA_HEIGHT),
-            'antenna_height_above_surface': self.ANTENNA_HEIGHT_ABOVE_SURFACE,
-            'frequency_ghz': self.CENTER_FREQUENCY_GHZ,
-            'n_rocks': len(self.rocks),
-            'rocks': self.rocks,
-            'material_properties': self.LAYER_PROPERTIES,
-        }
-
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-
-        if self.verbose:
-            print(f"Exported to {output_file}")
-
-        return output_file
-
-    def export_png(self) -> Path:
-        """Render scene to PNG via the dedicated Mbubia visualizer."""
-        from scripts.visualization.mbubia_visualizer import render_mbubia_pymunk_scene
-        in_file = self.output_dir / f"mbubia_pymunk_{self.scene_name}.in"
-        out_png = self.output_dir / f"mbubia_pymunk_{self.scene_name}.png"
-        return render_mbubia_pymunk_scene(
-            in_path=in_file,
-            output_png=out_png,
-            upper_material=self.upper_material,
-            lower_material=self.lower_material,
-            layer_interface_y=self.LAYER_INTERFACE_Y,
-        )

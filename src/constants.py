@@ -71,13 +71,25 @@ class MaterialConstants:
     # needs a default material value MUST reference these — do NOT redefine the
     # numbers elsewhere (config defaults point here; there is no separate
     # material table). Changing a value here changes it everywhere.
+    #
+    # Sources:
+    #   Tosti & Benedetto (2018) NDT&E Int. 93, 131-140      — clean ballast
+    #   Benedetto et al. (2017) Constr. Build. Mater.         — fouled ballast
+    #   Shang et al. (2021) Sensors PMC8539047                — fully fouled
+    #   PMC9003199 (2022) state-of-the-art review             — subgrade
     AIR_PROPS: tuple = (1.0, 0.0)
-    SUBGRADE_PROPS: tuple = (10.0, 0.02)      # dry/moist
+    SUBGRADE_PROPS: tuple = (8.0, 0.020)      # dry/compact railway formation (PMC9003199)
     SUBGRADE_EPS_SAT: float = 21.0            # saturated — Xie et al. (2010)
     FORMATION_PROPS: tuple = (10.0, 0.03)     # S&W
-    BALLAST_ROCK_PROPS: tuple = (5.0, 0.001)  # clean ballast rock (live default)
-    FOULING_BASE_PROPS: tuple = (6.0, 0.002)  # base/min fouled material
-    FOULING_DENSE_PROPS: tuple = (8.0, 0.01)  # dense/max settled fouling
+    BALLAST_ROCK_PROPS: tuple = (4.0, 0.001)  # clean dry granite/limestone, 400 MHz (Tosti 2018)
+    FOULING_BASE_PROPS: tuple = (5.0, 0.005)  # lightly fouled ~10-24% (Benedetto 2017)
+    FOULING_DENSE_PROPS: tuple = (6.5, 0.012) # fully fouled dry fines (Shang 2021)
+
+    # Mbubia two-layer scene materials (used by MbubiaPymunkSceneGenerator)
+    CLEAN_BALLAST_PROPS: tuple    = (4.0,  0.001)  # Tosti & Benedetto (2018)
+    FOULED_BALLAST_PROPS: tuple   = (5.0,  0.005)  # Benedetto et al. (2017)
+    HF_BALLAST_PROPS: tuple       = (6.5,  0.012)  # Shang et al. (2021) fully fouled
+    SUBGRADE_SOIL_PROPS: tuple    = (8.0,  0.020)  # PMC9003199 dry railway subgrade
 
 @dataclass(frozen=True)
 class SignalConstants:

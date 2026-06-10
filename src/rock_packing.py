@@ -312,6 +312,47 @@ class RockPackingStrategy(ABC):
         """Helper method to create a Rock object."""
         return Rock(x=x, y=y, radius=radius)
 
+    def polygonize(
+        self,
+        rocks: List[Rock],
+        n_sides_range: Tuple[int, int] = (6, 12),
+        noise: float = 0.35,
+        rng: Optional["np.random.Generator"] = None,
+    ) -> List[Rock]:
+        """
+        Convert circle rocks to polygon rocks in-place.
+
+        Learned from MbubiaPymunkSceneGenerator: realistic angular ballast
+        shapes require per-rock polygon vertices with noise perturbation.
+        Each rock gets a random n-sided polygon (noise ±35% on vertex radius).
+
+        Args:
+            rocks:        List of circle Rock objects to polygonize.
+            n_sides_range: (min, max) number of polygon sides per rock.
+            noise:        Amplitude of per-vertex radius noise (fraction of radius).
+            rng:          numpy random Generator. Creates a new one if None.
+
+        Returns:
+            The same list with vertices and centroid fields populated.
+            radius is preserved as the bounding-circle radius.
+        """
+        import numpy as np
+
+        if rng is None:
+            rng = np.random.default_rng()
+
+        n_min, n_max = n_sides_range
+        for rock in rocks:
+            n = int(rng.integers(n_min, n_max + 1))
+            angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+            perturbation = rng.uniform(-noise, noise, n)
+            rock.vertices = [
+                (rock.x + (rock.radius + rock.radius * perturbation[i]) * np.cos(angles[i]),
+                 rock.y + (rock.radius + rock.radius * perturbation[i]) * np.sin(angles[i]))
+                for i in range(n)
+            ]
+        return rocks
+
     def fill_voids(self, rocks: List[Rock], bounds: PackingBounds, 
                    min_void_radius: float = 0.005, attempts: int = 500) -> List[Rock]:
         """
