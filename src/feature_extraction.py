@@ -57,7 +57,13 @@ def extract_features(df, dt=PC.DEFAULT_DT):
         
         # 6. Grid Features
         grid_feats = _extract_grid_features(signal, analytic_signal)
-        
+
+        # 7. Windowed (ballast/coda gate) indicators — Li et al. (2023), Shapovalov et al. (2026)
+        window_feats = _extract_window_features(signal, analytic_signal, dt)
+
+        # 8. Time-domain energy-integration curve — Li et al. (2023)
+        energy_curve_feats = _extract_energy_curve_features(signal)
+
         # Combine
         features = {
             'Signal': col,
@@ -67,7 +73,9 @@ def extract_features(df, dt=PC.DEFAULT_DT):
             **wavelet_feats,
             **stft_feats,
             **slice_feats,
-            **grid_feats
+            **grid_feats,
+            **window_feats,
+            **energy_curve_feats
         }
         
         # Add metadata
@@ -318,6 +326,110 @@ def _extract_slice_features(signal: np.ndarray, num_slices: int = SC.DEFAULT_SLI
         feats[f'stat_slice_{i}_mean'] = np.mean(chunk)
         feats[f'stat_slice_{i}_std'] = np.std(chunk)
     return feats
+
+def _extract_window_features(signal: np.ndarray, analytic_signal: np.ndarray, dt: float,
+                             window_ns: tuple = SC.CODA_WINDOW_NS) -> dict:
+    """Literature indicators restricted to the ballast/coda time gate.
+
+    Several ballast-fouling studies compute their discriminators over the ballast
+    layer (a time gate) rather than the whole trace: integral of |amplitude| (StAb),
+    Hilbert-envelope area, zero-crossing count (CrossNum) and inflection count
+    (InflecNum). See Li et al. (2023), Remote Sens. 15, 3437; Shapovalov et al. (2026),
+    IJTST 21, 286-305. These are the gated counterparts of the full-trace ``area_signal``,
+    ``area_hilbert``, ``number_zeros`` and ``second_derivative`` features.
+    """
+    from scipy.signal import find_peaks
+
+    keys = [
+        'win_area_signal', 'win_area_hilbert', 'win_rms', 'win_std',
+        'win_energy_fraction', 'win_number_zeros', 'win_inflection_count',
+        'win_peak_count', 'win_hilbert_mean', 'win_hilbert_peak_max'
+    ]
+
+    n = len(signal)
+    t_ns = np.arange(n) * dt * SC.NS_PER_SEC
+    mask = (t_ns >= window_ns[0]) & (t_ns <= window_ns[1])
+
+    # Degenerate gate (trace too short / window out of range): return zeros, never crash.
+    if np.count_nonzero(mask) < 3:
+        return {k: 0.0 for k in keys}
+
+    w = signal[mask]
+    env = np.abs(analytic_signal)[mask]
+    tw = t_ns[mask]
+
+    total_energy = np.sum(signal ** 2)
+    win_energy = np.sum(w ** 2)
+    rms_val = np.sqrt(np.mean(w ** 2))
+
+    if np.std(w) > 0:
+        peaks, _ = find_peaks(w, height=np.std(w) * 0.5)
+        peak_count = len(peaks)
+    else:
+        peak_count = 0
+
+    inflections = int(np.count_nonzero(np.diff(np.signbit(np.diff(w, n=2))))) if w.size > 2 else 0
+
+    return {
+        'win_area_signal': float(np.sum(np.abs(w))),
+        'win_area_hilbert': float(np.trapezoid(env, tw)),
+        'win_rms': float(rms_val),
+        'win_std': float(np.std(w)),
+        'win_energy_fraction': float(win_energy / total_energy) if total_energy > 0 else 0.0,
+        'win_number_zeros': int(np.count_nonzero(np.diff(np.signbit(w)))),
+        'win_inflection_count': inflections,
+        'win_peak_count': int(peak_count),
+        'win_hilbert_mean': float(np.mean(env)),
+        'win_hilbert_peak_max': float(np.max(env))
+    }
+
+
+def _extract_energy_curve_features(signal: np.ndarray,
+                                   fractions: tuple = SC.ENERGY_CURVE_FRACTIONS) -> dict:
+    """Time-domain cumulative-energy-curve descriptors (energy-integration curve).
+
+    The normalized cumulative energy curve is the time-domain analogue of the FFT
+    ``spectral_rolloff``: it encodes how quickly trace energy accumulates, which the
+    ballast-fouling literature links to fouling-driven attenuation (heavier fouling →
+    faster early decay → energy accumulates earlier). See Li et al. (2023), which uses a
+    smoothed/normalized energy-integration curve as a primary fouling discriminator.
+
+    Returned positions are normalized to [0, 1] over the trace length so they are
+    comparable across traces of different length.
+    """
+    n = len(signal)
+    keys = [f'energy_time_q{int(f * 100)}' for f in fractions] + \
+           ['energy_centroid_time', 'early_late_energy_ratio', 'energy_curve_auc']
+
+    if n < 2:
+        return {k: 0.0 for k in keys}
+
+    energy = signal ** 2
+    total = np.sum(energy)
+    if total <= 0:
+        return {k: 0.0 for k in keys}
+
+    cum_norm = np.cumsum(energy) / total
+
+    feats = {}
+    for f in fractions:
+        idx = int(np.searchsorted(cum_norm, f))
+        feats[f'energy_time_q{int(f * 100)}'] = float(min(idx, n - 1) / (n - 1))
+
+    idx_arr = np.arange(n)
+    feats['energy_centroid_time'] = float(np.sum(idx_arr * energy) / total / (n - 1))
+
+    half = n // 2
+    early = np.sum(energy[:half])
+    late = np.sum(energy[half:])
+    feats['early_late_energy_ratio'] = float(early / late) if late > 0 else 0.0
+
+    # Area under the normalized cumulative-energy curve in [0, 1]:
+    # high → energy concentrated early (fouled-like), low → energy concentrated late.
+    feats['energy_curve_auc'] = float(np.mean(cum_norm))
+
+    return feats
+
 
 def _extract_grid_features(signal: np.ndarray, analytic_signal: np.ndarray, grid_size: int = SC.DEFAULT_GRID_SIZE) -> dict:
     """Resamples signal to a fixed grid for image-like features."""

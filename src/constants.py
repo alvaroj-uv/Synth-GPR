@@ -101,7 +101,17 @@ class SignalConstants:
     # STFT Parameters
     STFT_NPERSEG: int = 64
     STFT_NOVERLAP: int = 32
-    
+
+    # Time-domain ballast/coda gate (ns) for windowed indicators.
+    # Matches CODA_NS in scripts/visualization/plot_coda_energy_vs_fi.py.
+    # Windowed StAb / Hilbert-area / CrossNum / InflecNum — Li et al. (2023),
+    # Shapovalov et al. (2026).
+    CODA_WINDOW_NS: tuple = (6.0, 16.0)
+    NS_PER_SEC: float = 1e9
+
+    # Energy-integration curve fractions (time-domain rolloff) — Li et al. (2023)
+    ENERGY_CURVE_FRACTIONS: tuple = (0.25, 0.50, 0.75, 0.85)
+
     # Feature Extraction
     DEFAULT_SLICE_COUNT: int = 14
     DEFAULT_GRID_SIZE: int = 160
