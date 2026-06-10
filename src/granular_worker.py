@@ -364,7 +364,7 @@ class GranularMatrixWorker(Worker):
         """Stamp a rock's TRUE polygon (mbubia settled shape) as fan triangles.
 
         Vertices are clamped to the domain; the fan apex is the recomputed
-        centroid of the clamped polygon (matching MbubiaWorker's stamping), so
+        centroid of the clamped polygon (matching the mbubia_ballast packer), so
         edge rocks degrade gracefully instead of producing inverted triangles.
         """
         from .gpr_commands import TriangleCommand
