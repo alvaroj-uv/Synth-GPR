@@ -75,19 +75,16 @@ Synth-GPR/
 │   └── domain/                    # Domain models (Layer, Fouling, etc.)
 │
 ├── scripts/                       # Executable scripts
-│   ├── main/                      # Core pipeline scripts
+│   ├── pipeline/                  # Core pipeline scripts
 │   │   ├── generate_in_files.py   # Generate .in geometry files
-│   │   ├── generate_from_rocks.py # Load rocks from existing files
 │   │   ├── run_simulations.py     # Execute gprMax simulations
-│   │   └── extract_features.py    # Extract features from .out files
-│   ├── tools/                     # Utility scripts
-│   │   ├── visualization/         # Blueprint & analysis visualization
-│   │   ├── data_management/       # Dataset validation, merging
-│   │   ├── generation/            # Packing algorithm utilities
-│   │   └── research/              # Analysis & exploration tools
-│   ├── experiments/               # Experimental workflows
-│   ├── analysis/                  # Data analysis scripts
-│   └── streamlit/                 # Interactive web interface
+│   │   ├── extract_features.py    # Extract features from .out files
+│   │   ├── build_parquet.py       # Consolidate features into Parquet
+│   │   └── train_rf*.py           # Train Random Forest classifiers
+│   ├── analysis/                  # Validation & sim-to-real studies
+│   ├── experiments/               # Research experiments (transient)
+│   ├── tools/                     # Maintenance & debugging utilities
+│   └── visualization/             # Plotting & rendering scripts
 │
 ├── docs/                          # Comprehensive documentation
 │   ├── setup/                     # Installation & configuration
@@ -99,29 +96,16 @@ Synth-GPR/
 │   │   ├── DATASET_STRUCTURE.md   # Data organization
 │   │   └── SINGLE_SOURCE_OF_TRUTH.md  # Design principles
 │   ├── algorithms/                # Algorithm documentation
-│   │   ├── PACKING_ALGORITHMS.md  # 12 packing variants
-│   │   └── ROCK_LOADING_GUIDE.md  # Rock reuse workflows
+│   │   └── PACKING_ALGORITHMS.md  # 12 packing variants
 │   ├── coordinate-systems/        # Coordinate system definitions
 │   ├── research/                  # Research papers & analyses
 │   ├── operations/                # Operational procedures
 │   ├── reports/                   # CLI references, evaluation reports
 │   └── archived/                  # Historical documentation
 │
-├── tests/                         # Comprehensive test suite
-│   ├── unit/                      # Unit tests for core modules
-│   ├── integration/               # Integration tests for pipelines
-│   ├── performance/               # Benchmarking tests
-│   └── fixtures/                  # Test data & mocks
+├── tests/                         # Test suite (pytest, flat layout)
 │
 ├── output/                        # Generated simulation outputs
-│   ├── gpr_dataset_10k/           # Example 10k sample dataset
-│   ├── single_test/               # Individual test runs
-│   └── test/                      # Batch test outputs
-│
-├── ml/                            # Machine learning pipelines
-│   ├── train_model.py             # Model training script
-│   ├── train_classifier.ipynb     # Training notebook
-│   └── models/                    # Saved model artifacts
 │
 ├── requirements.txt               # Python dependencies
 ├── .gitignore                     # Git exclusions
@@ -174,7 +158,7 @@ Synth-GPR/
 
 Generate 50 samples per fouling class with angular rocks:
 ```bash
-python scripts/main/generate_in_files.py output/ \
+python scripts/pipeline/generate_in_files.py output/ \
   --mode batch \
   --labels CL MC MF F HF \
   -n 50 \
@@ -188,7 +172,7 @@ python scripts/main/generate_in_files.py output/ \
 
 Execute gprMax FDTD simulations (requires gprMax installed):
 ```bash
-python scripts/main/run_simulations.py output/ -j 4
+python scripts/pipeline/run_simulations.py output/ -j 4
 ```
 
 **Output:** `.out` HDF5 files with Ez waveform recordings.
@@ -197,23 +181,23 @@ python scripts/main/run_simulations.py output/ -j 4
 
 Extract 572-dimensional feature vectors from simulation outputs:
 ```bash
-python scripts/main/extract_features.py output/ features.csv
+python scripts/pipeline/extract_features.py output/ --output features.csv
 ```
 
 **Output:** `features.csv` with 612 columns (572 features + 40 metadata columns).
 
 ### 4. Train ML Classifier
 
-Train a Random Forest classifier on extracted features:
+Train a Random Forest classifier on waveform features only (production approach):
 ```bash
-python ml/train_model.py --input features.csv --output model.pkl
+python scripts/pipeline/train_rf_waveform_only.py
 ```
 
 ### 5. Visualize Results
 
-Generate blueprint diagrams of simulated geometries:
+Render diagrams of simulated geometries and A-scans:
 ```bash
-python scripts/tools/visualization/visualize_gprmax_blueprint.py output/s_00000.in
+python scripts/visualization/unified_visualizer.py output/s_00000.in
 ```
 
 ---

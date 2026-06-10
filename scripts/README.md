@@ -1,62 +1,67 @@
 # Synth-GPR Scripts
 
-This directory contains the executable scripts for the Synthetic GPR pipeline.
+Executable scripts for the Synthetic GPR pipeline, organized by purpose.
+
+For the full organization guide (rationale, archival policy, adding new scripts), see
+[docs/operations/SCRIPTS_GUIDE.md](../docs/operations/SCRIPTS_GUIDE.md).
+For the packer API used by the generation scripts, see
+[docs/SCRIPTS_AND_PACKER.md](../docs/SCRIPTS_AND_PACKER.md).
 
 ## Directory Structure
 
-### `main/` - Core Pipeline Scripts
-Primary scripts for generating data, running simulations, and extracting features.
-- **`generate_dataset.py`**: Unified generator for synthetic GPR data. Supports single class, stratified, and custom fouling ranges.
-- **`run_simulations.py`**: Batch runner for executing `gprMax` on multiple `.in` files.
-- **`create_feature_dataset.py`**: The main extraction tool; converts `.out` files to a features CSV.
-- **`consolidate_dataset.py`**: Merges and renames datasets from multiple sources into a canonical format.
-- **`batch_extract_features.py`**: (Legacy) Lower-level batch extractor using OS-based iteration.
+### `pipeline/` — Core Pipeline
+Dataset generation, simulation, feature extraction, and model training.
 
-### `tools/` - Utilities & Helpers
-Helper tools categorized by function.
+- **`generate_in_files.py`** — Generate gprMax `.in` geometry files (dataset or single sample)
+- **`run_simulations.py`** — Batch runner for executing gprMax on multiple `.in` files
+- **`extract_features.py`** — Extract waveform features from `.out` files (`extract_features_real.py` / `extract_features_rojas.py` for real data)
+- **`build_parquet.py`** — Consolidate features into Parquet format (`build_parquet_merged.py`, `build_parquet_coda_aligned.py` variants)
+- **`consolidate_dataset.py`** — Merge and rename datasets from multiple sources
+- **`train_rf.py`** / **`train_rf_waveform_only.py`** — Train Random Forest classifiers (waveform-only is the production approach)
+- **`run_rf_pipeline.py`** — End-to-end RF pipeline execution
 
-#### `tools/data_management/`
-- **`merge_datasets.py`**: Merges multiple feature CSV files into one.
-- **`update_hdf5_titles.py`**: Updates internal HDF5 Title attributes based on a metadata CSV.
-- **`validate_dataset.py`**: Checks a dataset folder for consistency (missing inputs/outputs).
+### `analysis/` — Validation & Sim-to-Real Studies
+- **`validate_real.py`** — Validate models on real GPR data
+- **`sim2real_gap.py`** / **`sim2real_regularized.py`** — Simulation-to-reality gap analysis
+- **`diagnose_real.py`**, **`spearman_real.py`** — Real-data diagnostics and correlation analysis
+- **`domain_adapt.py`** — Domain adaptation analysis
+- **`rock_vs_homog_rigorous.py`** — Rock vs. homogeneous medium comparison
 
-#### `tools/visualization/`
-- **`visualize_gprmax_blueprint.py`**: Generates high-quality blueprints (PNG) of `.in` file geometry.
-- **`read_gprmax_output.py`**: Helper functions for reading gprMax HDF5 outputs.
+### `experiments/` — Research Experiments (transient)
+- **`antenna_experiment.py`**, **`verify_antenna_mode.py`** — Antenna configuration studies
+- **`homog_debye_slope.py`** — Debye model studies
+- **`phantom_domain_shift.py`** — Phantom rock domain-shift experiments
+- **`test_ldcp_variants.py`** — LDCP feature variant testing
 
-#### `tools/generation/`
-- **`generate_master_pattern.py`**: Generates rock packing patterns (Shang-Chu recommended).
-- **`generate_dummy_hdf5.py`**: Creates dummy HDF5 files for validaton testing.
+### `tools/` — Maintenance & Debugging Utilities
+- **`audit_codebase.py`** — Code quality audit
+- **`verify_production_imports.py`** — Validate import paths
+- **`regression_check.py`** — Regression testing
+- **`run_packing_single.py`**, **`visualize_packing_strategies.py`** — Packing algorithm testing
+- **`generate_test_in_files.py`**, **`generate_fake_output.py`** — Test data generation
 
-#### `tools/tests/`
-- **`test_data_generator.py`**: Quick test for the generator pipeline.
+### `visualization/` — Plotting & Rendering
+- **`unified_visualizer.py`** — Main visualizer (geometry, A-scan, dashboard; auto-detects 2D/3D)
+- **`render_scene.py`**, **`render_3d_in_file.py`** — Scene and 3D domain rendering
+- **`visualize_ascan.py`**, **`plot_fouling_classes.py`** — Signal and classification plots
 
-#### `tools/research/`
-- **`analyze_selected_pdfs.py`**: Extract text from literature PDFs.
+### Root-level
+- **`convert_snapshots.py`** — EM field snapshot conversion
 
 ## Usage
 
-**Always run scripts from the project root directory** (`d:\Codigo\Synth-GPR`) to ensure Python can resolve the `src` module imports.
+**Always run scripts from the project root directory** so Python can resolve `src` module imports.
 
-### Examples
-
-**Generating Data:**
 ```bash
-# Generate 50 samples of Clean(CL), Moderately Clean(MC), etc.
-python scripts/main/generate_dataset.py d:/Codigo/Synth-Data/Batch1 --labels CL MC MF F HF -n 50
-```
+# Generate .in files
+python scripts/pipeline/generate_in_files.py --help
 
-**Running Simulations:**
-```bash
-python scripts/main/run_simulations.py d:/Codigo/Synth-Data/Batch1 --gpu 0
-```
+# Run simulations
+python scripts/pipeline/run_simulations.py <dataset_dir>
 
-**Extracting Features:**
-```bash
-python scripts/main/create_feature_dataset.py d:/Codigo/Synth-Data/Batch1 -o features_batch1.csv
-```
+# Extract features
+python scripts/pipeline/extract_features.py <dataset_dir>
 
-**Visualizing Geometry:**
-```bash
-python scripts/tools/visualization/visualize_gprmax_blueprint.py d:/Codigo/Synth-Data/Batch1/s_00000.in
+# Train the waveform-only classifier (production approach)
+python scripts/pipeline/train_rf_waveform_only.py --data dataset.parquet
 ```
