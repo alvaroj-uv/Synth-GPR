@@ -77,7 +77,7 @@ class TestDynamicFI(unittest.TestCase):
         # Avoid _calculate_ballast_bounds failing if called
         # config defaults are sufficient (domain_x=0.5, etc)
         
-        worker.execute(scene, {}, materials, None)
+        worker.execute(scene, materials)
         
         # Check if FI_class matches dense calculation
         expected_class = classify_pvc(50.0, porosity=0.2)

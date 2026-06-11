@@ -1,0 +1,51 @@
+# TEST CONFIG — six-layer stack with thin strata, mixing named and explicit
+# materials and a dense-fouling packed bed. Stress-tests stack validation,
+# layer ordering, and the fouling_dense matrix.
+#
+#   python scripts/pipeline/generate_in_files.py test_output/thin_layers.in \
+#       --layers-file examples/scenes/test_thin_layers_stress.toml
+
+[sim]
+title             = "TEST thin multi-layer stress"
+freq_hz           = 400e6
+domain_x          = 1.0
+antenna_clearance = 0.4
+air_buffer        = 0.1
+rx_spacing        = 0.0
+seed              = 23
+
+[scenario]
+target_fouling = "highly_fouled"
+
+# bottom -> top
+[[layer]]
+name = "subgrade"
+thickness = 0.15
+
+[[layer]]
+name = "wet_lens"                # explicit thin wet layer
+thickness = 0.04
+eps = 20.0
+sigma = 0.10
+
+[[layer]]
+name = "formation"
+thickness = 0.08
+
+[[layer]]
+name = "geotextile"              # explicit very thin separator
+thickness = 0.02
+eps = 3.0
+sigma = 0.001
+
+[[layer]]
+name = "ballast"                 # rocks in a DENSE fouling matrix
+thickness = 0.22
+packed = true
+matrix = "fouling_dense"
+
+[[layer]]
+name = "fresh_cap"               # thin clean top-up layer of loose ballast
+thickness = 0.05
+eps = 4.0
+sigma = 0.001

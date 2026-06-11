@@ -40,7 +40,7 @@ class TestDomainRestrictions(unittest.TestCase):
         system.set('formation_top_y', 0.6, 'FormationWorker')
         
         # Execute BallastWorker
-        BallastWorker().execute(scene, {}, self.materials, None)
+        BallastWorker().execute(scene, self.materials)
         
         # Verify Clamping
         actual_top = system.get('ballast_top_y')
@@ -71,7 +71,7 @@ class TestDomainRestrictions(unittest.TestCase):
         # Execute AntennaWorker - Should Raise ValueError
         print("Checking for ValueError on excessive offset...")
         with self.assertRaises(ValueError) as cm:
-            AntennaWorker().execute(scene, {}, self.materials, None)
+            AntennaWorker().execute(scene, self.materials)
             
         print(f"Caught expected error: {cm.exception}")
         self.assertIn("TX X", str(cm.exception))

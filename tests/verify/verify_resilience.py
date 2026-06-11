@@ -41,7 +41,7 @@ class TestResilience(unittest.TestCase):
         # 3. Execute RockWorker
         print("Executing RockWorker with BrokenStrategy (expecting fallback)...")
         worker = RockWorker()
-        worker.execute(scene, params, self.materials, None)
+        worker.execute(scene, self.materials, params)
         
         # 4. Verify Geometry Created (proving fallback worked)
         rock_geometry = [c for c in scene.geometry if getattr(c, 'material', '') == 'bal_rock']
@@ -72,7 +72,7 @@ class TestResilience(unittest.TestCase):
         # actually FoulingWorker needs rock_positions for dispersed phase, but settled phase runs anyway?
         
         f_worker = FoulingWorker()
-        f_worker.execute(scene, {}, self.materials, None)
+        f_worker.execute(scene, self.materials)
         
         fi_class = scene.metadata.get('fi_class')
         print(f"FI Class Registered: {fi_class}")

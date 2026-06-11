@@ -31,7 +31,7 @@ class TestWorkerRefactor(unittest.TestCase):
         )
         
         worker = SubgradeWorker()
-        worker.execute(scene, {}, self.materials, None)
+        worker.execute(scene, self.materials)
         
         # Check geometry
         subgrade_box = scene.geometry[-1] # Assuming last added
@@ -58,7 +58,7 @@ class TestWorkerRefactor(unittest.TestCase):
         system.set('highest_rock_y', high_rock_y, 'RockWorker')
         
         worker = AntennaWorker()
-        worker.execute(scene, {}, self.materials, None)
+        worker.execute(scene, self.materials)
         
         # Find antenna source
         tx_y = None

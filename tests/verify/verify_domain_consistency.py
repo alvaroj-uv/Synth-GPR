@@ -31,13 +31,13 @@ class TestDomainConsistency(unittest.TestCase):
         
         # 1. Run AirWorker (Sets background)
         print("Running AirWorker...")
-        AirWorker().execute(scene, {}, self.materials, None)
+        AirWorker().execute(scene, self.materials)
         air_box = scene.geometry[0]
         self.assertAlmostEqual(air_box.x2, target_domain_x, msg="AirWorker failed to use overridden domain_x")
         
         # 2. Run SubgradeWorker (Sets foundational layer)
         print("Running SubgradeWorker...")
-        SubgradeWorker().execute(scene, {}, self.materials, None)
+        SubgradeWorker().execute(scene, self.materials)
         sub_box = scene.geometry[-1]
         self.assertAlmostEqual(sub_box.x2, target_domain_x, msg="SubgradeWorker failed to use overridden domain_x")
         

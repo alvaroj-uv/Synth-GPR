@@ -207,10 +207,10 @@ class ProductionLine:
             )
         return checkpoint
 
-    def _execute_worker(self, worker, scene, params):
+    def _execute_worker(self, worker, scene, keeper):
         """Helper to run a worker and handle logs."""
         try:
-            worker.execute(scene, {}, params, params)  # params is actually keeper
+            worker.execute(scene, keeper)
             errors = worker.quality_check(scene)
             for err in errors:
                 # QC failures are errors but maybe not critical unless they break assumptions?

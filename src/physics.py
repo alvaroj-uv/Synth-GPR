@@ -523,3 +523,60 @@ def get_fdtd_recommendations(center_freq_hz: float, er_max: float = 14.4) -> dic
         'lambda_max': round(lambda_max, 3),
         'lambda_min': round(lambda_min, 4)
     }
+
+
+# Peplinski et al. (1995) soil mixing model validity range (Hz). gprMax's
+# #soil_peplinski is a fit to measurements in this band; outside it the
+# dielectric values are extrapolation.
+PEPLINSKI_VALID_HZ = (300e6, 1300e6)
+
+
+def check_fdtd_guidelines(
+    center_freq_hz: float,
+    domain_x: float = None,
+    antenna_height: float = None,
+    er_max: float = 14.4,
+    uses_peplinski: bool = False,
+) -> list:
+    """Check a scene setup against the literature FDTD guidelines and return
+    a list of human-readable warning strings (empty = all guidelines met).
+
+    Rules checked (skipped when the corresponding argument is None):
+      1. domain_x >= 1.5 * lambda_max          — Khosravi Largani et al. 2025
+      2. antenna_height > lambda_max / 2       — intermediate-field condition
+      3. Ricker band inside Peplinski validity — Peplinski et al. 1995
+
+    These are warnings, not errors: violating them degrades accuracy
+    (boundary effects in the CIR, near-field coupling, extrapolated soil
+    dielectrics) but produces a runnable simulation. Callers decide whether
+    to surface them as logs or validator findings.
+    """
+    warnings = []
+    recs = get_fdtd_recommendations(center_freq_hz, er_max=er_max)
+    mhz = center_freq_hz / 1e6
+
+    if domain_x is not None and domain_x < recs['domain_x']:
+        warnings.append(
+            f"domain_x={domain_x:.3f} m is below the 1.5*lambda_max={recs['domain_x']:.3f} m "
+            f"recommended at {mhz:.0f} MHz (Khosravi Largani et al. 2025) — "
+            f"boundary effects may distort the impulse response"
+        )
+
+    min_height = recs['lambda_max'] / 2.0
+    if antenna_height is not None and antenna_height < min_height:
+        warnings.append(
+            f"antenna height {antenna_height:.3f} m is below lambda_max/2={min_height:.3f} m "
+            f"at {mhz:.0f} MHz — antenna is in the near field of the surface"
+        )
+
+    if uses_peplinski:
+        f_lo, f_hi = 0.5 * center_freq_hz, 1.5 * center_freq_hz
+        lo, hi = PEPLINSKI_VALID_HZ
+        if f_lo < lo or f_hi > hi:
+            warnings.append(
+                f"Ricker band {f_lo/1e6:.0f}-{f_hi/1e6:.0f} MHz extends outside the "
+                f"Peplinski model validity range {lo/1e6:.0f}-{hi/1e6:.0f} MHz — "
+                f"#soil_peplinski dielectrics are extrapolated there"
+            )
+
+    return warnings

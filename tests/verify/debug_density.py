@@ -74,7 +74,7 @@ class TestDensityDebug(unittest.TestCase):
         # So we MUST set tools.get_cached_rocks.return_value = None to force miss.
         tools.get_cached_rocks.return_value = None
         
-        worker.execute(scene, params, tools, tools)
+        worker.execute(scene, tools, params)
         
         # Verify Results
         n_rocks = len(scene.rock_positions)

@@ -106,7 +106,7 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
             _other_tris.append(tri)
 
     for tri in _other_tris:
-        style = get_style(tri.material, fallback_color="#AAAAAA")
+        style = get_style(tri.material)
         ax.add_patch(mpatches.Polygon(
             [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
             facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
@@ -124,7 +124,7 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         seen_mats.add(mat)
 
     for cyl in scene.cylinders:
-        style = get_style(cyl.material, fallback_color="#AAAAAA")
+        style = get_style(cyl.material)
         ax.add_patch(mpatches.Circle(
             (cyl.x, cyl.y), cyl.radius,
             facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
@@ -135,7 +135,7 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         # Per-grain jitter when the registry defines a base_hsv, flat otherwise
         color = jitter_color(poly.material, _rng)
         if color is None:
-            color = get_style(poly.material, fallback_color="#AAAAAA").color
+            color = get_style(poly.material).color
         ax.add_patch(mpatches.Polygon(
             poly.vertices, closed=True,
             facecolor=color, edgecolor=(0, 0, 0, 0.2), linewidth=0.2, zorder=2,
@@ -152,9 +152,11 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ax.plot(rx.x, rx.y, marker="^", color="#1060D0",
                 markersize=7, zorder=5, linestyle="none", label=label)
 
+    # Layer-boundary guides: a "layer" is any full-domain-width box (regardless
+    # of material), so explicit/custom strata get boundaries too.
     boundary_ys: set[float] = set()
     for box in scene.boxes:
-        if box.material in ("subgrade", "formation", "bal_foul_granular"):
+        if box.x1 <= 1e-9 and box.x2 >= dx - 1e-9 and box.material != "free_space":
             boundary_ys.update({round(box.y1, 6), round(box.y2, 6)})
     for y in sorted(boundary_ys):
         if 0 < y < dy:
@@ -193,11 +195,14 @@ def render_geometry_figure(
     geometry image (not a subplot inside a dashboard).
     """
     # Scale both axes proportionally so wide domains get wide figures.
-    # 3.5 inches per metre gives a readable scale for scenes up to ~5m wide.
+    # 3.5 inches per metre gives a readable scale for scenes up to ~5m wide;
+    # the floor keeps small domains (< ~1.3 m) from producing thumbnail-sized
+    # figures where the legend dominates the plot.
     INCHES_PER_METRE = 3.5
+    MIN_FIG_W, MIN_FIG_H = 4.5, 4.0
     content_h = _view_y_max(scene)
-    fig_w = min(scene.domain_x * INCHES_PER_METRE, 16.0)
-    fig_h = min(content_h   * INCHES_PER_METRE, max_height)
+    fig_w = min(max(scene.domain_x * INCHES_PER_METRE, MIN_FIG_W), 16.0)
+    fig_h = min(max(content_h   * INCHES_PER_METRE, MIN_FIG_H), max_height)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
     if title:
         ax.set_title(title, fontsize=10, fontweight="bold")
@@ -237,6 +242,14 @@ def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str]) -> None:
                 facecolor=style.color, edgecolor="#555555",
                 hatch=style.hatch, linewidth=0.5, label=style.label,
             ))
+    # Unregistered materials (custom/explicit layers): derived color, slug label,
+    # so every visible material is identifiable from the legend.
+    for mat in sorted(m for m in seen_mats if m not in MATERIALS and m != "free_space"):
+        style = get_style(mat)
+        patches.append(mpatches.Patch(
+            facecolor=style.color, edgecolor="#555555",
+            linewidth=0.5, label=style.label,
+        ))
     if scene.tx:
         patches.append(plt.Line2D([0], [0], marker="v", color="#E82020",
                                   markersize=7, linestyle="none", label="TX"))

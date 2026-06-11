@@ -53,7 +53,7 @@ class TestFailFast(unittest.TestCase):
         print(f"Ballast Thickness: 0.01m, Min Rock Diameter: {self.config.rock_radius_min * 2}m")
         
         with self.assertRaises(ValueError) as cm:
-            RockWorker().execute(scene, {}, self.materials, None)
+            RockWorker().execute(scene, self.materials)
             
         print(f"Caught expected error: {cm.exception}")
         self.assertIn("Ballast thickness", str(cm.exception))

@@ -53,7 +53,7 @@ def _make_scene(pvc: float = 0.0, fouling_y_top: float | None = None) -> SceneCh
 
 
 def _run(scene: SceneCheckpoint) -> dict:
-    LabWorker().execute(scene, {}, None, None)
+    LabWorker().execute(scene, keeper=None)
     return scene.metadata
 
 

@@ -28,6 +28,7 @@ from .scene_geometry import GeometryCollection, AntennaConfiguration, DomainSett
 
 if TYPE_CHECKING:
     from .config import GeneratorConfig
+    from .warehouse_keeper import WarehouseKeeper
     from .work_order import WorkOrderSystem
 
 
@@ -262,18 +263,20 @@ class Worker(ABC):
     def execute(
         self,
         checkpoint: SceneCheckpoint,
-        params: Dict[str, Any],
-        materials: Any,  # MaterialWarehouse
-        tools: Any       # ToolWarehouse
+        keeper: "WarehouseKeeper",
+        params: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Perform work on the scene checkpoint.
-        
+
         Args:
             checkpoint: The scene state being built
-            params: Sampled scenario parameters
-            materials: MaterialWarehouse for getting materials
-            tools: ToolWarehouse for validators, writers, etc.
+            keeper: WarehouseKeeper facade — materials via keeper.get_material(),
+                tools via keeper.get_tool(). Workers that need neither may be
+                called with None (e.g. LabWorker in tests).
+            params: Optional parameter overrides, used only when no WorkOrder
+                is attached to the checkpoint (test harnesses). The production
+                pipeline supplies parameters through the WorkOrder instead.
         """
         pass
     

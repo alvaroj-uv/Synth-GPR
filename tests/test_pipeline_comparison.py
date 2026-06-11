@@ -136,7 +136,7 @@ for rock in rocks_individual:
 # Run GranularWorker (places fouling)
 granular_worker = GranularMatrixWorker()
 try:
-    granular_worker.execute(scene_individual, {}, None, None)
+    granular_worker.execute(scene_individual, keeper=None)
     print(f"✓ GranularWorker completed")
     print(f"  Rocks in scene: {len(scene_individual.rock_positions)}")
     print(f"  Geometry commands: {len(scene_individual.geometry)}")
@@ -146,7 +146,7 @@ except Exception as e:
 # Run LabWorker (analyzes material)
 lab_worker = LabWorker()
 try:
-    lab_worker.execute(scene_individual, {}, None, None)
+    lab_worker.execute(scene_individual, keeper=None)
     print(f"✓ LabWorker completed")
     pvc_measured = scene_individual.metadata.get('mc_pvc_measured', 0)
     fi_lab = scene_individual.metadata.get('Lab_FI', 0)
@@ -168,7 +168,7 @@ for rock in rocks_extracted_local:
 
 # Run GranularWorker (places fouling)
 try:
-    granular_worker.execute(scene_extracted, {}, None, None)
+    granular_worker.execute(scene_extracted, keeper=None)
     print(f"✓ GranularWorker completed")
     print(f"  Rocks in scene: {len(scene_extracted.rock_positions)}")
     print(f"  Geometry commands: {len(scene_extracted.geometry)}")
@@ -177,7 +177,7 @@ except Exception as e:
 
 # Run LabWorker (analyzes material)
 try:
-    lab_worker.execute(scene_extracted, {}, None, None)
+    lab_worker.execute(scene_extracted, keeper=None)
     print(f"✓ LabWorker completed")
     pvc_measured_ext = scene_extracted.metadata.get('mc_pvc_measured', 0)
     fi_lab_ext = scene_extracted.metadata.get('Lab_FI', 0)

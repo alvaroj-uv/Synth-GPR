@@ -208,7 +208,7 @@ def _run_lab_worker(y0_ballast: float, y1_ballast: float, domain_x: float, domai
 
         from .lab_worker import LabWorker
         lab = LabWorker()
-        lab.execute(scene, {}, None, None)
+        lab.execute(scene, keeper=None)  # LabWorker reads only the checkpoint
 
         # Extract compact results for header
         results = {}
@@ -331,6 +331,17 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     antenna_y = subsurface_top + params.antenna_clearance * 0.5
     tx_x = params.domain_x / 2.0
     rx_x = tx_x + params.rx_spacing
+
+    # Literature guideline check (Khosravi Largani et al. 2025): warn, don't
+    # block — small domains are sometimes a deliberate speed/accuracy trade.
+    from .physics import check_fdtd_guidelines
+    for warning in check_fdtd_guidelines(
+        params.freq_hz,
+        domain_x=params.domain_x,
+        antenna_height=antenna_y - subsurface_top,
+        er_max=er_max,
+    ):
+        print(f"[GUIDELINE] {warning}")
 
     if params.time_window is not None:
         time_window = params.time_window

@@ -109,8 +109,29 @@ class GeometryValidator:
         self._check_pml_clearance        (report, scene, cfg, Lx, Ly, Lz, pml, dx, dy, dz)
         self._check_coordinate_snapping  (report, scene, dx, dy, dz)
         self._check_material_properties  (report, scene)
+        self._check_fdtd_guidelines      (report, scene, cfg)
 
         return report
+
+    # ── 0. Literature FDTD guidelines (Khosravi Largani 2025, Peplinski 1995) ─
+
+    def _check_fdtd_guidelines(self, report, scene, cfg):
+        """Warn when the scene violates published FDTD setup guidelines:
+        domain width >= 1.5*lambda_max, antenna above the near field, and
+        #soil_peplinski used only inside its 300-1300 MHz validity band."""
+        from .physics import check_fdtd_guidelines
+
+        uses_peplinski = any(
+            type(m).__name__ == "SoilPeplinskiCommand" for m in scene.materials
+        )
+        antenna_height = getattr(cfg, 'antenna_clearance_above_ballast', None)
+        for warning in check_fdtd_guidelines(
+            cfg.center_freq,
+            domain_x=cfg.domain_x,
+            antenna_height=antenna_height,
+            uses_peplinski=uses_peplinski,
+        ):
+            report.add(Severity.WARNING, "FDTD_GUIDELINE", warning)
 
     # ── 1. Painter's canvas order ─────────────────────────────────────────────
 

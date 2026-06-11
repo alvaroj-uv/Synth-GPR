@@ -9,17 +9,21 @@ References:
 """
 
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from .worker import Worker, SceneCheckpoint
 from .constants import PC, MC, PHC
 from .physics import circle_strip_intersection, classify_fouling_index
 import math
 import json
 
+if TYPE_CHECKING:
+    from .warehouse_keeper import WarehouseKeeper
+
+
 class LabWorker(Worker):
     name = "LabWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         """
         Executes a Virtual Sieve Analysis on a specific horizontal layer (Horizontal Slice).
         

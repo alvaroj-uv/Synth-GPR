@@ -1,0 +1,37 @@
+# TEST CONFIG — [source] overrides + [[command]] raw passthrough.
+# Covers the gaussian source waveform and verifies arbitrary gprMax commands
+# survive into the generated .in file verbatim.
+#
+#   python scripts/pipeline/generate_in_files.py test_output/passthrough.in \
+#       --layers-file examples/scenes/test_passthrough_and_source.toml
+
+[sim]
+title             = "TEST passthrough commands + gaussian source"
+freq_hz           = 400e6
+domain_x          = 0.8
+antenna_clearance = 0.4
+air_buffer        = 0.1
+rx_spacing        = 0.0
+seed              = 31
+
+[source]
+waveform     = "gaussian"        # GSSI-style excitation instead of ricker
+amplitude    = 1.0
+polarization = "z"
+
+[[layer]]
+name = "subgrade"
+thickness = 0.20
+
+[[layer]]
+name = "ballast"
+thickness = 0.25
+packed = true
+matrix = "fouling"               # light/partial fouling matrix
+
+# Arbitrary gprMax commands appended verbatim to the .in
+[[command]]
+raw = "#geometry_view: 0 0 0 0.8 0.95 0.004 0.004 0.004 0.004 passthrough_scene n"
+
+[[command]]
+raw = "#snapshot: 0 0 0 0.8 0.95 0.004 0.004 0.004 0.004 5e-9 snap_5ns"

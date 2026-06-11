@@ -52,7 +52,7 @@ class TestRockCaching(unittest.TestCase):
         
         print("\n--- Run 1: Generation ---")
         start = time.time()
-        self.worker.execute(scene, params, self.keeper, self.keeper)
+        self.worker.execute(scene, self.keeper, params)
         duration_1 = time.time() - start
         
         # Check trace or log to confirm Strategy used?
@@ -75,7 +75,7 @@ class TestRockCaching(unittest.TestCase):
         scene.geometry = []
         
         start = time.time()
-        self.worker.execute(scene, params, self.keeper, self.keeper)
+        self.worker.execute(scene, self.keeper, params)
         duration_2 = time.time() - start
         
         self.assertEqual(scene.metadata.get('packing_source'), 'cache')
@@ -98,7 +98,7 @@ class TestRockCaching(unittest.TestCase):
         scene.metadata['packing_source'] = 'unknown'
         
         start = time.time()
-        self.worker.execute(scene, params, self.keeper, self.keeper)
+        self.worker.execute(scene, self.keeper, params)
         duration_3 = time.time() - start
         
         self.assertEqual(scene.metadata.get('packing_source'), 'generated', 

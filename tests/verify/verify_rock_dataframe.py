@@ -29,7 +29,7 @@ class TestRockDataFrame(unittest.TestCase):
 
         # 2. Execute RockWorker
         worker = RockWorker()
-        worker.execute(scene, {}, self.materials, None)
+        worker.execute(scene, self.materials)
         
         # 3. Verify DataFrame in WorkOrder
         df = system.get('rock_model')
@@ -62,7 +62,7 @@ class TestRockDataFrame(unittest.TestCase):
         system.set('pvc', 20.0, 'TestSetup')
         fworker = FoulingWorker()
         try:
-            fworker.execute(scene, {}, self.materials, None)
+            fworker.execute(scene, self.materials)
             print("FoulingWorker executed successfully with DataFrame input.")
         except Exception as e:
             self.fail(f"FoulingWorker crashed consuming DataFrame: {e}")

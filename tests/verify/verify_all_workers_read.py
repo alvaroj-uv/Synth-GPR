@@ -13,6 +13,7 @@ from src.worker import SceneCheckpoint
 from src.config import GeneratorConfig
 from src.work_order import WorkOrderSystem, WorkOrder
 from src.warehouses import MaterialWarehouse, ToolWarehouse
+from src.warehouse_keeper import WarehouseKeeper
 
 class TestAllWorkersReadWorkOrder(unittest.TestCase):
     def setUp(self):
@@ -65,7 +66,7 @@ class TestAllWorkersReadWorkOrder(unittest.TestCase):
         
         print("Executing worker pipeline...")
         for w in workers:
-            w.execute(scene, {}, self.materials, self.tools)
+            w.execute(scene, WarehouseKeeper(self.materials, self.tools))
             
         print("Pipeline complete. Verifying geometry...")
         

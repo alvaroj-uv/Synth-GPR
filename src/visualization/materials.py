@@ -22,6 +22,7 @@ Style fields:
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Optional
 
@@ -93,17 +94,30 @@ LEGEND_ORDER: list[str] = [
 
 # ── Lookup & jitter helpers ───────────────────────────────────────────────────
 
-def get_style(material: str, fallback_color: str = "#CCCCCC") -> MaterialStyle:
+def _derived_color(name: str) -> str:
+    """Deterministic muted color for a material not in the registry.
+
+    Hashes the slug to a hue (fixed low saturation / high value) so distinct
+    unregistered materials are visually distinguishable, render identically
+    across runs, and stay subdued next to registered materials.
+    """
+    digest = hashlib.md5(name.encode("utf-8")).hexdigest()
+    hue = int(digest[:8], 16) / 0xFFFFFFFF
+    return matplotlib.colors.to_hex(matplotlib.colors.hsv_to_rgb([hue, 0.25, 0.75]))
+
+
+def get_style(material: str) -> MaterialStyle:
     """Resolve a material slug to its style.
 
-    Unknown materials degrade gracefully: flat ``fallback_color``, no hatch,
-    and the raw slug as label, so new materials render before they are
-    registered (they just look grey until added to ``MATERIALS``).
+    Unknown materials degrade gracefully: a deterministic muted color derived
+    from the slug (so different unregistered materials are distinguishable),
+    no hatch, and the raw slug as label. Register the material in ``MATERIALS``
+    to control its appearance.
     """
     style = MATERIALS.get(material)
     if style is not None:
         return style
-    return MaterialStyle(fallback_color, None, material)
+    return MaterialStyle(_derived_color(material), None, material)
 
 
 def jitter_color(material: str, rng: np.random.Generator) -> Optional[tuple]:

@@ -3,7 +3,7 @@ Concrete Worker implementations for the Factory Architecture.
 
 Each worker handles a specific layer or component of the GPR scene.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from .worker import Worker, SceneCheckpoint
 from .gpr_commands import (
     BoxCommand, HertzianDipoleCommand, RxCommand, WaveformCommand,
@@ -45,6 +45,9 @@ def _emit_layer(scene, name: str, peplinski: tuple, y_bottom: float, y_top: floa
             cfg.sublayer_fractal_dimension, lower, y_top, box_id, seed=seed))
 from .constants import MC, PC
 
+if TYPE_CHECKING:
+    from .warehouse_keeper import WarehouseKeeper
+
 
 
 
@@ -55,7 +58,7 @@ class AirWorker(Worker):
     """
     name = "AirWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         # Prioritize WorkOrder (e.g., if a variant changes domain size)
         domain_x, domain_y, domain_z = scene.get_domain_params()
 
@@ -86,8 +89,8 @@ class SubgradeWorker(Worker):
     """
     name = "SubgradeWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
-        mat = materials.get_material(MC.SUBGRADE)
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
+        mat = keeper.get_material(MC.SUBGRADE)
         scene.add_material(mat)
 
         domain_x, _, domain_z = scene.get_domain_params()
@@ -133,7 +136,7 @@ class FormationWorker(Worker):
     """
     name = "FormationWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         from src.domain import Anchor
         
         # 1. Determine geometry bounds (Refactored)
@@ -156,11 +159,11 @@ class FormationWorker(Worker):
              if scene.work_order:
                   thickness = scene.work_order.get_input('formation_thickness', getattr(scene.config, 'formation_thickness', 0.10))
              else:
-                  thickness = params.get('formation_thickness', getattr(scene.config, 'formation_thickness', 0.10))
+                  thickness = (params or {}).get('formation_thickness', getattr(scene.config, 'formation_thickness', 0.10))
              
              top_y = start_y + thickness
         
-        mat = materials.get_material(MC.FORMATION)
+        mat = keeper.get_material(MC.FORMATION)
         scene.add_material(mat)
         
         # Log for next worker
@@ -191,7 +194,7 @@ class BallastWorker(Worker):
     """
     name = "BallastWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         from src.domain import Anchor
         
         # 1. Determine Geometry (Refactored)
@@ -215,7 +218,7 @@ class BallastWorker(Worker):
              if scene.work_order:
                   thickness = scene.work_order.get_input('ballast_thickness', getattr(scene.config, 'max_ballast_thickness', 0.4))
              else:
-                  thickness = params.get('ballast_thickness', getattr(scene.config, 'max_ballast_thickness', 0.4))
+                  thickness = (params or {}).get('ballast_thickness', getattr(scene.config, 'max_ballast_thickness', 0.4))
              
              top_y = start_y + thickness
         
@@ -255,7 +258,7 @@ class AntennaWorker(Worker):
     """
     name = "AntennaWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         from src.domain import Point3D, Anchor
 
         # 1. Get Antenna Positions (using CoordinateSystem)
@@ -267,7 +270,7 @@ class AntennaWorker(Worker):
         if scene.work_order:
             offset = scene.work_order.get_input('antenna_offset', 0.0)
         else:
-            offset = params.get('antenna_offset', 0.0)
+            offset = (params or {}).get('antenna_offset', 0.0)
 
         # Antenna Y is computed from layer stack: ballast_top + antenna_clearance
         tx_rx_y = scene.coordinate_system.get_y(Anchor.ANTENNA_LEVEL)
@@ -441,7 +444,7 @@ class AssemblerWorker(Worker):
     """
     name = "AssemblerWorker"
     
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         # 1. Add Geometry View (for Paraview)
         # Covers entire domain
         domain_x, domain_y, domain_z = scene.get_domain_params()

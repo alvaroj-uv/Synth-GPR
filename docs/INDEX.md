@@ -58,6 +58,7 @@ Navigate by category to find the documentation you need.
 ### Validation
 - [Validation Framework](reports/VALIDATION.md) — Testing strategy and metrics
 - [Verification Report](reports/VERIFICATION.md) — Current test coverage status
+- [FI 2D Verification](FI_2D_VERIFICATION.md) — Literature-backed methods to map 2D virtual-sieve FI to lab FI thresholds
 
 ### Analysis & Reports
 - [ML Pipeline Workflow](reports/ML_PIPELINE_WORKFLOW.md) — Feature extraction → Training → Evaluation
@@ -77,6 +78,7 @@ Navigate by category to find the documentation you need.
 - [FDTD Medium Dimension Selection](studies/FDTD%20Medium%20Dimension%20Selection.md) — Domain sizing guidelines (Khosravi Largani et al. 2025)
 - [Real Data Methodology](research/REAL_DATA_METHODOLOGY.md) — Acquiring and processing real GPR data
 - [Objectives & Hypothesis](research/OBJECTIVES_AND_HYPOTHESIS.md) — Research goals and framework
+- [V2 Generation Spec](research/V2_GENERATION_SPEC.md) — Regeneration spec folding in phantom-rock fix, domain-width finding, antenna height, direct-wave subtraction (DRAFT)
 - [Experiment Limitations](research/EXPERIMENT_LIMITATIONS.md) — Known constraints and assumptions
 
 ### Reference Materials

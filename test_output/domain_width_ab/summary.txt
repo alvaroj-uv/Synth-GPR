@@ -1,0 +1,43 @@
+Domain-width A/B/C @ 400 MHz — 1.0 m vs 2.248 m, n=24/arm
+
+── 1 vs 2.248  [width effect (boundary + content)] ──
+median |d| = 0.219   |d|>=0.5: 62 (10%)   |d|>=0.8: 21 (3%)
+top 10:
+    -1.83  grid_hilbert_envelope_14_8
+    -1.73  grid_hilbert_envelope_14_7
+    -1.56  grid_hilbert_envelope_14_0
+    -1.55  hilbert_peak_min
+    -1.53  grid_hilbert_envelope_12_8
+    -1.48  hilbert_decile_10
+    -1.43  grid_hilbert_envelope_14_9
+    -1.42  grid_hilbert_envelope_13_9
+    +1.39  number_zeros
+    -1.35  grid_hilbert_envelope_15_7
+
+── 1 vs centered  [boundary distance only (same rocks)] ──
+median |d| = 0.971   |d|>=0.5: 380 (61%)   |d|>=0.8: 329 (53%)
+top 10:
+   +12.77  grid_hilbert_imag_8_0
+   -12.60  grid_hilbert_envelope_7_9
+   -12.55  grid_hilbert_envelope_7_8
+   -12.07  stat_slice_7_mean
+   -11.13  grid_hilbert_envelope_8_0
+   +10.88  grid_hilbert_imag_7_9
+   +10.47  grid_signal_time_7_7
+    -9.81  grid_hilbert_imag_10_3
+    -9.76  grid_hilbert_envelope_7_7
+    +9.56  grid_hilbert_imag_8_1
+
+── centered vs 2.248  [scene content only (same boundary)] ──
+median |d| = 0.753   |d|>=0.5: 367 (59%)   |d|>=0.8: 297 (48%)
+top 10:
+   +11.62  stat_slice_7_mean
+   -10.81  grid_hilbert_imag_7_9
+   +10.56  grid_hilbert_envelope_7_8
+   +10.54  grid_hilbert_envelope_7_7
+   -10.02  grid_hilbert_imag_8_0
+    +9.88  grid_hilbert_envelope_7_9
+    -9.67  grid_signal_time_7_6
+    -9.44  grid_hilbert_imag_7_8
+    +9.01  grid_hilbert_envelope_8_0
+    +8.75  hilbert_decile_50

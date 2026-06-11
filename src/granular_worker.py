@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import random
 import math
 from pathlib import Path
@@ -22,6 +22,10 @@ def _polygon_area(verts) -> float:
     return abs(s) * 0.5
 
 
+if TYPE_CHECKING:
+    from .warehouse_keeper import WarehouseKeeper
+
+
 class GranularMatrixWorker(Worker):
     """
     Unified rock + fouling worker.
@@ -35,7 +39,7 @@ class GranularMatrixWorker(Worker):
     
     name = "GranularMatrixWorker"
 
-    def execute(self, scene: SceneCheckpoint, params: Dict[str, Any], materials: Any, tools: Any) -> None:
+    def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         """Fill the ballast volume with rocks and fouling.
 
         Steps:
@@ -62,8 +66,8 @@ class GranularMatrixWorker(Worker):
             pvc = scene.work_order.get_input('pvc', 0.0)
             moisture = scene.work_order.get_input('moisture', 0.0)
         else:
-            pvc = params.get('pvc', 0.0)
-            moisture = params.get('moisture', 0.0)
+            pvc = (params or {}).get('pvc', 0.0)
+            moisture = (params or {}).get('moisture', 0.0)
 
         scene.metadata['pvc'] = pvc
         scene.metadata['moisture'] = moisture
@@ -114,7 +118,7 @@ class GranularMatrixWorker(Worker):
         else:
             # Run packing algorithm
             algo = scene.config.rock_packing_algorithm
-            packer = tools.get_tool("rock_packer")
+            packer = keeper.get_tool("rock_packer")
             from .rock_packing import _grading_curve_from_config
             grading_curve = _grading_curve_from_config(scene.config)
             print(f"[{self.name}] Running Master Pack ({algo})...")
@@ -133,8 +137,8 @@ class GranularMatrixWorker(Worker):
                 return
 
         # 4. Mission Assignment
-        rock_mat = materials.get_material(MC.BALLAST_ROCK)
-        foul_mat = materials.get_material(MC.FOULING, moisture=moisture)
+        rock_mat = keeper.get_material(MC.BALLAST_ROCK)
+        foul_mat = keeper.get_material(MC.FOULING, moisture=moisture)
         scene.add_material(rock_mat)
         scene.add_material(foul_mat)
         

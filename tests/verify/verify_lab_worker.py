@@ -28,7 +28,7 @@ class TestLabWorker(unittest.TestCase):
         scene.metadata['pvc'] = 0.0
         
         worker = LabWorker()
-        worker.execute(scene, {}, None, None)
+        worker.execute(scene, keeper=None)
         
         self.assertEqual(scene.metadata.get('Lab_FI'), 0.0)
         self.assertEqual(scene.metadata.get('Lab_Class'), "C")
@@ -56,7 +56,7 @@ class TestLabWorker(unittest.TestCase):
         
         # 2. Execute
         worker = LabWorker()
-        worker.execute(scene, {}, None, None)
+        worker.execute(scene, keeper=None)
         
         # 3. Verify
         lab_fi = scene.metadata.get('Lab_FI')
@@ -123,7 +123,7 @@ class TestLabWorker(unittest.TestCase):
         worker = LabWorker()
         
         print("\n--- Test Layer Sampling ---")
-        worker.execute(scene, params, None, None)
+        worker.execute(scene, keeper=None, params=params)
         
         # Verification
         # 1. Porosity ~0.9 (Low rock count in this bottom slice?)
