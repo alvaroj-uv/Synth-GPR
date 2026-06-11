@@ -17,28 +17,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import Circle, Rectangle
 
-# Material styles
-MATERIAL_COLORS = {
-    'free_space': '#F0F4F8',
-    'subgrade': '#2F4F4F',
-    'formation': '#BDB76B',
-    'bal_rock': '#5A5A5A',
-    'bal_foul_granular': '#C8A055',
-    'bal_foul': '#4B3621',
-    'fouling': '#C8A055',
-    'antenna': '#404040',
-}
+# Material colors/labels come exclusively from the shared registry in
+# .materials (same source as the 2D renderer) so 2D and 3D figures of the
+# same scene can never disagree on a material's appearance.
+from .materials import get_style
 
-MATERIAL_LABELS = {
-    'free_space': 'Air',
-    'subgrade': 'Subgrade',
-    'formation': 'Formation',
-    'bal_rock': 'Ballast Rock',
-    'bal_foul_granular': 'Fouling',
-    'bal_foul': 'Dense Fouling',
-    'fouling': 'Fouling',
-    'antenna': 'Antenna (GSSI)',
-}
+# Materials shown in the 3D figure legend, in display order
+_LEGEND_MATERIALS = ['free_space', 'subgrade', 'formation', 'bal_rock', 'bal_foul_granular']
 
 
 def render_3d_views(scene, title="3D Domain", dpi=150):
@@ -119,14 +104,14 @@ def render_3d_views(scene, title="3D Domain", dpi=150):
     # Draw boxes
     for box in boxes:
         rect = Rectangle((box.x1, box.z1), box.x2 - box.x1, box.z2 - box.z1,
-                         facecolor=MATERIAL_COLORS.get(box.material, '#CCCCCC'),
+                         facecolor=get_style(box.material).color,
                          edgecolor='black', linewidth=0.5, alpha=0.7)
         ax_top.add_patch(rect)
 
     # Draw spheres
     for sphere in spheres:
         circle = Circle((sphere.x, sphere.z), sphere.radius,
-                       facecolor=MATERIAL_COLORS.get(sphere.material, '#CCCCCC'),
+                       facecolor=get_style(sphere.material).color,
                        edgecolor='black', linewidth=0.5, alpha=0.8)
         ax_top.add_patch(circle)
 
@@ -154,14 +139,14 @@ def render_3d_views(scene, title="3D Domain", dpi=150):
     # Draw boxes (X-Y projection)
     for box in boxes:
         rect = Rectangle((box.x1, box.y1), box.x2 - box.x1, box.y2 - box.y1,
-                         facecolor=MATERIAL_COLORS.get(box.material, '#CCCCCC'),
+                         facecolor=get_style(box.material).color,
                          edgecolor='black', linewidth=0.5, alpha=0.7)
         ax_front.add_patch(rect)
 
     # Draw spheres (X-Y projection)
     for sphere in spheres:
         circle = Circle((sphere.x, sphere.y), sphere.radius,
-                       facecolor=MATERIAL_COLORS.get(sphere.material, '#CCCCCC'),
+                       facecolor=get_style(sphere.material).color,
                        edgecolor='black', linewidth=0.5, alpha=0.8)
         ax_front.add_patch(circle)
 
@@ -189,14 +174,14 @@ def render_3d_views(scene, title="3D Domain", dpi=150):
     # Draw boxes (Z-Y projection)
     for box in boxes:
         rect = Rectangle((box.z1, box.y1), box.z2 - box.z1, box.y2 - box.y1,
-                         facecolor=MATERIAL_COLORS.get(box.material, '#CCCCCC'),
+                         facecolor=get_style(box.material).color,
                          edgecolor='black', linewidth=0.5, alpha=0.7)
         ax_side.add_patch(rect)
 
     # Draw spheres (Z-Y projection)
     for sphere in spheres:
         circle = Circle((sphere.z, sphere.y), sphere.radius,
-                       facecolor=MATERIAL_COLORS.get(sphere.material, '#CCCCCC'),
+                       facecolor=get_style(sphere.material).color,
                        edgecolor='black', linewidth=0.5, alpha=0.8)
         ax_side.add_patch(circle)
 
@@ -214,11 +199,10 @@ def render_3d_views(scene, title="3D Domain", dpi=150):
 
     # Add legend for materials (manual axes => no tight_layout, place via figure coords)
     legend_elements = []
-    for mat in ['free_space', 'subgrade', 'formation', 'bal_rock', 'bal_foul_granular']:
-        if mat in MATERIAL_COLORS:
-            label = MATERIAL_LABELS.get(mat, mat)
-            legend_elements.append(mpatches.Patch(facecolor=MATERIAL_COLORS[mat],
-                                                  edgecolor='black', label=label))
+    for mat in _LEGEND_MATERIALS:
+        style = get_style(mat)
+        legend_elements.append(mpatches.Patch(facecolor=style.color,
+                                              edgecolor='black', label=style.label))
     fig.legend(handles=legend_elements, loc='lower center', ncol=5, fontsize=9,
               bbox_to_anchor=(0.5, 0.005))
 

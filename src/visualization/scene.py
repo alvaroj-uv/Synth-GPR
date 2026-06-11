@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Optional
 import re
 
-import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 from matplotlib.axes import Axes
 
 from ..file_reader import parse_metadata_comments
+from .materials import LEGEND_ORDER, MATERIALS, MaterialStyle, get_style, jitter_color
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
@@ -248,46 +248,10 @@ def parse_in_file(path: Path) -> SceneData:
     return scene
 
 
-# ── Material styles ───────────────────────────────────────────────────────────
-
-@dataclass
-class MaterialStyle:
-    color: str
-    hatch: Optional[str] = None
-    label: str = ""
-
-
-STYLES: dict[str, MaterialStyle] = {
-    "free_space":        MaterialStyle("#F0F4F8", None, "Air"),
-    "subgrade":          MaterialStyle("#2F4F4F", "-",  "Subgrade"),
-    "formation":         MaterialStyle("#BDB76B", "+",  "Formation"),
-    "bal_rock":          MaterialStyle("#5A5A5A", "/",  "Ballast Rock"),
-    "bal_rock_L1":       MaterialStyle("#A1887F", "/",   "Rock L1"),
-    "bal_rock_L2":       MaterialStyle("#8D6E63", "//",  "Rock L2"),
-    "bal_rock_L3":       MaterialStyle("#6D4C41", "///", "Rock L3"),
-    "bal_foul":          MaterialStyle("#4B3621", ".",  "Fouling (dense)"),
-    "bal_foul_granular": MaterialStyle("#C8A055", ".",  "Fouling"),
-    "foul_soil":         MaterialStyle("#B5651D", "xx", "Fouling (heterogeneous)"),
-    "concrete_sleeper":  MaterialStyle("#708090", "x",  "Sleeper"),
-}
-
-for _i in range(1, 10):
-    STYLES[f"bal_foul_g{_i}"] = MaterialStyle(
-        color=matplotlib.colors.to_hex(plt.cm.YlOrBr(0.3 + _i * 0.07)),
-        hatch="." * ((_i % 3) + 1),
-        label=f"Foul L{_i}",
-    )
-
-_LEGEND_ORDER = [
-    "subgrade", "formation",
-    "bal_rock", "bal_rock_L1", "bal_rock_L2", "bal_rock_L3",
-    "bal_foul", "bal_foul_granular", "foul_soil",
-    *[f"bal_foul_g{i}" for i in range(1, 10)],
-    "concrete_sleeper",
-]
-
-
 # ── Geometry renderer ─────────────────────────────────────────────────────────
+# Material appearance (colors, hatches, labels, per-rock HSV jitter) is NOT
+# defined here — it comes exclusively from .materials (the single registry
+# shared with the 3D renderer). Add new materials there, not in this module.
 
 def _rocks_y_max(scene: SceneData) -> float:
     """Return the highest Y coordinate of any ballast rock geometry.
@@ -331,12 +295,12 @@ def _view_y_max(scene: SceneData, headroom: float = 0.12) -> float:
 def draw_geometry(ax: Axes, scene: SceneData) -> None:
     """Draw boxes, cylinders, antennas, MC box, boundary lines, and legend."""
     dx, dy = scene.domain_x, scene.domain_y
-    ax.set_facecolor(STYLES.get("free_space", MaterialStyle("#F0F4F8")).color)
+    ax.set_facecolor(get_style("free_space").color)
 
     seen_mats: set[str] = set()
 
     for box in scene.boxes:
-        style = STYLES.get(box.material, MaterialStyle("#CCCCCC", None, box.material))
+        style = get_style(box.material)
         ax.add_patch(mpatches.Rectangle(
             (box.x1, box.y1), box.x2 - box.x1, box.y2 - box.y1,
             facecolor=style.color,
@@ -347,30 +311,19 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         ))
         seen_mats.add(box.material)
 
-    # Base HSV per ballast-rock material for per-rock colour variation.
     # Triangles are fan-triangulated from the rock centre (x1,y1 is always the
-    # shared apex), so we group by centre to assign one colour per rock.
-    _ROCK_BASE_HSV: dict[str, tuple] = {
-        "bal_rock":              (0.08, 0.20, 0.62),
-        "bal_rock_L1":           (0.07, 0.22, 0.68),
-        "bal_rock_L2":           (0.06, 0.25, 0.58),
-        "bal_rock_L3":           (0.05, 0.28, 0.48),
-        # Mbubia material names (used when rocks are fan-triangulated in pipeline)
-        "clean_ballast":         (0.58, 0.45, 0.80),
-        "fouled_ballast":        (0.06, 0.55, 0.70),
-        "highly_fouled_ballast": (0.55, 0.40, 0.35),
-        "subgrade_soil":         (0.09, 0.50, 0.62),
-    }
+    # shared apex), so we group by centre to assign one jittered colour per rock.
+    # Which materials get jitter is decided by the registry (base_hsv set).
     _rock_groups: dict = defaultdict(list)
     _other_tris = []
     for tri in scene.triangles:
-        if tri.material in _ROCK_BASE_HSV:
+        if get_style(tri.material).base_hsv is not None:
             _rock_groups[(round(tri.x1, 5), round(tri.y1, 5), tri.material)].append(tri)
         else:
             _other_tris.append(tri)
 
     for tri in _other_tris:
-        style = STYLES.get(tri.material, MaterialStyle("#AAAAAA", None, tri.material))
+        style = get_style(tri.material, fallback_color="#AAAAAA")
         ax.add_patch(mpatches.Polygon(
             [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
             facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
@@ -379,12 +332,7 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
 
     _rng = np.random.default_rng(42)
     for (_, _, mat), tris in _rock_groups.items():
-        h, s, v = _ROCK_BASE_HSV[mat]
-        color = matplotlib.colors.hsv_to_rgb([
-            float(np.clip(h + _rng.uniform(-0.05, 0.05), 0, 1)),
-            float(np.clip(s + _rng.uniform(-0.12, 0.12), 0.05, 1)),
-            float(np.clip(v + _rng.uniform(-0.20, 0.20), 0.2, 1)),
-        ])
+        color = jitter_color(mat, _rng)
         for tri in tris:
             ax.add_patch(mpatches.Polygon(
                 [(tri.x1, tri.y1), (tri.x2, tri.y2), (tri.x3, tri.y3)],
@@ -393,31 +341,18 @@ def draw_geometry(ax: Axes, scene: SceneData) -> None:
         seen_mats.add(mat)
 
     for cyl in scene.cylinders:
-        style = STYLES.get(cyl.material, MaterialStyle("#AAAAAA", None, cyl.material))
+        style = get_style(cyl.material, fallback_color="#AAAAAA")
         ax.add_patch(mpatches.Circle(
             (cyl.x, cyl.y), cyl.radius,
             facecolor=style.color, edgecolor="#333333", linewidth=0.25, zorder=2,
         ))
         seen_mats.add(cyl.material)
 
-    _POLY_BASE_HSV: dict[str, tuple] = {
-        "bal_rock":              (0.08, 0.20, 0.62),
-        "clean_ballast":         (0.58, 0.45, 0.80),
-        "fouled_ballast":        (0.06, 0.55, 0.70),
-        "highly_fouled_ballast": (0.55, 0.40, 0.35),
-        "subgrade_soil":         (0.09, 0.50, 0.62),
-    }
     for poly in scene.polygons:
-        if poly.material in _POLY_BASE_HSV:
-            h, s, v = _POLY_BASE_HSV[poly.material]
-            color = matplotlib.colors.hsv_to_rgb([
-                float(np.clip(h + _rng.uniform(-0.04, 0.04), 0, 1)),
-                float(np.clip(s + _rng.uniform(-0.15, 0.15), 0.05, 1)),
-                float(np.clip(v + _rng.uniform(-0.20, 0.20), 0.2, 1)),
-            ])
-        else:
-            style = STYLES.get(poly.material, MaterialStyle("#AAAAAA", None, poly.material))
-            color = style.color
+        # Per-grain jitter when the registry defines a base_hsv, flat otherwise
+        color = jitter_color(poly.material, _rng)
+        if color is None:
+            color = get_style(poly.material, fallback_color="#AAAAAA").color
         ax.add_patch(mpatches.Polygon(
             poly.vertices, closed=True,
             facecolor=color, edgecolor=(0, 0, 0, 0.2), linewidth=0.2, zorder=2,
@@ -538,9 +473,9 @@ def _draw_axis_break(ax: Axes, location: str = "bottom", size: float = 0.015) ->
 
 def _draw_legend(ax: Axes, scene: SceneData, seen_mats: set[str], mc_y_min) -> None:
     patches = []
-    for mat in _LEGEND_ORDER:
+    for mat in LEGEND_ORDER:
         if mat in seen_mats:
-            style = STYLES[mat]
+            style = MATERIALS[mat]
             patches.append(mpatches.Patch(
                 facecolor=style.color, edgecolor="#555555",
                 hatch=style.hatch, linewidth=0.5, label=style.label,
