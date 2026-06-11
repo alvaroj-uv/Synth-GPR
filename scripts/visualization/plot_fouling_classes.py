@@ -24,7 +24,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.visualization.scene import parse_in_file, draw_geometry
+from src.visualization.drawing import draw_geometry
+from src.visualization.parser import parse_in_file
 from src.signal_processing import calculate_instantaneous_attributes
 from src.data_loader import read_ascan as _read_ascan_out
 

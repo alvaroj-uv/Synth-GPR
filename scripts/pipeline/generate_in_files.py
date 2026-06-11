@@ -11,7 +11,7 @@ Supports two modes:
 1. Batch: Generate N samples per fouling class
 2. Single: Generate one .in file with optional PNG visualization
 
-Rendering is delegated to scripts/visualization/unified_visualizer.py.
+Rendering uses src.visualization.render.render_geometry_png directly (in-process).
 All .in files contain embedded CONFIG_* and SOURCE_* headers for replication.
 
 Usage Examples:
@@ -270,29 +270,12 @@ def generate_single(
 
     print(f"[OK] Wrote .in file: {written_path}")
 
-    # Optionally render PNG using the unified visualizer (auto-detects 2D/3D)
+    # Optionally render PNG via the shared facade (auto-detects 2D/3D)
     if render:
         try:
-            import subprocess
-            png_path = output_path.with_suffix('.png')
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "scripts/visualization/unified_visualizer.py",
-                    str(written_path),
-                    "-o", str(png_path),
-                    "--geometry",
-                    "--no-show",
-                    "--dpi", "150",
-                ],
-                capture_output=True,
-                text=True,
-                cwd=str(Path(__file__).resolve().parent.parent.parent),
-            )
-            if result.returncode == 0:
-                print(f"[OK] Rendered visualization: {png_path}")
-            else:
-                print(f"[WARN] Rendering failed: {result.stderr}")
+            from src.visualization.render import render_geometry_png
+            png_path = render_geometry_png(written_path, output_path.with_suffix('.png'), dpi=150)
+            print(f"[OK] Rendered visualization: {png_path}")
         except Exception as e:
             print(f"[WARN] Could not render PNG: {e}")
 
@@ -376,18 +359,9 @@ def generate_layers(args) -> int:
 
     if args.render:
         try:
-            import subprocess
-            png_path = output_path.with_suffix(".png")
-            result = subprocess.run(
-                [sys.executable, "scripts/visualization/unified_visualizer.py",
-                 str(written), "-o", str(png_path), "--geometry", "--no-show", "--dpi", "150"],
-                capture_output=True, text=True,
-                cwd=str(Path(__file__).resolve().parent.parent.parent),
-            )
-            if result.returncode == 0:
-                print(f"[OK] Rendered visualization: {png_path}")
-            else:
-                print(f"[WARN] Rendering failed: {result.stderr}")
+            from src.visualization.render import render_geometry_png
+            png_path = render_geometry_png(written, output_path.with_suffix(".png"), dpi=150)
+            print(f"[OK] Rendered visualization: {png_path}")
         except Exception as e:
             print(f"[WARN] Could not render PNG: {e}")
 

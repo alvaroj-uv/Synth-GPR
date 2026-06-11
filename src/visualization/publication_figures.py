@@ -29,12 +29,9 @@ import matplotlib.patches as mpatches
 from matplotlib.axes import Axes
 import numpy as np
 
-from .scene import (
-    parse_in_file,
-    draw_geometry,
-    SceneData,
-    render_geometry_figure,
-)
+from .drawing import draw_geometry, render_geometry_figure
+from .model import SceneData
+from .parser import parse_in_file
 
 logger = logging.getLogger(__name__)
 

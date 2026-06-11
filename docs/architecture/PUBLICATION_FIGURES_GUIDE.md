@@ -25,7 +25,7 @@ All figures are optimized for readability and professional appearance with:
 ```python
 from pathlib import Path
 from src.visualization.publication_figures import PublicationFigureGenerator
-from src.visualization.scene import parse_in_file
+from src.visualization.parser import parse_in_file
 
 # Parse a gprMax .in file
 scene = parse_in_file(Path("data/scene_001.in"))
@@ -454,7 +454,7 @@ for in_file in Path("data").glob("*.in"):
 
 ```python
 from src.visualization.publication_figures import PublicationFigureGenerator
-from src.visualization.scene import parse_in_file
+from src.visualization.parser import parse_in_file
 
 scene = parse_in_file("data/ballast_50pvc.in")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 2 guardrails: one .in parser (src.visualization.scene.parse_in_file) for
+Phase 2 guardrails: one .in parser (src.visualization.parser.parse_in_file) for
 both 2D and 3D, plus the shared metadata substrate
 (src.file_reader.parse_metadata_comments). See
 docs/architecture/IO_CONSOLIDATION_PLAN.md.
@@ -16,7 +16,8 @@ matplotlib.use("Agg")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.file_reader import parse_metadata_comments, parse_metadata_file
-from src.visualization.scene import AbstractGeom, parse_in_file, SceneData, SphereGeom
+from src.visualization.model import AbstractGeom, SceneData, SphereGeom
+from src.visualization.parser import parse_in_file
 
 
 SAMPLE_2D = """#title: 2D

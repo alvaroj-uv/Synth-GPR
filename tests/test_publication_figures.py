@@ -20,7 +20,7 @@ from src.visualization.publication_figures import (
     export_scene_as_svg,
     _format_metadata_box,
 )
-from src.visualization.scene import parse_in_file
+from src.visualization.parser import parse_in_file
 
 
 @pytest.fixture

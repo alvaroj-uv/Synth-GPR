@@ -5,7 +5,7 @@ Phases 1–2 (see docs/architecture/IO_CONSOLIDATION_PLAN.md).
 
 Scripts must go through the specialized `src` abstractions:
   * `.out` HDF5  -> src.data_loader (read_ascan / read_rx_traces / write_rx_out)
-  * `.in` files  -> src.visualization.scene.parse_in_file
+  * `.in` files  -> src.visualization.parser.parse_in_file
                     + src.file_reader.parse_metadata_comments
 
 These tests fail if a script reaches around those abstractions, so new code
@@ -53,7 +53,7 @@ def test_parse_3d_in_file_not_reintroduced():
         if "def parse_3d_in_file" in p.read_text(encoding="utf-8", errors="replace")
     ]
     assert not offenders, (
-        "3D .in parsing is unified in src.visualization.scene.parse_in_file; "
+        "3D .in parsing is unified in src.visualization.parser.parse_in_file; "
         "do not reintroduce parse_3d_in_file:\n  " + "\n  ".join(offenders)
     )
 

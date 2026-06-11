@@ -14,7 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from .scene import parse_in_file, draw_geometry, SceneData
+from .drawing import draw_geometry
+from .overlays import draw_research_overlays
+from .parser import parse_in_file
 from .panels import (
     SignalPanelConfig,
     filter_signals,
@@ -97,6 +99,8 @@ def render_dashboard(
     ax_geo = fig.add_subplot(gs[:, 1])
     ax_geo.set_title(in_path.stem, fontsize=10, fontweight="bold")
     draw_geometry(ax_geo, scene)
+    # Dashboard is an analysis view: opt into the MC/LDCP research overlays
+    draw_research_overlays(ax_geo, scene)
 
     if signals:
         proc      = preprocess_signals(signals, dt, sig_cfg)

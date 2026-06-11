@@ -76,19 +76,19 @@ class TestDetect3D:
 class TestGeometryRendering:
     def test_render_2d_geometry(self, sample_2d, tmp_path):
         out_png = tmp_path / "out_2d.png"
-        uv.visualize_geometry_only(sample_2d, out_png, dpi=80)
+        uv.render_geometry_png(sample_2d, out_png, dpi=80)
         assert out_png.exists() and out_png.stat().st_size > 0
 
     def test_render_3d_geometry_via_dispatch(self, sample_3d, tmp_path):
         out_png = tmp_path / "out_3d.png"
         # Goes through the merged 3D dispatch path.
-        uv.visualize_geometry_only(sample_3d, out_png, dpi=80)
+        uv.render_geometry_png(sample_3d, out_png, dpi=80)
         assert out_png.exists() and out_png.stat().st_size > 0
 
 
 class Test3DParser:
     def test_parser_reads_triangle_material_after_thickness(self, sample_2d):
-        from src.visualization.scene import parse_in_file
+        from src.visualization.parser import parse_in_file
 
         scene = parse_in_file(sample_2d)
         assert len(scene.triangles) == 1
@@ -96,8 +96,8 @@ class Test3DParser:
         assert scene.triangles[0].xyz == pytest.approx((0.25, 0.4666666667, 0.0))
 
     def test_parser_reads_spheres_and_domain(self, sample_3d):
-        # The 3D parser is now the single src.visualization.scene.parse_in_file.
-        from src.visualization.scene import parse_in_file
+        # The 3D parser is now the single src.visualization.parser.parse_in_file.
+        from src.visualization.parser import parse_in_file
 
         scene = parse_in_file(sample_3d)
         assert len(scene.spheres) == 2

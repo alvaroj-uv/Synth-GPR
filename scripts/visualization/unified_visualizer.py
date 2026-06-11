@@ -28,8 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from src.visualization.scene import parse_in_file, render_geometry_figure, draw_geometry
-from src.visualization.scene_3d import render_3d_views
+from src.visualization.render import detect_3d_file, render_geometry_png
 from src.visualization.dashboard import render_dashboard
 from src.visualization.panels import SignalPanelConfig
 from src.data_loader import read_gprmax_hdf5, read_ascan
@@ -52,55 +51,9 @@ def find_paired_file(path: Path) -> Path | None:
     return paired if paired.exists() else None
 
 
-def detect_3d_file(in_path: Path) -> bool:
-    """Detect if a .in file is 3D (contains #sphere commands)."""
-    with open(in_path, "r", encoding="utf-8", errors="replace") as f:
-        return any("#sphere:" in line for line in f)
-
-
-def render_3d_geometry(in_path: Path, out_path: Path, dpi: int = 150, title: str = None) -> None:
-    """Render a 3D .in file using the specialized 3D renderer."""
-    logger.info(f"Parsing 3D scene {in_path.name}...")
-    scene = parse_in_file(in_path)
-    if title is None:
-        title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
-    fig = render_3d_views(scene, title=title, dpi=dpi)
-    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-    logger.info(f"✓ Saved: {out_path}")
-    plt.close(fig)
-
-
-def visualize_geometry_only(
-    in_path: Path,
-    out_path: Path,
-    dpi: int = 150,
-    title: str = None,
-    metadata: str = None,
-) -> None:
-    """Render geometry from .in file (auto-detects 2D vs 3D).
-
-    Args:
-        title: Custom plot title (default: file stem)
-        metadata: Optional annotation text drawn in a box at bottom-right
-    """
-    if detect_3d_file(in_path):
-        render_3d_geometry(in_path, out_path, dpi, title=title)
-        return
-
-    logger.info(f"Parsing {in_path.name}...")
-    scene = parse_in_file(in_path)
-
-    logger.info(f"Rendering geometry...")
-    fig, ax = render_geometry_figure(scene, title=title or in_path.stem, dpi=dpi)
-    if metadata:
-        ax.text(0.98, 0.02, metadata,
-                transform=ax.transAxes, fontsize=9, verticalalignment='bottom',
-                horizontalalignment='right', family='monospace',
-                bbox=dict(boxstyle='round', facecolor='#E8F4FF', alpha=0.95,
-                          edgecolor='#1060D0', linewidth=2))
-    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-    logger.info(f"✓ Saved: {out_path}")
-    plt.close(fig)
+# Geometry rendering (2D/3D dispatch, overlays, annotations) lives in
+# src.visualization.render so pipelines import it directly instead of
+# shelling out to this CLI. This script is a thin CLI over that facade.
 
 
 def visualize_ascan_only(out_path: Path, out_png: Path, component: str = "Ez", dpi: int = 150) -> None:
@@ -169,7 +122,7 @@ def visualize_all_combined(in_path: Path, out_path: Path, out_ascan: Path, sig_c
     """Create three visualizations: geometry, A-scan, and dashboard."""
     # 1. Geometry only
     geom_path = out_path.with_stem(f"{out_path.stem}_01_geometry")
-    visualize_geometry_only(in_path, geom_path, dpi)
+    render_geometry_png(in_path, geom_path, dpi)
 
     # 2. A-scan only
     out_file = in_path.with_suffix(".out")
@@ -309,7 +262,7 @@ Examples:
         visualize_ascan_only(out_file, out_path, args.component, args.dpi)
     elif args.geometry or is_3d:
         logger.info("Mode: Geometry only" + (" (3D)" if is_3d else ""))
-        visualize_geometry_only(in_file, out_path, args.dpi, title=title, metadata=metadata)
+        render_geometry_png(in_file, out_path, args.dpi, title=title, metadata=metadata)
     else:
         # Auto-detect: if .out exists, show dashboard; otherwise geometry
         if out_file and out_file.exists():
@@ -317,7 +270,7 @@ Examples:
             visualize_full_dashboard(in_file, out_path, sig_cfg, args.dpi)
         else:
             logger.info("Mode: Geometry only (no .out file found)")
-            visualize_geometry_only(in_file, out_path, args.dpi, title=title, metadata=metadata)
+            render_geometry_png(in_file, out_path, args.dpi, title=title, metadata=metadata)
 
     if not args.no_show:
         logger.info("Opening visualization...")

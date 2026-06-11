@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import GeneratorConfig
-from src.visualization.scene import parse_in_file
+from src.visualization.parser import parse_in_file
 from scripts.visualization.antenna_mode_diagram import render_antenna_mode_diagram
 
 output_dir = Path("antenna_mode_verification")
