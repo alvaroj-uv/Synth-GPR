@@ -108,7 +108,13 @@ def main():
         # NOTE for sim↔real comparison: real traces are sampled at 0.1 ns; these
         # synthetic ones at ~0.031 ns. For a fully clean comparison, resample the
         # coda to 0.1 ns before feature extraction. TODO when rebuilding full set.
-        feat_df = extract_features_from_signal(coda, dt=dt, signal_name="sig") if dt else extract_features_from_signal(coda, signal_name="sig")
+        # coda is already cut to start at the direct-pulse peak -> the win_*
+        # gate must be relative to sample 0, not re-seek a peak inside the coda.
+        feat_df = (extract_features_from_signal(coda, dt=dt, signal_name="sig",
+                                                coda_seek_peak=False)
+                   if dt else
+                   extract_features_from_signal(coda, signal_name="sig",
+                                                coda_seek_peak=False))
         if feat_df.empty:
             continue
         row = feat_df.iloc[0].drop(labels=["Signal"], errors="ignore").to_dict()

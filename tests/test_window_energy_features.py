@@ -77,15 +77,30 @@ def test_window_energy_fraction_bounded():
     assert 0.0 <= feats['win_energy_fraction'] <= 1.0
 
 
-def test_window_captures_in_gate_energy():
-    """A pulse inside the 6-16 ns gate keeps most energy; one well outside keeps little."""
-    lo, hi = SC.CODA_WINDOW_NS
-    inside = _gaussian_pulse(center_ns=(lo + hi) / 2)            # ~11 ns
-    outside = _gaussian_pulse(center_ns=lo - 4.0, width_ns=0.5)  # ~2 ns, before the gate
-    f_in = _extract_window_features(inside, _analytic(inside), DT)
-    f_out = _extract_window_features(outside, _analytic(outside), DT)
-    assert f_in['win_energy_fraction'] > 0.5
-    assert f_out['win_energy_fraction'] < f_in['win_energy_fraction']
+def test_window_captures_coda_after_peak():
+    """Peak-relative gate: a trace with coda energy after the direct pulse scores
+    higher gated energy than a bare direct pulse. The gate opens
+    CODA_GATE_START_AFTER_PEAK_NS after the dominant peak."""
+    pulse = _gaussian_pulse(center_ns=10.0)                       # direct pulse (peak ~10 ns)
+    coda = 0.15 * _gaussian_pulse(center_ns=18.0, width_ns=2.0)   # subsurface energy inside gate
+    with_coda = pulse + coda
+    f_with = _extract_window_features(with_coda, _analytic(with_coda), DT)
+    f_bare = _extract_window_features(pulse, _analytic(pulse), DT)
+    assert f_with['win_energy_fraction'] > f_bare['win_energy_fraction']
+    assert f_with['win_area_signal'] > f_bare['win_area_signal']
+    assert f_with['win_hilbert_peak_max'] > f_bare['win_hilbert_peak_max']
+
+
+def test_window_gate_is_peak_relative():
+    """The same coda offset from its pulse scores the same regardless of WHERE the
+    pulse sits in absolute time — the whole point of peak-relative gating."""
+    def trace(pulse_ns):
+        return _gaussian_pulse(center_ns=pulse_ns) + \
+               0.15 * _gaussian_pulse(center_ns=pulse_ns + 8.0, width_ns=2.0)
+    f_early = _extract_window_features(trace(6.0), _analytic(trace(6.0)), DT)
+    f_late = _extract_window_features(trace(14.0), _analytic(trace(14.0)), DT)
+    assert f_early['win_energy_fraction'] == pytest.approx(
+        f_late['win_energy_fraction'], rel=0.15)
 
 
 def test_window_degenerate_gate_is_safe():

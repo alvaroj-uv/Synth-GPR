@@ -103,7 +103,11 @@ def main():
     # Extract features using the IDENTICAL synthetic pipeline (dt defaults to
     # PC.DEFAULT_DT = 1e-10 = 0.1 ns, matching the 400 MHz acquisition).
     print("Extracting 572 waveform features (synthetic-identical pipeline)...")
-    feats = extract_features(wide)
+    # Real field traces: dt=0.1 ns (passed explicitly — never rely on the
+    # default), 400 MHz antenna, and the traces already START at the
+    # direct-pulse peak, so the coda gate must not re-seek a peak.
+    feats = extract_features(wide, dt=PC.DEFAULT_DT, center_freq_hz=400e6,
+                             coda_seek_peak=False)
     # 'Signal' column holds the trace ID (as string)
     feats["ID"] = feats["Signal"].astype(int)
     feats = feats.drop(columns=["Signal"])

@@ -38,6 +38,52 @@ def time_gate(signal: np.ndarray, dt: float, gate_ns: float) -> np.ndarray:
     return gated
 
 
+def peak_relative_coda_gate(signal: np.ndarray, dt: float,
+                            start_after_peak_ns: float = None,
+                            length_ns: float = None,
+                            seek_peak: bool = True,
+                            dewow_window: int = 50):
+    """Boolean mask selecting the coda window RELATIVE to the direct-pulse peak.
+
+    Replaces absolute time gates (e.g. the legacy 6-16 ns window): the
+    direct-pulse position differs per geometry/domain (sim peaks ~3.2 ns;
+    field traces in df_Signaux_traitees already start AT the peak; taller
+    scenes peak later), so an absolute gate selects different physics per
+    dataset. Peak-relative gating mirrors the aligned-window logic of the
+    sim2real v2 pipeline: dewow -> locate |peak| -> window after it.
+
+    Args:
+        signal:  1-D trace.
+        dt:      Time step (s).
+        start_after_peak_ns: Gate opens this long after the peak
+            (default SC.CODA_GATE_START_AFTER_PEAK_NS).
+        length_ns: Gate length (default SC.CODA_GATE_LENGTH_NS).
+        seek_peak: If False, treat sample 0 as the peak (use for traces that
+            are already peak-aligned, e.g. the processed real field traces —
+            re-seeking would lock onto an interior coda reflection).
+        dewow_window: dewow window used only for peak detection.
+
+    Returns:
+        (mask, peak_idx): boolean mask over the trace and the peak index used.
+    """
+    from .constants import SC
+    if start_after_peak_ns is None:
+        start_after_peak_ns = SC.CODA_GATE_START_AFTER_PEAK_NS
+    if length_ns is None:
+        length_ns = SC.CODA_GATE_LENGTH_NS
+
+    sig = np.asarray(signal, dtype=float)
+    n = sig.size
+    if n < 3:
+        return np.zeros(n, dtype=bool), 0
+
+    peak_idx = int(np.argmax(np.abs(dewow(sig, dewow_window)))) if seek_peak else 0
+    t_ns = np.arange(n) * dt * 1e9
+    start = t_ns[peak_idx] + start_after_peak_ns
+    mask = (t_ns >= start) & (t_ns < start + length_ns)
+    return mask, peak_idx
+
+
 def mean_trace(signals: np.ndarray) -> np.ndarray:
     """
     Compute the common-mode direct wave from a B-scan (multiple traces).

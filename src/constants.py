@@ -98,16 +98,44 @@ class SignalConstants:
     FREQ_LOW_CUTOFF: float = 5e8    # 500 MHz
     FREQ_MID_CUTOFF: float = 1.5e9  # 1.5 GHz
     
-    # STFT Parameters
+    # STFT Parameters (legacy, in samples — still used by visualization scripts)
     STFT_NPERSEG: int = 64
     STFT_NOVERLAP: int = 32
 
     # Time-domain ballast/coda gate (ns) for windowed indicators.
-    # Matches CODA_NS in scripts/visualization/plot_coda_energy_vs_fi.py.
+    # LEGACY absolute gate — kept for visualization scripts only; the feature
+    # extractor now uses the peak-relative gate below.
     # Windowed StAb / Hilbert-area / CrossNum / InflecNum — Li et al. (2023),
     # Shapovalov et al. (2026).
     CODA_WINDOW_NS: tuple = (6.0, 16.0)
     NS_PER_SEC: float = 1e9
+
+    # ── Feature-extraction v2: physical units + peak-relative gating ────────
+    # Version stamp emitted as meta_feature_version in every feature row so a
+    # parquet records which feature definitions produced it (guards against
+    # silent metric drift — see the dt/freq mis-scaling incident).
+    # v2: physical units + peak-relative gate. v3: coda-first suite (coda_*) +
+    # attenuation family (att_*), legacy whole-trace grid/slices/deciles off by
+    # default (they encode the direct pulse, i.e. the antenna, not the ground).
+    FEATURE_VERSION: int = 3
+    # Wavelet widths in physical time (ns). At dt=0.1 ns (the REAL corpus time
+    # base) these equal the legacy sample widths (2,4,8,16,32), so real-data
+    # wavelet features are unchanged; synthetic data (dt≈0.0311 ns) now measures
+    # the SAME physical scales instead of 3.2x smaller ones.
+    WAVELET_WIDTHS_NS: tuple = (0.2, 0.4, 0.8, 1.6, 3.2)
+    # STFT window in physical time (legacy 64 samples @ 0.1 ns = 6.4 ns).
+    STFT_NPERSEG_NS: float = 6.4
+    # Spectral band edges as fractions of the source centre frequency
+    # (low < BAND_LOW_FRAC*fc <= mid < BAND_HIGH_FRAC*fc <= high). Replaces the
+    # absolute 500 MHz / 1.5 GHz cutoffs, which are degenerate for 400 MHz data.
+    BAND_LOW_FRAC: float = 0.75
+    BAND_HIGH_FRAC: float = 1.5
+    # Peak-relative coda gate for win_* features: start this long after the
+    # direct-pulse peak (≈ one 400 MHz ricker period clears the main lobe), for
+    # this length (16 ns = the common sim/real coda overlap used by the aligned
+    # sim2real pipeline).
+    CODA_GATE_START_AFTER_PEAK_NS: float = 2.5
+    CODA_GATE_LENGTH_NS: float = 16.0
 
     # Energy-integration curve fractions (time-domain rolloff) — Li et al. (2023)
     ENERGY_CURVE_FRACTIONS: tuple = (0.25, 0.50, 0.75, 0.85)

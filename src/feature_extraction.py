@@ -1,3 +1,6 @@
+# Standard library
+import warnings
+
 # Third-party imports
 import numpy as np
 import pandas as pd
@@ -6,24 +9,71 @@ from scipy.stats import skew, kurtosis
 
 # Local imports
 from src.constants import PC, SC
-from src.signal_processing import calculate_instantaneous_attributes
+from src.signal_processing import calculate_instantaneous_attributes, peak_relative_coda_gate
 
-def extract_features_from_signal(signal: np.ndarray, dt=PC.DEFAULT_DT, signal_name: str = "sig") -> pd.DataFrame:
+def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str = "sig",
+                                 center_freq_hz=None, coda_seek_peak: bool = True,
+                                 include_legacy_blocks: bool = False) -> pd.DataFrame:
     """Extract features directly from a 1D signal array."""
+    if dt is None:
+        _warn_default_dt()
+        dt = PC.DEFAULT_DT
     time = np.arange(len(signal), dtype=float) * dt
     df = pd.DataFrame({"Time": time, signal_name: signal})
-    return extract_features(df, dt=dt)
+    return extract_features(df, dt=dt, center_freq_hz=center_freq_hz,
+                            coda_seek_peak=coda_seek_peak,
+                            include_legacy_blocks=include_legacy_blocks)
 
 
-def extract_features(df, dt=PC.DEFAULT_DT):
+def _warn_default_dt():
+    warnings.warn(
+        f"extract_features called without dt — defaulting to {PC.DEFAULT_DT:.2e}s "
+        f"(0.1 ns, the REAL-data time base). This is WRONG for synthetic .out "
+        f"files (dt≈0.0311 ns) and mis-scales every frequency feature by ~3.2x. "
+        f"Always pass dt read from the HDF5 'dt' attribute.",
+        UserWarning, stacklevel=3,
+    )
+
+
+def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = True,
+                     include_legacy_blocks: bool = False):
     """
     Extracts advanced time-domain, frequency-domain, and time-frequency features from GPR traces.
-    
-    Refactored for SRP: logic delegated to specialized helper functions.
+
+    v3 layout: a compact whole-trace block PLUS the full suite recomputed on the
+    peak-normalized, peak-relative-gated CODA (``coda_*``) and an attenuation
+    family (``att_*``). The coda is where the subsurface information lives —
+    the direct pulse holds ~100% of trace energy and encodes the antenna, not
+    the ground.
+
+    Args:
+        df: DataFrame with a 'Time' column and one column per trace.
+        dt: Time step in seconds. ALWAYS pass it explicitly (read from the .out
+            HDF5 'dt' attribute); the 0.1 ns fallback is only correct for the
+            real field CSVs and a loud warning is emitted when it is used.
+        center_freq_hz: Source centre frequency, used for the relative spectral
+            band edges (SC.BAND_LOW_FRAC/BAND_HIGH_FRAC). If None it is
+            estimated per-trace as the dominant spectral frequency.
+        coda_seek_peak: Passed to the peak-relative coda gate. Use False for
+            traces that already start at the direct-pulse peak (processed real
+            field traces).
+        include_legacy_blocks: Re-enable the legacy whole-trace grid (480),
+            slice (28) and decile features. They are amplitude images of the
+            direct pulse — high in-world signal, near-zero transfer value —
+            kept only so the old baseline can be rebuilt for A/B comparison.
+
+    Output includes meta_* provenance columns (meta_feature_version, meta_dt_ns,
+    meta_center_freq_mhz, meta_includes_legacy). These are NOT waveform
+    features — exclude any column starting with 'meta_' (and 'Signal') from
+    training matrices.
     """
     if df.empty:
         print("DataFrame is empty. Cannot extract features.")
         return pd.DataFrame()
+
+    if dt is None:
+        _warn_default_dt()
+        dt = PC.DEFAULT_DT
 
     features_list = []
     
@@ -36,33 +86,39 @@ def extract_features(df, dt=PC.DEFAULT_DT):
             continue
             
         signal = df[col].values
-        
-        # 1. Time Domain Stats
-        time_feats = _extract_time_stats(signal)
-        
-        # 2. Hilbert Transform (Envelope) Stats
-        hilbert_feats, analytic_signal = _extract_hilbert_stats(signal, dt)
-        
-        # 3. Frequency Domain
-        freq_feats = _extract_frequency_features(signal, dt)
-        
-        # 3.5 Wavelet / multiresolution
-        wavelet_feats = _extract_wavelet_features(signal)
-        
-        # 4. STFT (Time-Frequency)
-        stft_feats = _extract_stft_features(signal, dt)
-        
-        # 5. Slice Statistics
-        slice_feats = _extract_slice_features(signal)
-        
-        # 6. Grid Features
-        grid_feats = _extract_grid_features(signal, analytic_signal)
 
-        # 7. Windowed (ballast/coda gate) indicators — Li et al. (2023), Shapovalov et al. (2026)
-        window_feats = _extract_window_features(signal, analytic_signal, dt)
+        # 1. Time Domain Stats (deciles are legacy: direct-pulse percentiles)
+        time_feats = _extract_time_stats(signal, include_deciles=include_legacy_blocks)
+
+        # 2. Hilbert Transform (Envelope) Stats
+        hilbert_feats, analytic_signal = _extract_hilbert_stats(
+            signal, dt, include_deciles=include_legacy_blocks)
+        
+        # 3. Frequency Domain (also resolves the centre frequency used for bands)
+        freq_feats, fc_used = _extract_frequency_features(signal, dt, center_freq_hz)
+
+        # 3.5 Wavelet / multiresolution (widths in physical ns, converted by dt)
+        wavelet_feats = _extract_wavelet_features(signal, dt)
+
+        # 4. STFT (Time-Frequency; window in physical ns, bands relative to fc)
+        stft_feats = _extract_stft_features(signal, dt, fc_used)
+        
+        # 5./6. Legacy whole-trace slice + grid blocks (direct-pulse images)
+        slice_feats = _extract_slice_features(signal) if include_legacy_blocks else {}
+        grid_feats = (_extract_grid_features(signal, analytic_signal)
+                      if include_legacy_blocks else {})
+
+        # 7. Windowed (peak-relative coda gate) indicators — Li et al. (2023), Shapovalov et al. (2026)
+        window_feats = _extract_window_features(signal, analytic_signal, dt,
+                                                seek_peak=coda_seek_peak)
 
         # 8. Time-domain energy-integration curve — Li et al. (2023)
         energy_curve_feats = _extract_energy_curve_features(signal)
+
+        # 9. Coda-first suite: full feature set on the peak-normalized gated
+        #    coda (coda_*) + attenuation family (att_*) — Li (2025) S-transform
+        #    decay, Mbubia (2024) damping direction.
+        coda_feats = _extract_coda_suite(signal, dt, fc_used, seek_peak=coda_seek_peak)
 
         # Combine
         features = {
@@ -75,16 +131,25 @@ def extract_features(df, dt=PC.DEFAULT_DT):
             **slice_feats,
             **grid_feats,
             **window_feats,
-            **energy_curve_feats
+            **energy_curve_feats,
+            **coda_feats
         }
-        
+
+        # Provenance (meta_* = NOT features; exclude from training matrices)
+        features.update({
+            'meta_feature_version': SC.FEATURE_VERSION,
+            'meta_dt_ns': dt * SC.NS_PER_SEC,
+            'meta_center_freq_mhz': fc_used / 1e6,
+            'meta_includes_legacy': bool(include_legacy_blocks),
+        })
+
         # Add metadata
         features.update(metadata_values)
         features_list.append(features)
 
     return pd.DataFrame(features_list)
 
-def _extract_time_stats(signal: np.ndarray) -> dict:
+def _extract_time_stats(signal: np.ndarray, include_deciles: bool = True) -> dict:
     """Calculates basic statistical moments and quantiles."""
     from scipy.signal import find_peaks
     
@@ -117,15 +182,16 @@ def _extract_time_stats(signal: np.ndarray) -> dict:
         'area_signal': np.sum(np.abs(signal)),
         'second_derivative': len(np.where(np.diff(np.signbit(np.diff(signal, n=2))))[0])
     }
-    
-    # Deciles
-    deciles = np.percentile(signal, np.arange(10, 100, 10))
-    stats.update({f'decile_{i+1}0': d for i, d in enumerate(deciles)})
-    
+
+    # Deciles (legacy whole-trace block — amplitude percentiles)
+    if include_deciles:
+        deciles = np.percentile(signal, np.arange(10, 100, 10))
+        stats.update({f'decile_{i+1}0': d for i, d in enumerate(deciles)})
+
     return stats
 
 
-def _extract_hilbert_stats(signal: np.ndarray, dt: float) -> tuple:
+def _extract_hilbert_stats(signal: np.ndarray, dt: float, include_deciles: bool = True) -> tuple:
     """Calculates statistics on the signal envelope and returns analytic signal."""
     attrs = calculate_instantaneous_attributes(signal, dt, use_mirroring=True)
     envelope = attrs['envelope']
@@ -149,25 +215,49 @@ def _extract_hilbert_stats(signal: np.ndarray, dt: float) -> tuple:
         'hilbert_crest_factor': (np.max(envelope) / rms_val) if rms_val != 0 else 0,
         'area_hilbert': np.sum(envelope)
     }
-    
-    deciles = np.percentile(envelope, np.arange(10, 100, 10))
-    stats.update({f'hilbert_decile_{i+1}0': d for i, d in enumerate(deciles)})
-    
+
+    if include_deciles:
+        deciles = np.percentile(envelope, np.arange(10, 100, 10))
+        stats.update({f'hilbert_decile_{i+1}0': d for i, d in enumerate(deciles)})
+
     return stats, analytic_signal
 
-def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
-    """Calculates Fourier transform metrics."""
+def _extract_frequency_features(signal: np.ndarray, dt: float, center_freq_hz=None) -> tuple:
+    """Calculates Fourier transform metrics.
+
+    Band edges are RELATIVE to the centre frequency fc (given, or estimated as
+    the dominant spectral frequency): low < BAND_LOW_FRAC*fc <= mid <
+    BAND_HIGH_FRAC*fc <= high. The legacy absolute cutoffs (500 MHz / 1.5 GHz)
+    were degenerate for 400 MHz data (all energy in "low").
+
+    NOTE: mean_frequency / median_frequency / spectral_flatness definitions are
+    intentionally UNCHANGED — they are the metrics behind the real-data
+    median_freq-vs-FI result and must stay comparable across corpora.
+
+    Returns:
+        (features_dict, fc_used_hz)
+    """
     fft_vals = np.fft.fft(signal)
     fft_spectrum = np.abs(fft_vals)
     freqs = np.fft.fftfreq(len(signal), d=dt)
-    
+
     pos_mask = freqs >= 0
     fft_spectrum = fft_spectrum[pos_mask]
     freqs = freqs[pos_mask]
-    
+
     area_fourier = np.sum(fft_spectrum)
     max_power = np.max(fft_spectrum)
-    
+
+    # Dominant frequency, excluding the DC bin (DC offset is not a "frequency")
+    nz = freqs > 0
+    if np.any(nz) and np.max(fft_spectrum[nz]) > 0:
+        dominant_frequency = float(freqs[nz][np.argmax(fft_spectrum[nz])])
+    else:
+        dominant_frequency = 0.0
+
+    # Centre frequency for the relative band edges
+    fc = float(center_freq_hz) if center_freq_hz else dominant_frequency
+
     # Heuristics
     cumulative = np.cumsum(fft_spectrum)
     if area_fourier > 0:
@@ -186,14 +276,17 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
     psd = fft_spectrum**2 / len(signal)
     psd_norm = psd / np.sum(psd) if np.sum(psd) > 0 else psd
     spectral_entropy = -np.sum(psd_norm * np.log(psd_norm + SC.LOG_EPSILON))
-    
+
     g_mean = np.exp(np.mean(np.log(fft_spectrum + SC.LOG_EPSILON)))
     a_mean = np.mean(fft_spectrum)
     flatness = (g_mean / a_mean) if a_mean > 0 else 0
-    
-    energy_low = np.sum(fft_spectrum[freqs < SC.FREQ_LOW_CUTOFF])
-    energy_mid = np.sum(fft_spectrum[(freqs >= SC.FREQ_LOW_CUTOFF) & (freqs < SC.FREQ_MID_CUTOFF)])
-    energy_high = np.sum(fft_spectrum[freqs >= SC.FREQ_MID_CUTOFF])
+
+    # Relative band energies (fall back to legacy absolute cutoffs if fc=0)
+    f_lo = SC.BAND_LOW_FRAC * fc if fc > 0 else SC.FREQ_LOW_CUTOFF
+    f_hi = SC.BAND_HIGH_FRAC * fc if fc > 0 else SC.FREQ_MID_CUTOFF
+    energy_low = np.sum(fft_spectrum[freqs < f_lo])
+    energy_mid = np.sum(fft_spectrum[(freqs >= f_lo) & (freqs < f_hi)])
+    energy_high = np.sum(fft_spectrum[freqs >= f_hi])
 
     high_low_energy_ratio = energy_high / energy_low if energy_low > 0 else 0
     high_mid_energy_ratio = energy_high / energy_mid if energy_mid > 0 else 0
@@ -203,16 +296,28 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
     rolloff_idx = np.searchsorted(cumulative, rolloff_threshold)
     spectral_rolloff = freqs[min(rolloff_idx, len(freqs) - 1)]
 
-    spectral_slope = np.polyfit(freqs, fft_spectrum, 1)[0] if len(freqs) > 1 else 0
+    # Spectral slope: log-amplitude fit restricted to the OCCUPIED band
+    # (5%-95% of cumulative spectral amplitude). The legacy fit spanned the
+    # whole axis to Nyquist (16 GHz on sim traces), so it was dominated by the
+    # empty noise floor. Units: dB-like decade change per Hz.
+    spectral_slope = 0.0
+    if area_fourier > 0 and len(freqs) > 3:
+        i_lo = int(np.searchsorted(cumulative, 0.05 * area_fourier))
+        i_hi = int(np.searchsorted(cumulative, 0.95 * area_fourier))
+        if i_hi - i_lo >= 3:
+            band_f = freqs[i_lo:i_hi]
+            band_s = np.log10(fft_spectrum[i_lo:i_hi] + SC.LOG_EPSILON)
+            spectral_slope = float(np.polyfit(band_f, band_s, 1)[0])
+
     spectral_skewness = skew(fft_spectrum)
     spectral_kurtosis = kurtosis(fft_spectrum)
     dominant_energy_fraction = max_power / (area_fourier + SC.LOG_EPSILON)
 
-    return {
+    feats = {
         'area_fourier': area_fourier,
         'fourier_peak_max': max_power,
         'fourier_standard_deviation': np.std(fft_spectrum),
-        'dominant_frequency': freqs[np.argmax(fft_spectrum)],
+        'dominant_frequency': dominant_frequency,
         'bandwidth': bandwidth,
         'mean_frequency': mean_freq,
         'median_frequency': median_freq,
@@ -227,6 +332,7 @@ def _extract_frequency_features(signal: np.ndarray, dt: float) -> dict:
         'high_mid_energy_ratio': high_mid_energy_ratio,
         'mid_low_energy_ratio': mid_low_energy_ratio
     }
+    return feats, fc
 
 
 def _ricker_wavelet(points: int, a: float) -> np.ndarray:
@@ -235,9 +341,17 @@ def _ricker_wavelet(points: int, a: float) -> np.ndarray:
     return (1 - (t ** 2) / (a ** 2)) * np.exp(-(t ** 2) / (2 * a ** 2))
 
 
-def _extract_wavelet_features(signal: np.ndarray) -> dict:
-    """Calculates multiresolution energy features using several Ricker wavelets."""
-    widths = np.array([2, 4, 8, 16, 32], dtype=int)
+def _extract_wavelet_features(signal: np.ndarray, dt: float) -> dict:
+    """Calculates multiresolution energy features using several Ricker wavelets.
+
+    Widths are specified in PHYSICAL time (SC.WAVELET_WIDTHS_NS) and converted
+    to samples by dt, so the same feature measures the same physical scale on
+    any time base. (Legacy sample widths made a width-8 wavelet 0.25 ns on sim
+    but 0.8 ns on real — an artificial domain shift.) wavelet_peak_scale is
+    now reported in ns.
+    """
+    widths_ns = np.asarray(SC.WAVELET_WIDTHS_NS, dtype=float)
+    widths = widths_ns * 1e-9 / dt  # ricker width parameter in samples (float)
     energy_per_scale = np.zeros(len(widths), dtype=float)
 
     if signal.size > 0:
@@ -253,7 +367,7 @@ def _extract_wavelet_features(signal: np.ndarray) -> dict:
 
     return {
         'wavelet_total_energy': total_energy,
-        'wavelet_peak_scale': float(widths[np.argmax(energy_per_scale)]) if energy_per_scale.size > 0 else 0,
+        'wavelet_peak_scale': float(widths_ns[np.argmax(energy_per_scale)]) if energy_per_scale.size > 0 else 0,
         'wavelet_energy_mean': np.mean(energy_per_scale),
         'wavelet_energy_std': np.std(energy_per_scale),
         'wavelet_energy_skewness': skew(energy_per_scale),
@@ -263,14 +377,26 @@ def _extract_wavelet_features(signal: np.ndarray) -> dict:
     }
 
 
-def _extract_stft_features(signal: np.ndarray, dt: float) -> dict:
-    """Calculates Time-Frequency features using STFT."""
-    f_stft, _, Zxx = sp_signal.stft(signal, fs=1/dt, nperseg=SC.STFT_NPERSEG, noverlap=SC.STFT_NOVERLAP)
+def _extract_stft_features(signal: np.ndarray, dt: float, center_freq_hz: float = 0.0) -> dict:
+    """Calculates Time-Frequency features using STFT.
+
+    The window is specified in PHYSICAL time (SC.STFT_NPERSEG_NS) and converted
+    to samples by dt, so time-frequency resolution is identical across time
+    bases (legacy 64 samples = 2 ns on sim vs 6.4 ns on real). Band edges are
+    relative to the centre frequency, matching _extract_frequency_features.
+    """
+    nperseg = int(round(SC.STFT_NPERSEG_NS * 1e-9 / dt))
+    nperseg = max(8, min(nperseg, len(signal)))
+    noverlap = nperseg // 2
+    f_stft, _, Zxx = sp_signal.stft(signal, fs=1/dt, nperseg=nperseg, noverlap=noverlap)
     stft_mag = np.abs(Zxx)
-    
-    mask_low = (f_stft < SC.FREQ_LOW_CUTOFF)
-    mask_mid = (f_stft >= SC.FREQ_LOW_CUTOFF) & (f_stft < SC.FREQ_MID_CUTOFF)
-    mask_high = (f_stft >= SC.FREQ_MID_CUTOFF)
+
+    fc = float(center_freq_hz)
+    f_lo = SC.BAND_LOW_FRAC * fc if fc > 0 else SC.FREQ_LOW_CUTOFF
+    f_hi = SC.BAND_HIGH_FRAC * fc if fc > 0 else SC.FREQ_MID_CUTOFF
+    mask_low = (f_stft < f_lo)
+    mask_mid = (f_stft >= f_lo) & (f_stft < f_hi)
+    mask_high = (f_stft >= f_hi)
     
     energy_low = np.sum(stft_mag[mask_low, :], axis=0)
     energy_mid = np.sum(stft_mag[mask_mid, :], axis=0)
@@ -328,7 +454,7 @@ def _extract_slice_features(signal: np.ndarray, num_slices: int = SC.DEFAULT_SLI
     return feats
 
 def _extract_window_features(signal: np.ndarray, analytic_signal: np.ndarray, dt: float,
-                             window_ns: tuple = SC.CODA_WINDOW_NS) -> dict:
+                             seek_peak: bool = True) -> dict:
     """Literature indicators restricted to the ballast/coda time gate.
 
     Several ballast-fouling studies compute their discriminators over the ballast
@@ -337,6 +463,12 @@ def _extract_window_features(signal: np.ndarray, analytic_signal: np.ndarray, dt
     (InflecNum). See Li et al. (2023), Remote Sens. 15, 3437; Shapovalov et al. (2026),
     IJTST 21, 286-305. These are the gated counterparts of the full-trace ``area_signal``,
     ``area_hilbert``, ``number_zeros`` and ``second_derivative`` features.
+
+    The gate is PEAK-RELATIVE (signal_processing.peak_relative_coda_gate): it
+    opens CODA_GATE_START_AFTER_PEAK_NS after the direct-pulse peak for
+    CODA_GATE_LENGTH_NS, replacing the legacy absolute 6-16 ns window which
+    selected different physics per geometry/domain. Use seek_peak=False for
+    traces that already start at the peak (processed real field traces).
     """
     from scipy.signal import find_peaks
 
@@ -348,7 +480,7 @@ def _extract_window_features(signal: np.ndarray, analytic_signal: np.ndarray, dt
 
     n = len(signal)
     t_ns = np.arange(n) * dt * SC.NS_PER_SEC
-    mask = (t_ns >= window_ns[0]) & (t_ns <= window_ns[1])
+    mask, _ = peak_relative_coda_gate(signal, dt, seek_peak=seek_peak)
 
     # Degenerate gate (trace too short / window out of range): return zeros, never crash.
     if np.count_nonzero(mask) < 3:
@@ -448,3 +580,136 @@ def _extract_grid_features(signal: np.ndarray, analytic_signal: np.ndarray, grid
                 feats[f'grid_hilbert_envelope_{i}_{j}'] = res_env[idx]
                 feats[f'grid_hilbert_imag_{i}_{j}'] = res_imag[idx]
     return feats
+
+
+def _finite_or_zero(d: dict) -> dict:
+    """Replace non-finite feature values with 0.0 (degenerate-input safety)."""
+    out = {}
+    for k, v in d.items():
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            out[k] = v
+            continue
+        out[k] = fv if np.isfinite(fv) else 0.0
+    return out
+
+
+def _extract_coda_suite(signal: np.ndarray, dt: float, center_freq_hz: float,
+                        seek_peak: bool = True) -> dict:
+    """Full feature suite on the peak-normalized, peak-relative-gated coda.
+
+    The direct pulse holds ~100% of trace energy but encodes the antenna; the
+    subsurface (fouling) information lives in the coda at <0.5% amplitude.
+    This recomputes every feature block on the gated coda segment, normalized
+    to its own peak so the features are amplitude-scale-invariant (sim and
+    real differ by orders of magnitude in raw amplitude). Keys are prefixed
+    ``coda_``; the attenuation family (``att_*``) is computed here too.
+
+    The 160-point coda grid is the aligned-coda waveform itself: 16 ns
+    resampled to 160 cells = the 0.1 ns common grid used by the aligned
+    sim2real pipeline, with identical physical support on any time base.
+    """
+    mask, _ = peak_relative_coda_gate(signal, dt, seek_peak=seek_peak)
+    segment = np.asarray(signal, dtype=float)[mask]
+    if segment.size < 16:
+        segment = np.zeros(64)  # degenerate: stable keys, all-zero values
+    m = np.max(np.abs(segment))
+    if m > 0:
+        segment = segment / m
+
+    time_feats = _extract_time_stats(segment)
+    hil_feats, analytic = _extract_hilbert_stats(segment, dt)
+    freq_feats, _ = _extract_frequency_features(segment, dt, center_freq_hz)
+    wav_feats = _extract_wavelet_features(segment, dt)
+    stft_feats = _extract_stft_features(segment, dt, center_freq_hz)
+    slice_feats = _extract_slice_features(segment)
+    grid_feats = _extract_grid_features(segment, analytic)
+    energy_feats = _extract_energy_curve_features(segment)
+
+    attrs = calculate_instantaneous_attributes(segment, dt, use_mirroring=True)
+    att_feats = _extract_attenuation_features(segment, dt, center_freq_hz, attrs)
+
+    out = {}
+    for d in (time_feats, hil_feats, freq_feats, wav_feats, stft_feats,
+              slice_feats, grid_feats, energy_feats):
+        out.update({f'coda_{k}': v for k, v in d.items()})
+    out.update(att_feats)  # att_* already namespaced
+    return _finite_or_zero(out)
+
+
+def _extract_attenuation_features(segment: np.ndarray, dt: float,
+                                  center_freq_hz: float, attrs: dict) -> dict:
+    """Attenuation-rate family on the gated coda (``att_*``).
+
+    Physics: fouling raises conductivity by orders of magnitude (Mbubia 2024:
+    sigma 1e-5 -> 1e-2 S/m), so fouled beds attenuate faster — Li (2025) shows
+    the high-frequency energy of heavily fouled ballast dies by ~6-8 ns vs
+    ~12-14 ns for clean. These features measure that decay directly:
+
+      att_env_decay_rate        log-envelope slope (1/ns; more negative = faster)
+      att_instfreq_*            instantaneous-frequency stats over the coda
+      att_band_{low,mid,high}_decay   log10 STFT band-energy slope vs time
+      att_{low,mid,high}_die_time_ns  time after gate start when band energy
+                                      first falls below 10% of its peak
+      att_centroid_slope_mhz_ns spectral-centroid drift (MHz/ns; negative =
+                                downshift over time, the attenuation signature)
+    """
+    keys = ['att_env_decay_rate', 'att_instfreq_mean_mhz', 'att_instfreq_std_mhz',
+            'att_instfreq_slope_mhz_ns',
+            'att_band_low_decay', 'att_band_mid_decay', 'att_band_high_decay',
+            'att_low_die_time_ns', 'att_mid_die_time_ns', 'att_high_die_time_ns',
+            'att_centroid_slope_mhz_ns']
+    feats = dict.fromkeys(keys, 0.0)
+    n = segment.size
+    if n < 16:
+        return feats
+    t_ns = np.arange(n) * dt * SC.NS_PER_SEC
+
+    env = attrs['envelope']
+    emax = float(np.max(env))
+    if emax > 0:
+        valid = env > 0.02 * emax
+        if np.count_nonzero(valid) >= 8:
+            feats['att_env_decay_rate'] = float(np.polyfit(
+                t_ns[valid], np.log(env[valid] / emax + SC.LOG_EPSILON), 1)[0])
+        # Instantaneous frequency is only meaningful where the envelope is
+        # well above the noise floor.
+        good = env > 0.1 * emax
+        if np.count_nonzero(good) >= 8:
+            f_mhz = attrs['frequency'][good] / 1e6
+            feats['att_instfreq_mean_mhz'] = float(np.mean(f_mhz))
+            feats['att_instfreq_std_mhz'] = float(np.std(f_mhz))
+            feats['att_instfreq_slope_mhz_ns'] = float(
+                np.polyfit(t_ns[good], f_mhz, 1)[0])
+
+    # STFT band decays, die-times and centroid drift
+    nperseg = int(round(SC.STFT_NPERSEG_NS * 1e-9 / dt))
+    nperseg = max(8, min(nperseg, n))
+    f_st, tt, Zxx = sp_signal.stft(segment, fs=1/dt, nperseg=nperseg,
+                                   noverlap=nperseg // 2)
+    mag = np.abs(Zxx)
+    tt_ns = tt * SC.NS_PER_SEC
+
+    fc = float(center_freq_hz)
+    f_lo = SC.BAND_LOW_FRAC * fc if fc > 0 else SC.FREQ_LOW_CUTOFF
+    f_hi = SC.BAND_HIGH_FRAC * fc if fc > 0 else SC.FREQ_MID_CUTOFF
+    bands = {'low': f_st < f_lo,
+             'mid': (f_st >= f_lo) & (f_st < f_hi),
+             'high': f_st >= f_hi}
+    for name, bmask in bands.items():
+        e_t = np.sum(mag[bmask, :], axis=0)
+        if e_t.size >= 3 and np.max(e_t) > 0:
+            feats[f'att_band_{name}_decay'] = float(np.polyfit(
+                tt_ns, np.log10(e_t / np.max(e_t) + SC.LOG_EPSILON), 1)[0])
+            pk = int(np.argmax(e_t))
+            below = np.where(e_t[pk:] < 0.1 * e_t[pk])[0]
+            feats[f'att_{name}_die_time_ns'] = (float(tt_ns[pk + below[0]])
+                                                if below.size else float(tt_ns[-1]))
+
+    tot = np.sum(mag, axis=0)
+    if tt_ns.size >= 3 and np.max(tot) > 0:
+        cent_mhz = (f_st @ mag) / (tot + SC.LOG_EPSILON) / 1e6
+        feats['att_centroid_slope_mhz_ns'] = float(np.polyfit(tt_ns, cent_mhz, 1)[0])
+
+    return _finite_or_zero(feats)
