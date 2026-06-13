@@ -7,6 +7,7 @@ produce the full 4-panel analysis figure without spawning a subprocess.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +30,24 @@ from .panels import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_direct_wave_gate_ns(signals: dict, dt: float) -> Optional[float]:
+    """Calculate the end of the direct wave based on the start of the peak-relative coda gate from feature extraction."""
+    best_raw = strongest_signal(signals)
+    if best_raw is None or len(best_raw) == 0:
+        return 4.5
+    
+    try:
+        from src.signal_processing import peak_relative_coda_gate
+        mask, _ = peak_relative_coda_gate(best_raw, dt, seek_peak=True)
+        indices = np.where(mask)[0]
+        if len(indices) > 0:
+            return float(indices[0] * dt * 1e9)
+        return 4.5
+    except Exception as e:
+        logger.warning(f"Could not calculate peak-relative direct wave gate: {e}")
+        return 4.5
 
 
 def _load_signals(hdf5_path: Path, cfg: SignalPanelConfig) -> tuple:
@@ -72,13 +91,10 @@ def render_dashboard(
     Returns:
         (fig, out_path) — the matplotlib figure and the path it was saved to.
     """
-    if sig_cfg is None:
-        sig_cfg = SignalPanelConfig()
-
-    out_path = out_path or in_path.with_suffix(".png")
-
     logger.info(f"Parsing {in_path.name}...")
     scene = parse_in_file(in_path)
+
+    out_path = out_path or in_path.with_suffix(".png")
 
     # Try adjacent .out file, then outputs/ subdirectory
     hdf5_path = in_path.with_suffix(".out")
@@ -92,11 +108,18 @@ def render_dashboard(
     else:
         logger.info("No .out file found — signal panels will be blank.")
 
-    # Layout: [raw signals] | [geometry x2] | [processed signals] | [PSD + metadata]
+    gate_ns = _get_direct_wave_gate_ns(signals, dt)
+    if sig_cfg is None:
+        sig_cfg = SignalPanelConfig(direct_wave_gate_ns=gate_ns)
+    else:
+        sig_cfg.direct_wave_gate_ns = gate_ns
+
+    # Layout: [raw] | [geometry / coda] | [processed] | [PSD + metadata]
     fig = plt.figure(figsize=(24, 10))
     gs  = gridspec.GridSpec(3, 4, width_ratios=[1, 2, 1, 1], figure=fig)
 
-    ax_geo = fig.add_subplot(gs[:, 1])
+    # Geometry takes rows 0 and 1 of Column 1
+    ax_geo = fig.add_subplot(gs[0:2, 1])
     ax_geo.set_title(in_path.stem, fontsize=10, fontweight="bold")
     draw_geometry(ax_geo, scene)
     # Dashboard is an analysis view: opt into the MC/LDCP research overlays
@@ -107,16 +130,40 @@ def render_dashboard(
         best_raw  = strongest_signal(signals)
         best_proc = strongest_signal(proc)
 
-        draw_ascan(      fig.add_subplot(gs[0, 0]), signals,   time_ns, "Raw A-scan")
+        draw_ascan(      fig.add_subplot(gs[0, 0]), signals,   time_ns, "Raw A-scan", direct_wave_gate_ns=gate_ns)
         draw_envelope(   fig.add_subplot(gs[1, 0]), best_raw,  time_ns, dt, "Raw Envelope")
         draw_spectrogram(fig.add_subplot(gs[2, 0]), best_raw,  dt)
 
-        draw_ascan(      fig.add_subplot(gs[0, 2]), proc,      time_ns, "Processed A-scan")
+        draw_ascan(      fig.add_subplot(gs[0, 2]), proc,      time_ns, "Processed A-scan", direct_wave_gate_ns=None)
         draw_envelope(   fig.add_subplot(gs[1, 2]), best_proc, time_ns, dt, "Processed Envelope")
         draw_spectrogram(fig.add_subplot(gs[2, 2]), best_proc, dt)
+
+        # Extract Coda-aligned signals (raw coda, not normalized, matching the raw A-scan scale)
+        from src.signal_processing import peak_relative_coda_gate
+        coda_signals = {}
+        coda_time_ns = None
+        for name, sig in signals.items():
+            try:
+                mask, _ = peak_relative_coda_gate(sig, dt, seek_peak=True)
+                coda_signals[name] = sig[mask]
+                if coda_time_ns is None:
+                    coda_time_ns = time_ns[mask]
+            except Exception as e:
+                logger.warning(f"Could not extract coda segment for {name}: {e}")
+
+        if coda_signals and coda_time_ns is not None and len(coda_time_ns) > 0:
+            draw_ascan(fig.add_subplot(gs[2, 1]), coda_signals, coda_time_ns, "Raw Coda A-scan", direct_wave_gate_ns=None)
+        else:
+            ax_blank = fig.add_subplot(gs[2, 1])
+            ax_blank.text(0.5, 0.5, "No coda signal", ha="center", va="center", fontsize=9)
+            ax_blank.axis("off")
     else:
         _blank_signal_column(fig, gs, col=0)
         _blank_signal_column(fig, gs, col=2)
+        # Blank the coda row under geometry
+        ax_blank = fig.add_subplot(gs[2, 1])
+        ax_blank.text(0.5, 0.5, "No signal data", ha="center", va="center", fontsize=9)
+        ax_blank.axis("off")
 
     draw_grading_curve(fig.add_subplot(gs[0, 3]), scene.meta.get("Lab_PSD"))
 

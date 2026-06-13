@@ -134,7 +134,7 @@ class SignalConstants:
     # direct-pulse peak (≈ one 400 MHz ricker period clears the main lobe), for
     # this length (16 ns = the common sim/real coda overlap used by the aligned
     # sim2real pipeline).
-    CODA_GATE_START_AFTER_PEAK_NS: float = 2.5
+    CODA_GATE_START_AFTER_PEAK_NS: float = 4.5
     CODA_GATE_LENGTH_NS: float = 16.0
 
     # Energy-integration curve fractions (time-domain rolloff) — Li et al. (2023)

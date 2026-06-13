@@ -28,6 +28,7 @@ class SignalPanelConfig:
     components: list = field(default_factory=lambda: ["Ez"])
     receivers: Optional[list] = None
     amplitude_threshold: float = 1e-9
+    direct_wave_gate_ns: Optional[float] = None
 
 
 def filter_signals(signals: dict, cfg: SignalPanelConfig) -> dict:
@@ -50,6 +51,9 @@ def preprocess_signals(signals: dict, dt: float, cfg: SignalPanelConfig) -> dict
     if not HAS_SIGNAL or not signals:
         return signals
     out = {}
+    dw_kw = {}
+    if cfg.direct_wave_gate_ns is not None:
+        dw_kw["gate_ns"] = cfg.direct_wave_gate_ns
     for name, sig in signals.items():
         psig, _ = preprocess_signal(
             sig, dt,
@@ -57,6 +61,7 @@ def preprocess_signals(signals: dict, dt: float, cfg: SignalPanelConfig) -> dict
             use_gain=bool(cfg.gain_type),
             gain_params={"type": cfg.gain_type, "alpha": cfg.gain_alpha},
             use_time_zero=True,
+            direct_wave_kwargs=dw_kw if dw_kw else None,
         )
         out[name] = psig
     return out
@@ -68,7 +73,7 @@ def strongest_signal(signals: dict) -> Optional[np.ndarray]:
     return max(signals.values(), key=lambda s: np.max(np.abs(s)))
 
 
-def draw_ascan(ax: Axes, signals: dict, time_ns: np.ndarray, title: str = "A-scan") -> None:
+def draw_ascan(ax: Axes, signals: dict, time_ns: np.ndarray, title: str = "A-scan", direct_wave_gate_ns: Optional[float] = None) -> None:
     """Wiggle A-scan traces. H-field signals drawn dashed."""
     if not signals:
         ax.text(0.5, 0.5, "No signals", ha="center", va="center")
@@ -83,6 +88,8 @@ def draw_ascan(ax: Axes, signals: dict, time_ns: np.ndarray, title: str = "A-sca
             ax.fill_between(t, sig, 0, where=(sig > 0), color=color,
                             alpha=0.2, interpolate=True)
     ax.axvline(0, color="black", linestyle=":", linewidth=0.8, alpha=0.6)
+    if direct_wave_gate_ns is not None:
+        ax.axvline(direct_wave_gate_ns, color="red", linestyle="--", linewidth=1.2, alpha=0.8, label="DW end")
     ax.set_title(title)
     ax.set_xlabel("Time [ns]")
     ax.grid(True, alpha=0.3)
@@ -112,7 +119,7 @@ def draw_envelope(ax: Axes, signal: np.ndarray, time_ns: np.ndarray,
     ax.legend(h1 + h2, l1 + l2, loc="upper right", fontsize="small")
 
 
-def draw_spectrogram(ax: Axes, signal: np.ndarray, dt: float) -> None:
+def draw_spectrogram(ax: Axes, signal: np.ndarray, dt: float, time_offset_ns: float = 0.0) -> None:
     """Time-frequency spectrogram (inferno colormap, dB scale)."""
     if not HAS_SIGNAL or signal is None:
         ax.text(0.5, 0.5, "Unavailable", ha="center", va="center")
@@ -120,7 +127,7 @@ def draw_spectrogram(ax: Axes, signal: np.ndarray, dt: float) -> None:
         return
     fs = 1.0 / dt
     f, t_spec, Sxx = compute_spectrogram(signal, fs=fs, nperseg=128, noverlap=96)
-    ax.pcolormesh(t_spec * 1e9, f / 1e6, 10 * np.log10(Sxx + 1e-12),
+    ax.pcolormesh(t_spec * 1e9 + time_offset_ns, f / 1e6, 10 * np.log10(Sxx + 1e-12),
                   cmap="inferno", shading="gouraud")
     ax.set_title("Spectrogram")
     ax.set_xlabel("Time [ns]")

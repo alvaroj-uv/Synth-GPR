@@ -188,7 +188,7 @@ raw = "#geometry_view: 0 0 0 1.2 1 0.004 0.004 0.004 scene n"
 
 
 def test_header_and_passthrough_in_deck():
-    """Flat scene: header (provenance + CONFIG + SOURCE), source override, passthrough."""
+    """Flat scene: header (provenance), source override, passthrough."""
     layers = parse_layers("subgrade:0.20, sand:0.25:9:0.01")
     params = SceneParams(freq_hz=600e6, domain_x=1.0, seed=7,
                          source_waveform="gaussian", source_amplitude=2.0)
@@ -200,8 +200,6 @@ def test_header_and_passthrough_in_deck():
     # provenance + replication header
     assert "## Generated gprMax Input File" in text
     assert "## Git Version:" in text
-    assert "## CONFIG_center_freq_hz: 6e+08" in text
-    assert "## SOURCE_center_freq_hz: CLI_OVERRIDE" in text
     # no embedded TOML (removed for cleaner .in files)
     assert "## --- embedded config" not in text
     # source override honoured

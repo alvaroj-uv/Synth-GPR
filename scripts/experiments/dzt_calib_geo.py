@@ -69,14 +69,16 @@ SUBGRADE = (15.0, 0.02)
 ROCK_SIGMA = 0.001
 
 CLEAN_Y = (0.79, 1.29)             # clean ballast band in the template
-FOUL_Y = (0.50, 0.79)
+FOUL_Y = (0.10, 0.79)              # fouled ballast band in the template (extended)
 DOMAIN_X = 2.4
 
 PARAM_SPACE = {
+    "h_clean":   (0.40, 0.70, False),
+    "h_foul":    (0.15, 0.45, False),
     "rf_fouled": (0.50, 0.75, False),
     "frac_dim":  (1.5, 3.0, False),
-    "rough_amp": (0.0, 0.08, False),
-    "trans_th":  (0.0, 0.15, False),
+    "rough_amp": (0.0, 0.10, False),
+    "trans_th":  (0.0, 0.20, False),
     "clean_phi": (0.15, 0.40, False),
 }
 N_LHS = 30
@@ -123,7 +125,7 @@ TOML = """\
 title             = "calib geo template seed {seed}"
 freq_hz           = 400e6
 domain_x          = {domain_x}
-antenna_clearance = 0.4
+antenna_clearance = 1.0
 air_buffer        = 0.1
 rx_spacing        = 0.0
 seed              = {seed}
@@ -136,13 +138,13 @@ polarization = "z"
 
 [[layer]]
 name = "subgrade"
-thickness = 0.50
+thickness = 0.10
 eps = 15.0
 sigma = 0.02
 
 [[layer]]
 name = "fouled_ballast"
-thickness = 0.29
+thickness = 0.69
 packed = true
 eps = 4.0
 sigma = 0.001
@@ -189,7 +191,7 @@ def parse_template(path: Path):
             x1, y1, x2, y2, x3, y3, mat = m.groups()
             key = (mat, x1, y1)
             if key not in fans:
-                fans[key] = {"lines": [], "area": 0.0, "mat": mat}
+                fans[key] = {"lines": [], "area": 0.0, "mat": mat, "y_apex": float(y1)}
                 order.append(key)
             a = abs((float(x2) - float(x1)) * (float(y3) - float(y1))
                     - (float(x3) - float(x1)) * (float(y2) - float(y1))) / 2
@@ -219,10 +221,20 @@ def thin_fans(fans, target_area, rng):
 
 def build_candidate(template: Path, out_path: Path, p: dict, cand_seed: int) -> dict:
     header, boxes, fans = parse_template(template)
-    clean = [f for f in fans if f["mat"] == "bal_rock"]
-    foul = [f for f in fans if f["mat"] != "bal_rock"]
-    clean_area = DOMAIN_X * (CLEAN_Y[1] - CLEAN_Y[0])
-    foul_area = DOMAIN_X * (FOUL_Y[1] - FOUL_Y[0])
+    
+    # Dynamic layer boundary calculations (top of ballast fixed at 1.29 m)
+    ballast_top_y = 1.29
+    h_clean = p["h_clean"]
+    h_foul = p["h_foul"]
+    interface_y = ballast_top_y - h_clean
+    subgrade_y = ballast_top_y - (h_clean + h_foul)
+
+    # Classify rocks dynamically based on their y_apex coordinate
+    clean = [f for f in fans if f["y_apex"] >= interface_y]
+    foul = [f for f in fans if subgrade_y <= f["y_apex"] < interface_y]
+
+    clean_area = DOMAIN_X * h_clean
+    foul_area = DOMAIN_X * h_foul
 
     rng = random.Random(cand_seed)
     kept_clean, a_clean = thin_fans(clean, (1 - p["clean_phi"]) * clean_area, rng)
@@ -230,8 +242,8 @@ def build_candidate(template: Path, out_path: Path, p: dict, cand_seed: int) -> 
 
     # solve eps from ACHIEVED fractions so the pinned bulks hold exactly
     # (the template tops out at rf~0.70 in the clean band: settling slack)
-    rf_clean = a_clean / clean_area
-    rf_foul = a_foul / foul_area
+    rf_clean = a_clean / clean_area if clean_area > 0 else 0.0
+    rf_foul = a_foul / foul_area if foul_area > 0 else 0.0
     eps_rock = rock_eps_for_clean(1.0 - rf_clean)
     eps_m = matrix_eps_for_fouled(rf_foul, eps_rock)
     theta = water_for_eps(eps_m)
@@ -248,22 +260,22 @@ def build_candidate(template: Path, out_path: Path, p: dict, cand_seed: int) -> 
                  f"{max(theta - 0.02, 0.001):.4f} {min(theta + 0.02, 0.50):.4f} fines")
     # geometry, paint order matters: subgrade, transition band, fines fractal
     # box (+ roughness), then rocks on top
-    lines.append(f"#box: 0 0 0 {DOMAIN_X} {FOUL_Y[0]} 0.005 subgrade")
+    lines.append(f"#box: 0 0 0 {DOMAIN_X} {subgrade_y:.4f} 0.005 subgrade")
     if t >= 0.005:
-        lines.append(f"#box: 0 {FOUL_Y[1]} 0 {DOMAIN_X} "
-                     f"{FOUL_Y[1] + t:.4f} 0.005 trans_mix")
-    lines.append(f"#fractal_box: 0 {FOUL_Y[0]} 0 {DOMAIN_X} {FOUL_Y[1]} 0.005 "
+        lines.append(f"#box: 0 {interface_y:.4f} 0 {DOMAIN_X} "
+                     f"{interface_y + t:.4f} 0.005 trans_mix")
+    lines.append(f"#fractal_box: 0 {subgrade_y:.4f} 0 {DOMAIN_X} {interface_y:.4f} 0.005 "
                  f"{p['frac_dim']:.3f} 1 1 1 20 fines fines_box {cand_seed}")
     if p["rough_amp"] >= 0.005:
-        lo = FOUL_Y[1] - p["rough_amp"]
-        hi = FOUL_Y[1] + p["rough_amp"]
-        lines.append(f"#add_surface_roughness: 0 {FOUL_Y[1]} 0 {DOMAIN_X} "
-                     f"{FOUL_Y[1]} 0.005 {p['frac_dim']:.3f} 1 1 "
+        lo = interface_y - p["rough_amp"]
+        hi = interface_y + p["rough_amp"]
+        lines.append(f"#add_surface_roughness: 0 {interface_y:.4f} 0 {DOMAIN_X} "
+                     f"{interface_y:.4f} 0.005 {p['frac_dim']:.3f} 1 1 "
                      f"{lo:.4f} {hi:.4f} fines_box {cand_seed}")
     for f in kept_foul:
         lines.extend(ln.replace(f["mat"], "bal_rock") for ln in f["lines"])
     for f in kept_clean:
-        lines.extend(f["lines"])
+        lines.extend(ln.replace(f["mat"], "bal_rock") for ln in f["lines"])
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"eps_rock": round(eps_rock, 3), "eps_m": round(eps_m, 2),
             "theta": round(theta, 3), "rf_clean_actual": round(a_clean / clean_area, 3),
@@ -405,12 +417,12 @@ def analyze() -> None:
 def spike() -> None:
     """3 extreme candidates end-to-end before committing the LHS."""
     cases = [
-        ("spike_lo", dict(rf_fouled=0.75, frac_dim=1.5, rough_amp=0.0,
-                          trans_th=0.0, clean_phi=0.15)),
-        ("spike_mid", dict(rf_fouled=0.60, frac_dim=2.2, rough_amp=0.04,
-                           trans_th=0.07, clean_phi=0.28)),
-        ("spike_hi", dict(rf_fouled=0.50, frac_dim=3.0, rough_amp=0.08,
-                          trans_th=0.15, clean_phi=0.40)),
+        ("spike_lo", dict(h_clean=0.40, h_foul=0.15, rf_fouled=0.75, frac_dim=1.5,
+                          rough_amp=0.0, trans_th=0.0, clean_phi=0.15)),
+        ("spike_mid", dict(h_clean=0.55, h_foul=0.30, rf_fouled=0.60, frac_dim=2.2,
+                           rough_amp=0.05, trans_th=0.10, clean_phi=0.28)),
+        ("spike_hi", dict(h_clean=0.70, h_foul=0.45, rf_fouled=0.50, frac_dim=3.0,
+                          rough_amp=0.10, trans_th=0.20, clean_phi=0.40)),
     ]
     tpl = SIM_DIR / f"tpl_{TEMPLATE_SEEDS[0]}.in"
     for name, p in cases:

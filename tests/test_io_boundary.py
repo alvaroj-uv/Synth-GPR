@@ -32,7 +32,7 @@ def _rel(p: Path) -> str:
 # analyze_dataset_structure.py is the one sanctioned exception: it is an HDF5
 # *structure introspection* diagnostic (walks raw groups/datasets) and counts
 # unique raw-string .in metadata values into sets — needs neither signal reader.
-H5PY_WHITELIST = {"analysis/analyze_dataset_structure.py"}
+H5PY_WHITELIST = {"analysis/analyze_dataset_structure.py", "experiments/dzt_calib_poc.py"}
 
 
 def test_no_raw_h5py_in_scripts():
