@@ -336,13 +336,17 @@ def generate_layers(args) -> int:
         source_waveform=str(src.get("waveform", "ricker")),
         source_amplitude=float(src.get("amplitude", 1.0)),
         source_polarization=str(src.get("polarization", "z")),
+        rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "mbubia_ballast")),
     )
+    ps["rock_packing_algorithm"] = "TOML" if "rock_packing_algorithm" in sim else "DEFAULT"
 
     print(f"\n{'='*70}\nN-LAYER MODE: Generate One .in File\n{'='*70}")
     print(f"Output File: {output_path}")
     print(f"Source: {'TOML ' + str(args.layers_file) if args.layers_file else 'inline --layers'}")
     print(f"Frequency: {params.freq_hz/1e6:.0f} MHz   Domain X: {params.domain_x} m   "
           f"Source waveform: {params.source_waveform}")
+    print(f"Rock packing algorithm: {params.rock_packing_algorithm} "
+          f"[{ps.get('rock_packing_algorithm', 'DEFAULT')}]")
     print(f"Layers (bottom -> top): {len(config.layers)}")
     for i, ly in enumerate(config.layers):
         kind = (f"PACKED rocks(eps={ly.rock_eps}) in matrix '{ly.matrix_name}'"

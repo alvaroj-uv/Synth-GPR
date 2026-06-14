@@ -53,6 +53,7 @@ class SceneParams:
     source_waveform: str = "ricker"
     source_amplitude: float = 1.0
     source_polarization: str = "z"
+    rock_packing_algorithm: str = "mbubia_ballast"  # packer for packed layers; "mbubia"/"mbubia_ballast" -> pymunk gravity settle
 
 
 def _git_sha() -> str:
@@ -121,6 +122,80 @@ def get_default_packer():
         return None
 
 
+def get_packer(algo: Optional[str]):
+    """Resolve a packing-algorithm name to a packer instance.
+
+    Mirrors the dispatch in warehouses.ToolWarehouse so the ``--layers-file``
+    pipeline honours ``[sim] rock_packing_algorithm`` exactly like the batch
+    pipeline. ``None``/``"mbubia"``/``"mbubia_ballast"`` -> pymunk gravity
+    settle (the historical default). Unknown names fall back to the default.
+    """
+    algo = (algo or "mbubia_ballast").lower()
+    if algo in ("mbubia", "mbubia_ballast", "pymunk", "default"):
+        return get_default_packer()
+    try:
+        from . import rock_packing as rp
+        _registry = {
+            "rsa": rp.RSAPacking,
+            "shang_chu": rp.ShangChuPacking,
+            "hybris_shang": rp.HybridShangPacking,
+            "front_chain": rp.FrontChainPacking,
+            "physics": rp.PhysicsPacking,
+            "triangle": rp.TrianglePacking,
+            "circlify": rp.CirclifyPacking,
+            "growth": rp.GrowthPacking,
+            "poisson": rp.PoissonDiskPacking,
+            "random": rp.RandomPacking,
+            "wang": rp.WangTileRockPacking,
+            "grid": rp.GridPacking,
+        }
+        cls = _registry.get(algo)
+        if cls is None:
+            print(f"[WARN] Unknown rock_packing_algorithm '{algo}'; using default pymunk packer")
+            return get_default_packer()
+        return cls()
+    except Exception as e:
+        print(f"[WARN] Could not build packer '{algo}' ({e}); using default pymunk packer")
+        return get_default_packer()
+
+
+def _call_generate_rocks(packer, bounds, seed):
+    """Call a packer's generate_rocks, adapting to the two interface families.
+
+    The pymunk packer accepts ``random_seed=`` and self-seeds deterministically.
+    The RockPackingStrategy family seeds via the global RNG and requires
+    radius_min/radius_max; we seed it explicitly and polygonise the circles so
+    the builder draws angular #triangle stones (comparable to the pymunk path).
+    """
+    import inspect
+    sig = inspect.signature(packer.generate_rocks)
+    if "random_seed" in sig.parameters:
+        return packer.generate_rocks(bounds, random_seed=seed)
+    # Strategy family: seed global RNG so the packing is reproducible.
+    import random as _random
+    if seed is not None:
+        _random.seed(seed)
+        try:
+            import numpy as _np
+            _np.random.seed(seed)
+        except Exception:
+            pass
+    rocks = packer.generate_rocks(
+        bounds,
+        radius_min=0.004,        # 8 mm min stone diameter
+        radius_max=0.025,        # 50 mm max stone diameter
+        target_fill_ratio=0.85,
+    )
+    # Give them angular shapes so they read like ballast (not bare circles).
+    try:
+        import numpy as _np
+        rng = _np.random.default_rng(seed)
+        packer.polygonize(rocks, rng=rng)
+    except Exception:
+        pass
+    return rocks
+
+
 def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
                       rock_id: str, seed: Optional[int] = None, packer: Optional[PackerProtocol] = None) -> tuple[int, list[str]]:
     """Fill [y0, y1] x [0, domain_x] with gravity-settled rocks using an injected packer.
@@ -138,7 +213,7 @@ def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
     bounds = PackingBounds(x_min=0.0, x_max=domain_x, y_min=y0, y_max=y1)
     cmds: list[str] = []
     radii: list[float] = []
-    for r in packer.generate_rocks(bounds, random_seed=seed):
+    for r in _call_generate_rocks(packer, bounds, seed):
         if r.radius <= 0:
             continue
         if r.is_polygon and len(r.vertices) >= 3:
@@ -246,6 +321,7 @@ def effective_toml(params: SceneParams, layers: List[Layer]) -> str:
     ]
     if params.seed is not None:
         out.append(f"seed = {params.seed}")
+    out.append(f'rock_packing_algorithm = "{params.rock_packing_algorithm}"')
     for ly in layers:
         out += ["", "[[layer]]", f'name = "{ly.name}"', f"thickness = {ly.thickness:g}"]
         if ly.packed:
@@ -321,6 +397,15 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     raw_commands = raw_commands or []
     param_sources = param_sources or {}
 
+    # Resolve the packer from the configured algorithm unless one was injected
+    # (tests inject a deterministic stub). This is what makes
+    # [sim] rock_packing_algorithm actually select the packing strategy.
+    if packer is None and any(ly.packed for ly in layers):
+        packer = get_packer(getattr(params, "rock_packing_algorithm", None))
+        print(f"[PACKER] rock_packing_algorithm = "
+              f"{getattr(params, 'rock_packing_algorithm', 'mbubia_ballast')} "
+              f"-> {type(packer).__name__ if packer else 'None'}")
+
     er_max = max(max(ly.eps, ly.rock_eps or 0.0) for ly in layers)
     any_packed = any(ly.packed for ly in layers)
     dx = params.dx if params.dx is not None else _derive_dx(params.freq_hz, er_max, any_packed)
@@ -382,12 +467,12 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
             if ly.packed:
                 y0_ballast = sum(layers[j].thickness for j in range(i))
                 y1_ballast = y0_ballast + ly.thickness
-                # Use injected/default packer to reconstruct rock positions for LabWorker
-                packer_to_use = packer or get_default_packer()
+                # Use the resolved/injected packer to reconstruct rock positions for LabWorker
+                packer_to_use = packer or get_packer(getattr(params, "rock_packing_algorithm", None))
                 if packer_to_use is not None:
                     from .rock_model import PackingBounds
                     bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)
-                    rock_positions = packer_to_use.generate_rocks(bounds, random_seed=params.seed)
+                    rock_positions = _call_generate_rocks(packer_to_use, bounds, params.seed)
                 break  # Only test first packed layer
 
         if rock_positions:

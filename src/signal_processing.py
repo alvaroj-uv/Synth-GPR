@@ -77,7 +77,12 @@ def peak_relative_coda_gate(signal: np.ndarray, dt: float,
     if n < 3:
         return np.zeros(n, dtype=bool), 0
 
-    peak_idx = int(np.argmax(np.abs(dewow(sig, dewow_window)))) if seek_peak else 0
+    if seek_peak:
+        dewowd_sig = dewow(sig, dewow_window)
+        # Use max amplitude on dewowd signal for peak detection (robust to low-freq noise)
+        peak_idx = int(np.argmax(np.abs(dewowd_sig)))
+    else:
+        peak_idx = 0
     t_ns = np.arange(n) * dt * 1e9
     start = t_ns[peak_idx] + start_after_peak_ns
     mask = (t_ns >= start) & (t_ns < start + length_ns)
@@ -344,38 +349,146 @@ def dewow(signal, window_size=50):
     low_freq = convolve(signal, window, mode='same')
     return signal - low_freq
 
-def detect_first_break(signal, threshold_ratio=0.05):
+def detect_first_break_coppens(signal, short_win=10, long_win=100, threshold=1.5):
     """
-    Detects the first break (onset) of the signal.
-    
+    Coppens algorithm for first-break picking (energy-ratio method).
+
+    Detects the onset by finding where the ratio of short-window energy to
+    trailing-window average energy crosses a threshold. More robust to noise than
+    simple amplitude thresholding, especially for field data.
+
+    The algorithm computes a short-window power and compares it to the
+    background (long-window average computed BEFORE the current position).
+
+    References:
+        Coppens, F. (1985). First arrivals picking on common offset trace collections
+        for automatic estimation of static corrections. Geophysical Prospecting 33(12).
+
+    Args:
+        signal (np.array): Input 1-D A-scan.
+        short_win (int): Short-time window length (samples). Typical: 5-20.
+        long_win (int): Long-time (background) window length (samples). Typical: 50-200.
+        threshold (float): Energy ratio threshold. Typical: 1.0-3.0.
+                          Coppens suggests 1.5-2.0 for field data.
+
+    Returns:
+        int: Sample index of first break; 0 if detection fails.
+    """
+    sig = np.asarray(signal, dtype=float)
+    n = len(sig)
+
+    if n < long_win + short_win:
+        return 0
+
+    # Squared amplitude (power)
+    power = sig ** 2
+
+    # Short-window energy (current window)
+    short_energy = np.convolve(power, np.ones(short_win) / short_win, mode='same')
+
+    # Long-window energy (background, trailing average)
+    long_energy = np.convolve(power, np.ones(long_win) / long_win, mode='same')
+
+    # Avoid division by zero
+    long_energy = np.maximum(long_energy, 1e-12 * np.max(power))
+
+    # Energy ratio: short_win_power / long_win_power
+    ratio = short_energy / long_energy
+
+    # Find first crossing above threshold, starting after the long_win to avoid edge effects
+    start_idx = long_win + short_win
+    candidates = np.where(ratio[start_idx:] > threshold)[0]
+
+    if len(candidates) > 0:
+        return int(candidates[0] + start_idx)
+
+    return 0
+
+
+def detect_first_break_sta_lta(signal, short_win=10, long_win=100, threshold=2.0):
+    """
+    STA/LTA (Short-Time Average / Long-Time Average) first-break picker.
+
+    Computes a running ratio of short-window RMS to long-window RMS. Onset is
+    where the ratio crosses the threshold. Standard in seismology; robust to
+    non-stationary noise.
+
+    Args:
+        signal (np.array): Input 1-D A-scan.
+        short_win (int): Short-time window length (samples). Typical: 5-20.
+        long_win (int): Long-time window length (samples). Typical: 50-200.
+        threshold (float): Ratio threshold. Typical: 1.5-3.0.
+
+    Returns:
+        int: Sample index of first break; 0 if detection fails.
+    """
+    sig = np.asarray(signal, dtype=float)
+    n = len(sig)
+
+    if n < long_win + short_win:
+        return 0
+
+    # RMS in short and long windows
+    short_rms = np.sqrt(np.convolve(sig ** 2, np.ones(short_win) / short_win, mode='same'))
+    long_rms  = np.sqrt(np.convolve(sig ** 2, np.ones(long_win) / long_win, mode='same'))
+
+    # Avoid division by zero
+    long_rms = np.maximum(long_rms, 1e-10)
+
+    ratio = short_rms / long_rms
+
+    candidates = np.where(ratio > threshold)[0]
+    if len(candidates) > 0:
+        return int(candidates[0])
+
+    return 0
+
+
+def detect_first_break(signal, method='coppens', threshold_ratio=0.05,
+                       coppens_short_win=10, coppens_long_win=100, coppens_threshold=3.0,
+                       sta_lta_short_win=10, sta_lta_long_win=100, sta_lta_threshold=2.0):
+    """
+    Unified first-break detector supporting multiple algorithms.
+
     Args:
         signal (np.array): Input signal.
-        threshold_ratio (float): Threshold as a ratio of maximum amplitude (default 0.05).
-        
+        method (str): 'coppens' (default, recommended), 'sta_lta', or 'threshold'.
+        threshold_ratio (float): For method='threshold' only; ratio of max amplitude.
+        coppens_short_win, coppens_long_win, coppens_threshold: Coppens parameters.
+        sta_lta_short_win, sta_lta_long_win, sta_lta_threshold: STA/LTA parameters.
+
     Returns:
         int: Index of the first break.
+
+    Examples:
+        fb_idx = detect_first_break(signal, method='coppens')
+        fb_idx = detect_first_break(signal, method='sta_lta', sta_lta_threshold=2.5)
+        fb_idx = detect_first_break(signal, method='threshold', threshold_ratio=0.1)
     """
-    # 1. Calculate absolute amplitude
-    abs_sig = np.abs(signal)
-    max_amp = np.max(abs_sig)
-    
-    if max_amp == 0:
+    if method == 'coppens':
+        return detect_first_break_coppens(signal, coppens_short_win, coppens_long_win, coppens_threshold)
+
+    elif method == 'sta_lta':
+        return detect_first_break_sta_lta(signal, sta_lta_short_win, sta_lta_long_win, sta_lta_threshold)
+
+    elif method == 'threshold':
+        # Original simple amplitude-threshold method
+        abs_sig = np.abs(signal)
+        max_amp = np.max(abs_sig)
+
+        if max_amp == 0:
+            return 0
+
+        threshold = max_amp * threshold_ratio
+        idx_over = np.where(abs_sig > threshold)[0]
+
+        if len(idx_over) > 0:
+            return int(idx_over[0])
         return 0
-        
-    # 2. Threshold
-    threshold = max_amp * threshold_ratio
-    
-    # 3. Find first crossing
-    # Use a simple STA/LTA or just first crossing of threshold?
-    # RGPR simple method: first time > threshold
-    idx_over = np.where(abs_sig > threshold)[0]
-    
-    if len(idx_over) > 0:
-        first_idx = idx_over[0]
-        # Optional: Backtrack to zero crossing for more precision?
-        # For now, just the threshold crossing is robust enough for visual alignment.
-        return first_idx
-    return 0
+
+    else:
+        raise ValueError(f"Unknown first-break method '{method}'. "
+                         f"Choose 'coppens', 'sta_lta', or 'threshold'.")
 
 def time_zero_correction(signal, first_break_idx):
     """
@@ -474,6 +587,7 @@ def preprocess_signal(
     use_gain=False,
     gain_params=None,
     use_time_zero=True,
+    first_break_method="sta_lta",
     direct_wave_removal="time_gate",
     direct_wave_kwargs=None,
 ):
@@ -490,6 +604,8 @@ def preprocess_signal(
         use_gain:              Apply time-varying gain after filtering.
         gain_params:           Dict for gain, e.g. {'type': 'power', 'alpha': 1.0}.
         use_time_zero:         Shift trace so first break is at sample 0.
+        first_break_method:    Method for first-break picking: 'sta_lta' (default, robust),
+                               'coppens' (energy ratio), or 'threshold' (simple).
         direct_wave_removal:   **DEFAULT: 'time_gate'** (single-trace, antenna-height
                                based). Alternatives: 'background_subtraction' (requires
                                B-scan mean via `direct_wave_kwargs`), or None to disable.
@@ -529,8 +645,8 @@ def preprocess_signal(
         treated_signal = treated_signal - np.mean(treated_signal)
     
     # 2. Time-Zero Correction (Find Zero)
-    # RGPR Approach: First Break Picking
-    fb_idx = detect_first_break(treated_signal)
+    # First-break detection: STA/LTA by default (more robust than Coppens)
+    fb_idx = detect_first_break(treated_signal, method=first_break_method)
     start_idx = fb_idx
     
     if use_time_zero:
