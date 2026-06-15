@@ -336,12 +336,17 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
         layer_interface_y: Optional[float] = None,
         randomize_rock_materials: bool = False,
         random_material_pool: Optional[List[str]] = None,
+        settle_time: float = 2.0,
     ):
         self.scene_name         = scene_name
         self.upper_material     = upper_material
         self.lower_material     = lower_material
         self.output_dir         = Path(output_dir) if output_dir is not None else None
         self.verbose            = verbose
+        # Gravity-settle duration (s). Lower -> looser pack (higher porosity):
+        # ~0.1 gives phi~0.40, the 2-D-equivalent of field ballast void (Brancadoro);
+        # default 2.0 settles dense (phi~0.12). See generate_rocks.
+        self.settle_time        = settle_time
         self.randomize_rock_materials = randomize_rock_materials
         # Caller provides the pool so this class stays EM-agnostic
         self.random_material_pool = random_material_pool or [upper_material, lower_material]
@@ -384,7 +389,7 @@ class MbubiaPymunkSceneGenerator(RockPackingStrategy):
         )
         rng = np.random.default_rng(random_seed)
         circle_array = sim.run(
-            running_time=2.0, time_step=PHC.GRAVITY_SETTLE_TIME_STEP,
+            running_time=self.settle_time, time_step=PHC.GRAVITY_SETTLE_TIME_STEP,
             display=False, random_seed=random_seed,
         )
         circle_array[:, 0] += bounds.x_min

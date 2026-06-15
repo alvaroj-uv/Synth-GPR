@@ -54,6 +54,7 @@ class SceneParams:
     source_amplitude: float = 1.0
     source_polarization: str = "z"
     rock_packing_algorithm: str = "mbubia_ballast"  # packer for packed layers; "mbubia"/"mbubia_ballast" -> pymunk gravity settle
+    mbubia_settle_time: Optional[float] = None  # mbubia gravity-settle seconds; None -> packer default (2.0, phi~0.12). ~0.1 -> phi~0.40
 
 
 def _git_sha() -> str:
@@ -109,30 +110,34 @@ class PackerProtocol(Protocol):
     """
 
 
-def get_default_packer():
+def get_default_packer(settle_time: Optional[float] = None):
     """Lazily import and instantiate the existing MbubiaPymunkSceneGenerator.
 
     Keeps the heavy dependency (pymunk/pygame) out of the import path until
     actually needed; callers can inject a test/deterministic packer for unit tests.
+    ``settle_time`` (s) overrides the gravity-settle duration: None -> packer
+    default (2.0, phi~0.12); ~0.1 -> looser phi~0.40.
     """
     try:
         from .pymunk_packing import MbubiaPymunkSceneGenerator
-        return MbubiaPymunkSceneGenerator(scene_name="layer_pack", upper_material="clean_ballast", verbose=False)
+        kw = {} if settle_time is None else {"settle_time": float(settle_time)}
+        return MbubiaPymunkSceneGenerator(scene_name="layer_pack", upper_material="clean_ballast", verbose=False, **kw)
     except Exception:
         return None
 
 
-def get_packer(algo: Optional[str]):
+def get_packer(algo: Optional[str], settle_time: Optional[float] = None):
     """Resolve a packing-algorithm name to a packer instance.
 
     Mirrors the dispatch in warehouses.ToolWarehouse so the ``--layers-file``
     pipeline honours ``[sim] rock_packing_algorithm`` exactly like the batch
     pipeline. ``None``/``"mbubia"``/``"mbubia_ballast"`` -> pymunk gravity
     settle (the historical default). Unknown names fall back to the default.
+    ``settle_time`` only affects the mbubia (pymunk) packer.
     """
     algo = (algo or "mbubia_ballast").lower()
     if algo in ("mbubia", "mbubia_ballast", "pymunk", "default"):
-        return get_default_packer()
+        return get_default_packer(settle_time)
     try:
         from . import rock_packing as rp
         _registry = {
@@ -152,11 +157,11 @@ def get_packer(algo: Optional[str]):
         cls = _registry.get(algo)
         if cls is None:
             print(f"[WARN] Unknown rock_packing_algorithm '{algo}'; using default pymunk packer")
-            return get_default_packer()
+            return get_default_packer(settle_time)
         return cls()
     except Exception as e:
         print(f"[WARN] Could not build packer '{algo}' ({e}); using default pymunk packer")
-        return get_default_packer()
+        return get_default_packer(settle_time)
 
 
 def _call_generate_rocks(packer, bounds, seed):
@@ -312,6 +317,34 @@ def _run_lab_worker(y0_ballast: float, y1_ballast: float, domain_x: float, domai
         return {}
 
 
+def _geometry_fouling_label(layers: List[Layer]) -> dict:
+    """Authoritative fouling label derived from the packed-layer stack geometry.
+
+    ``%FH = H_FB / H_BT`` (fouled ballast height / total ballast height) — the
+    SAME definition the real pandoscope labels use (Rojas-Vivanco 2025, eq. 8).
+    A packed ballast sublayer counts as fouled when its inter-rock matrix is a
+    fouling material (i.e. not air/free_space). FI is taken from the medium
+    compaction curve so synthetic labels stay definition-consistent with the
+    real data (labelled with ``FI_T_Medium`` regardless of packing density;
+    the 2-D packer's geometric porosity is an artefact, not the field state).
+
+    Needed because LabWorker's single-column virtual LDCP cannot see the
+    fouled/clean *height* split in a two-sublayer scene — it reports FH=0%.
+
+    Returns {} when there is no packed ballast layer.
+    """
+    packed = [ly for ly in layers if ly.packed]
+    if not packed:
+        return {}
+    total = sum(ly.thickness for ly in packed)
+    fouled = sum(ly.thickness for ly in packed
+                 if ly.matrix_name not in ("free_space", "air"))
+    fh_pct = 100.0 * fouled / total if total > 0 else 0.0
+    from .physics import fi_from_fouling_height, classify_fouling_index
+    fi = fi_from_fouling_height(fh_pct)          # porosity=None -> medium curve
+    return {"FH_pct": fh_pct, "FI": fi, "Class": classify_fouling_index(fi)}
+
+
 def effective_toml(params: SceneParams, layers: List[Layer]) -> str:
     """Serialize the effective config to TOML (for embedding when run inline)."""
     out = [
@@ -372,14 +405,15 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
     # Add antenna position to GEOMETRY section
     lines += [f"## Antenna position: y={antenna_y:.3f} m (above surface at {subsurface_top:.3f} m)"]
 
-    # Add ballast layer bounds for visualization
-    y_bottom = 0.0
-    for ly in layers:
-        if ly.packed:
-            y_top = y_bottom + ly.thickness
-            lines += [f"## Ballast layer: y=[{y_bottom:.3f}, {y_top:.3f}] m  (packed rocks)"]
-            break
-        y_bottom += ly.thickness
+    # Add ballast layer bounds for visualization (full packed stack, bottom->top)
+    packed_spans = [
+        (sum(layers[j].thickness for j in range(i)),
+         sum(layers[j].thickness for j in range(i)) + ly.thickness)
+        for i, ly in enumerate(layers) if ly.packed
+    ]
+    if packed_spans:
+        lines += [f"## Ballast layer: y=[{packed_spans[0][0]:.3f}, "
+                  f"{packed_spans[-1][1]:.3f}] m  (packed rocks)"]
 
     if scenario:
         lines += ["", "==== SCENARIO (target) ===="]
@@ -433,9 +467,10 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     # injected packer (tests) wins for every layer to keep stubs deterministic.
     _injected = packer is not None
     _scene_algo = getattr(params, "rock_packing_algorithm", None)
+    _settle = getattr(params, "mbubia_settle_time", None)
     _default_packer = packer
     if not _injected and any(ly.packed for ly in layers):
-        _default_packer = get_packer(_scene_algo)
+        _default_packer = get_packer(_scene_algo, _settle)
         print(f"[PACKER] scene default rock_packing_algorithm = "
               f"{_scene_algo or 'mbubia_ballast'} "
               f"-> {type(_default_packer).__name__ if _default_packer else 'None'}")
@@ -449,7 +484,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
         algo = ly.rock_packing_algorithm
         if algo:
             if algo not in _packer_cache:
-                p = get_packer(algo)
+                p = get_packer(algo, _settle)
                 _packer_cache[algo] = p
                 print(f"[PACKER] layer '{ly.name}' rock_packing_algorithm = "
                       f"{algo} -> {type(p).__name__ if p else 'None'}")
@@ -509,26 +544,44 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
             box_info.append((box_id, y0, y1, f"layer '{ly.name}'"))
         y0 = y1
 
-    # Run LabWorker virtual lab test on the packed ballast layer (if any)
+    # Run LabWorker virtual lab test over the FULL packed ballast stack (if any).
+    # NB: span every packed sublayer (a fouled bottom + clean top are TWO packed
+    # layers) so porosity/qs reflect the whole ballast, not just the first layer.
     if not computed_lab and any(ly.packed for ly in layers):
-        # Collect rock positions from packed layers
+        packed_idx = [i for i, ly in enumerate(layers) if ly.packed]
+        y0_ballast = sum(layers[j].thickness for j in range(packed_idx[0]))
+        y1_ballast = sum(layers[j].thickness for j in range(packed_idx[-1] + 1))
         rock_positions = []
-        for i, ly in enumerate(layers):
-            if ly.packed:
-                y0_ballast = sum(layers[j].thickness for j in range(i))
-                y1_ballast = y0_ballast + ly.thickness
-                # Use the same per-layer packer for LabWorker rock reconstruction
-                packer_to_use = _layer_packer(ly)
-                if packer_to_use is not None:
-                    from .rock_model import PackingBounds
-                    bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)
-                    rock_positions = _call_generate_rocks(packer_to_use, bounds, params.seed)
-                break  # Only test first packed layer
+        for i in packed_idx:
+            ly = layers[i]
+            packer_to_use = _layer_packer(ly)
+            if packer_to_use is not None:
+                from .rock_model import PackingBounds
+                ly0 = sum(layers[j].thickness for j in range(i))
+                ly1 = ly0 + ly.thickness
+                bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=ly0, y_max=ly1)
+                rock_positions += _call_generate_rocks(packer_to_use, bounds, params.seed)
 
         if rock_positions:
-            # Collect geometry for LabWorker
             geom_cmds = box_lines  # Background boxes
             computed_lab = _run_lab_worker(y0_ballast, y1_ballast, params.domain_x, domain_y, rock_positions, geom_cmds)
+
+    # Override the fouling label with the geometry-derived truth. LabWorker's
+    # single-column LDCP reports FH=0% for two-sublayer scenes; the matrix
+    # composition of the packed stack is the authoritative %FH (see
+    # _geometry_fouling_label). Keeps LabWorker's porosity/PSD/qs fields intact.
+    geo = _geometry_fouling_label(layers)
+    if geo:
+        if not isinstance(computed_lab, dict):
+            computed_lab = {}
+        computed_lab["FH"] = f"{geo['FH_pct']:.1f}%"
+        computed_lab["FI"] = f"{geo['FI']:.1f}"
+        computed_lab["Class"] = geo["Class"]
+        full = computed_lab.setdefault("_full", {})
+        full["Lab_LDCP_FH"] = round(geo["FH_pct"], 1)
+        full["Lab_FI"] = round(geo["FI"], 1)
+        full["Lab_Class"] = geo["Class"]
+        full["FI_class"] = geo["Class"]
 
     header = _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
                            time_window, rock_count, param_sources, scenario=scenario, computed_lab=computed_lab)

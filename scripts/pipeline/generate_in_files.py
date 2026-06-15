@@ -316,6 +316,7 @@ def _scene_params_from_config(config):
         source_amplitude=float(src.get("amplitude", 1.0)),
         source_polarization=str(src.get("polarization", "z")),
         rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "mbubia_ballast")),
+        mbubia_settle_time=float(sim["mbubia_settle_time"]) if "mbubia_settle_time" in sim else None,
     )
     ps = {k: "TOML" for k in ("center_freq_hz", "domain_x", "dx", "rx_spacing",
                               "antenna_clearance", "air_buffer", "rock_packing_algorithm")}

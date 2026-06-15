@@ -77,14 +77,28 @@ def metrics(y_true, y_pred):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Sim->real with block regularization")
+    ap.add_argument("--syn-parquet", type=Path, default=SYN_PARQUET,
+                    help="synthetic feature parquet to train on")
+    ap.add_argument("--syn-fi-csv", type=Path, default=None,
+                    help="CSV (cols id,fi) of continuous FI per synthetic sample; "
+                         "if omitted, Lab_FI is read from FI_PARQUET")
+    ap.add_argument("--report", type=Path, default=REPORT)
+    args = ap.parse_args()
+
     lines = []
 
     def log(m=""):
         print(m); lines.append(m)
 
-    # --- train RF on synthetic (coda-aligned, notebook bins) ---
-    syn = load_features(SYN_PARQUET)
-    fi_map = load_features(FI_PARQUET, columns=["sample_id", "Lab_FI"])
+    # --- train RF on synthetic (notebook bins on continuous FI) ---
+    syn = load_features(args.syn_parquet)
+    if args.syn_fi_csv:
+        fi_map = pd.read_csv(args.syn_fi_csv)[["id", "fi"]].rename(
+            columns={"id": "sample_id", "fi": "Lab_FI"})
+    else:
+        fi_map = load_features(FI_PARQUET, columns=["sample_id", "Lab_FI"])
     syn = syn.merge(fi_map, on="sample_id", how="inner")
 
     real = pd.read_csv(REAL_CSV)
@@ -136,8 +150,8 @@ def main():
     log("in traces, not 20 m. Direction of effect (regularization helps) is what")
     log("matters; absolute K is not metric-comparable to the paper's 20 m.")
 
-    REPORT.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nReport saved -> {REPORT}")
+    args.report.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nReport saved -> {args.report}")
 
 
 if __name__ == "__main__":

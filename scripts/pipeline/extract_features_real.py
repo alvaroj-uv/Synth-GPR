@@ -49,20 +49,30 @@ _spec.loader.exec_module(_coda_mod)
 coda_window = _coda_mod.coda_window
 
 INPUT_DIR = ROOT / "docs" / "input"
-SIGNALS_CSV = INPUT_DIR / "Señales_Tratadas" / "df_Signaux_traitees_S1.csv"
-MED_CSV = INPUT_DIR / "Mediciones_FI" / "df_pandoscope_med.csv"
+# Real-data tables ship as .pkl; older exports were .csv. Resolve either.
+SIGNALS_BASE = INPUT_DIR / "Señales_Tratadas" / "df_Signaux_traitees_S1"
+MED_BASE = INPUT_DIR / "Mediciones_FI" / "df_pandoscope_med"
 OUTPUT_CSV = INPUT_DIR / "feature_dataset_real.csv"
 
 PLACEHOLDER_FI = 0.4933  # sentinel value for missing measurement
 
 
-def load_wide_signals(signals_csv: Path) -> pd.DataFrame:
+def _read_table(base_no_ext: Path) -> pd.DataFrame:
+    """Read a real-data table, preferring .pkl over .csv."""
+    pkl, csv = base_no_ext.with_suffix(".pkl"), base_no_ext.with_suffix(".csv")
+    if pkl.exists():
+        return pd.read_pickle(pkl)
+    if csv.exists():
+        return pd.read_csv(csv)
+    raise FileNotFoundError(f"Missing {pkl} (or {csv})")
+
+
+def load_wide_signals(long: pd.DataFrame) -> pd.DataFrame:
     """
     Convert the long-format processed traces (Time, GPR, ID) into the WIDE
     format expected by extract_features: one 'Time' column + one column per
     trace (named by ID), aligned on the shared sample-index axis.
     """
-    long = pd.read_csv(signals_csv)
     # Pivot: index=Time (sample idx), columns=ID, values=GPR amplitude
     wide = long.pivot(index="Time", columns="ID", values="GPR")
     wide = wide.sort_index()
@@ -75,13 +85,8 @@ def load_wide_signals(signals_csv: Path) -> pd.DataFrame:
 
 
 def main():
-    if not SIGNALS_CSV.exists():
-        raise FileNotFoundError(f"Missing {SIGNALS_CSV}")
-    if not MED_CSV.exists():
-        raise FileNotFoundError(f"Missing {MED_CSV}")
-
-    print(f"Loading processed traces: {SIGNALS_CSV.name}")
-    wide = load_wide_signals(SIGNALS_CSV)
+    print(f"Loading processed traces: {SIGNALS_BASE.name}")
+    wide = load_wide_signals(_read_table(SIGNALS_BASE))
     n_traces = wide.shape[1] - 1
     print(f"  {n_traces} traces x {wide.shape[0]} samples (sample axis)")
 
@@ -113,7 +118,7 @@ def main():
     feats = feats.drop(columns=["Signal"])
 
     # Merge with real FI labels
-    med = pd.read_csv(MED_CSV)[["ID", "FI_Estimado_Medio_JRO_Final"]]
+    med = _read_table(MED_BASE)[["ID", "FI_Estimado_Medio_JRO_Final"]]
     med = med.rename(columns={"FI_Estimado_Medio_JRO_Final": "FI"})
 
     df = feats.merge(med, on="ID", how="inner")

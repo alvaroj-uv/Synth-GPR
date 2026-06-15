@@ -39,14 +39,22 @@ def _parse_args():
 
 
 def _label_from_header(in_path: Path) -> str | None:
-    """Read FI_class from .in header (## FI_class: XX)."""
+    """Read FI_class from .in header (## FI_class: XX).
+
+    Scans the whole comment header (skipping blank lines and ``==== ... ====``
+    section separators used by the layers-mode header) and stops only at the
+    first real gprMax command (``#cmd`` but not ``##``). The canonical
+    dataset header keeps FI_class in a contiguous ## block, so first-match
+    works for both formats.
+    """
     try:
         with open(in_path, encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if not line.startswith("##"):
-                    break
-                if line.startswith("## FI_class:"):
-                    return line.split(":", 1)[1].strip()
+                s = line.strip()
+                if s.startswith("## FI_class:"):
+                    return s.split(":", 1)[1].strip()
+                if s.startswith("#") and not s.startswith("##"):
+                    break  # header is over, geometry deck begins
     except OSError:
         pass
     return None
