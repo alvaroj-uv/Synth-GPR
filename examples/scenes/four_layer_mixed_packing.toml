@@ -1,0 +1,44 @@
+# 4 packed layers, each with a DIFFERENT rock packing algorithm.
+[sim]
+title      = "4-layer mixed packing"
+freq_hz    = 400e6
+domain_x   = 1.0
+rx_spacing = 0.0
+seed       = 42
+# no scene-level rock_packing_algorithm needed: every layer pins its own
+
+[[layer]]
+name                   = "layer_circlify"
+thickness              = 0.15
+packed                 = true
+rock_eps               = 4.0
+rock_sigma             = 0.001
+matrix                 = "fouling"
+rock_packing_algorithm = "circlify"
+
+[[layer]]
+name                   = "layer_rsa"
+thickness              = 0.15
+packed                 = true
+rock_eps               = 4.0
+rock_sigma             = 0.001
+matrix                 = "fouling"
+rock_packing_algorithm = "rsa"
+
+[[layer]]
+name                   = "layer_shang_chu"
+thickness              = 0.15
+packed                 = true
+rock_eps               = 4.0
+rock_sigma             = 0.001
+matrix                 = "free_space"
+rock_packing_algorithm = "shang_chu"
+
+[[layer]]
+name                   = "layer_front_chain"
+thickness              = 0.15
+packed                 = true
+rock_eps               = 4.0
+rock_sigma             = 0.001
+matrix                 = "free_space"
+rock_packing_algorithm = "front_chain"
