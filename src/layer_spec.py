@@ -70,6 +70,9 @@ class Layer:
     rock_sigma: Optional[float] = None
     rock_name: str = "bal_rock"
     matrix_name: str = DEFAULT_PACKED_MATRIX
+    # Per-layer rock packing algorithm (packed layers only). None -> fall back to
+    # the scene-level [sim].rock_packing_algorithm / builder default.
+    rock_packing_algorithm: Optional[str] = None
 
     def validate(self) -> None:
         if self.thickness <= 0:
@@ -163,6 +166,69 @@ def parse_layers(spec: str) -> List[Layer]:
     return layers
 
 
+def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
+    """Build one Layer from a [[layer]] TOML table with full per-layer control.
+
+    Recognised keys (all optional except name/thickness):
+      name, thickness                         — required
+      eps, sigma                              — flat layer: box material;
+                                                packed layer: rock material if
+                                                rock_eps/rock_sigma absent
+      packed = true                           — fill the layer with rocks
+      rock_eps, rock_sigma                    — explicit rock material (packed)
+      matrix                                  — named matrix material (packed)
+      matrix_eps, matrix_sigma               — explicit matrix material (packed)
+      rock_packing_algorithm                  — per-layer packer (packed)
+
+    Named materials (NAMED_MATERIALS) are used as fallbacks when a value is
+    omitted, so terse specs keep working.
+    """
+    name = str(obj["name"])
+    thickness = float(obj["thickness"])
+    packed = bool(obj.get("packed", False))
+    algo = obj.get("rock_packing_algorithm")
+    algo = str(algo).lower() if algo else None
+
+    if not packed:
+        if algo is not None:
+            raise ValueError(
+                f"[[layer]] #{idx} '{name}': rock_packing_algorithm given on a "
+                f"non-packed layer (add packed = true)."
+            )
+        eps, sigma = obj.get("eps"), obj.get("sigma")
+        if eps is None or sigma is None:
+            reps, rsig = _resolve_named(name)
+            eps = reps if eps is None else float(eps)
+            sigma = rsig if sigma is None else float(sigma)
+        return Layer(name=name, thickness=thickness, eps=float(eps), sigma=float(sigma))
+
+    # --- packed layer: resolve ROCK material then MATRIX material ---
+    rock_eps = obj.get("rock_eps", obj.get("eps"))
+    rock_sigma = obj.get("rock_sigma", obj.get("sigma"))
+    if rock_eps is None or rock_sigma is None:
+        reps, rsig = _resolve_named(name)
+        rock_eps = reps if rock_eps is None else float(rock_eps)
+        rock_sigma = rsig if rock_sigma is None else float(rock_sigma)
+
+    if "matrix_eps" in obj or "matrix_sigma" in obj:
+        meps = float(obj["matrix_eps"])
+        msig = float(obj.get("matrix_sigma", 0.0))
+        matrix_name = str(obj.get("matrix", f"{name}_matrix")).strip().lower()
+    else:
+        matrix_name = str(obj.get("matrix", DEFAULT_PACKED_MATRIX)).strip().lower()
+        meps, msig = _resolve_named(matrix_name)
+
+    return Layer(
+        name=name, thickness=thickness,
+        eps=float(meps), sigma=float(msig),               # matrix/voids
+        packed=True,
+        rock_eps=float(rock_eps), rock_sigma=float(rock_sigma),  # rocks
+        rock_name=f"{name}_rock" if name not in ("ballast", "bal_rock") else "bal_rock",
+        matrix_name=matrix_name,
+        rock_packing_algorithm=algo,
+    )
+
+
 def _layers_from_table(table) -> List[Layer]:
     """Build + validate the layer stack from an array of [[layer]] tables."""
     if not isinstance(table, list) or not table:
@@ -173,14 +239,7 @@ def _layers_from_table(table) -> List[Layer]:
     for i, obj in enumerate(table):
         if "name" not in obj or "thickness" not in obj:
             raise ValueError(f"[[layer]] #{i}: requires 'name' and 'thickness'")
-        layers.append(_layer_from_fields(
-            name=obj["name"],
-            thickness=float(obj["thickness"]),
-            eps=obj.get("eps"),
-            sigma=obj.get("sigma"),
-            packed=bool(obj.get("packed", False)),
-            matrix=obj.get("matrix"),
-        ))
+        layers.append(_layer_from_table_obj(obj, i))
     _validate_stack(layers)
     return layers
 

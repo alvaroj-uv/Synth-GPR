@@ -1,0 +1,20 @@
+# Tiny per-class dataset smoke test — TOML-only generate_in_files.py
+# Run: generate_in_files.py examples/configs/batch_smoke.toml -o out_dir/
+[job]
+mode = "batch"
+
+[sim]
+freq_hz                = 400e6
+rock_packing_algorithm = "circlify"
+rock_psd_type          = "uniform"
+num_rx                 = 1
+rx_spacing             = 0.05
+angular                = true
+sides                  = 6
+seed                   = 42
+
+[batch]
+labels       = ["CL", "F"]
+n_per_label  = 1
+start_id     = 9000
+moisture_max = 0.15

@@ -1,0 +1,30 @@
+# single mode over an arbitrary [[layer]] stack -> dataset-format .in
+[job]
+mode = "single"
+
+[sim]
+freq_hz                = 400e6
+domain_x               = 1.0
+rx_spacing             = 0.0
+seed                   = 42
+rock_packing_algorithm = "circlify"
+
+[[layer]]
+name = "subgrade"
+thickness = 0.20
+eps = 9.0
+sigma = 0.025
+
+[[layer]]
+name = "formation"
+thickness = 0.10
+eps = 10.0
+sigma = 0.03
+
+[[layer]]
+name = "ballast"
+thickness = 0.25
+packed = true
+rock_eps = 4.0
+rock_sigma = 0.001
+matrix = "fouling"

@@ -298,6 +298,14 @@ def _run_lab_worker(y0_ballast: float, y1_ballast: float, domain_x: float, domai
         if 'Lab_Porosity' in scene.metadata:
             results['porosity'] = f"{scene.metadata['Lab_Porosity']:.3f}"
 
+        # Full LabWorker metadata for the dataset-format header. Drop the two
+        # bookkeeping inputs we seeded; expose FI_class (= measured Lab_Class) so
+        # the .in carries the same label key the training pipeline reads.
+        full = {k: v for k, v in scene.metadata.items()
+                if k not in ("ballast_bottom_y", "ballast_top_y")}
+        if 'Lab_Class' in scene.metadata and 'FI_class' not in full:
+            full['FI_class'] = scene.metadata['Lab_Class']
+        results['_full'] = full
         return results
     except Exception as e:
         print(f"[WARN] LabWorker failed: {e}")
@@ -379,9 +387,32 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
             lines.append(f"## {k}: {v}")
 
     if computed_lab:
+        full = computed_lab.get("_full") if isinstance(computed_lab, dict) else None
         lines += ["", "==== COMPUTED LAB ===="]
         for k, v in computed_lab.items():
+            if k == "_full":
+                continue
             lines.append(f"## {k}: {v}")
+        # Full dataset-format label set — same keys (FI_class, Lab_FI, Lab_P4,
+        # Lab_P200, Lab_PSD, mc_*, ...) the training/feature pipeline reads from
+        # the canonical GPRMaxFileWriter header.
+        if full:
+            lines += ["", "==== DATASET LABELS (LabWorker) ===="]
+            for k, v in full.items():
+                lines.append(f"## {k}: {v}")
+
+    # CONFIG_* replication block (mirrors the canonical dataset header keys).
+    lines += ["", "==== CONFIG (replication) ===="]
+    lines.append(f"## CONFIG_center_freq_hz: {params.freq_hz:g}")
+    lines.append(f"## CONFIG_rock_packing_algorithm: {params.rock_packing_algorithm}")
+    if params.seed is not None:
+        lines.append(f"## CONFIG_base_seed: {params.seed}")
+    lines.append(f"## CONFIG_domain_x: {params.domain_x:g}")
+    # Per-layer packing overrides (when any packed layer pins its own algorithm).
+    per_layer_algos = {ly.name: ly.rock_packing_algorithm
+                       for ly in layers if ly.packed and ly.rock_packing_algorithm}
+    for nm, algo in per_layer_algos.items():
+        lines.append(f"## CONFIG_layer_packing[{nm}]: {algo}")
 
     return lines
 
@@ -397,14 +428,33 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     raw_commands = raw_commands or []
     param_sources = param_sources or {}
 
-    # Resolve the packer from the configured algorithm unless one was injected
-    # (tests inject a deterministic stub). This is what makes
-    # [sim] rock_packing_algorithm actually select the packing strategy.
-    if packer is None and any(ly.packed for ly in layers):
-        packer = get_packer(getattr(params, "rock_packing_algorithm", None))
-        print(f"[PACKER] rock_packing_algorithm = "
-              f"{getattr(params, 'rock_packing_algorithm', 'mbubia_ballast')} "
-              f"-> {type(packer).__name__ if packer else 'None'}")
+    # Per-layer packer selection. The scene-level [sim] rock_packing_algorithm is
+    # the DEFAULT; a packed layer's own rock_packing_algorithm overrides it. An
+    # injected packer (tests) wins for every layer to keep stubs deterministic.
+    _injected = packer is not None
+    _scene_algo = getattr(params, "rock_packing_algorithm", None)
+    _default_packer = packer
+    if not _injected and any(ly.packed for ly in layers):
+        _default_packer = get_packer(_scene_algo)
+        print(f"[PACKER] scene default rock_packing_algorithm = "
+              f"{_scene_algo or 'mbubia_ballast'} "
+              f"-> {type(_default_packer).__name__ if _default_packer else 'None'}")
+
+    _packer_cache: dict[str, object] = {}
+
+    def _layer_packer(ly: Layer):
+        """Packer for one layer: injected > per-layer algo > scene default."""
+        if _injected:
+            return _default_packer
+        algo = ly.rock_packing_algorithm
+        if algo:
+            if algo not in _packer_cache:
+                p = get_packer(algo)
+                _packer_cache[algo] = p
+                print(f"[PACKER] layer '{ly.name}' rock_packing_algorithm = "
+                      f"{algo} -> {type(p).__name__ if p else 'None'}")
+            return _packer_cache[algo]
+        return _default_packer
 
     er_max = max(max(ly.eps, ly.rock_eps or 0.0) for ly in layers)
     any_packed = any(ly.packed for ly in layers)
@@ -450,7 +500,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
                 box_lines.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, matrix_id).get_cmd_string())
                 box_info.append((matrix_id, y0, y1, f"matrix for packed '{ly.name}'"))
             rock_id = id_map[(i, "rock")]
-            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed, packer=packer)
+            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed, packer=_layer_packer(ly))
             rock_count += stats["n"]
             rock_sections.append((ly.name, y0, y1, stats, rock_id, ly.rock_eps, matrix_id, cmds))
         else:
@@ -467,8 +517,8 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
             if ly.packed:
                 y0_ballast = sum(layers[j].thickness for j in range(i))
                 y1_ballast = y0_ballast + ly.thickness
-                # Use the resolved/injected packer to reconstruct rock positions for LabWorker
-                packer_to_use = packer or get_packer(getattr(params, "rock_packing_algorithm", None))
+                # Use the same per-layer packer for LabWorker rock reconstruction
+                packer_to_use = _layer_packer(ly)
                 if packer_to_use is not None:
                     from .rock_model import PackingBounds
                     bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=y0_ballast, y_max=y1_ballast)

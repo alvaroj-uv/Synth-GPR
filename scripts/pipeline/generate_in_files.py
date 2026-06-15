@@ -1,37 +1,46 @@
 #!/usr/bin/env python3
 """
-Unified .in file generator for GPR simulations.
+TOML-driven .in file generator for GPR simulations.
 
-Consolidates functionality of:
-- generate_dataset.py (batch generation)
-- generate_angular_rocks_400MHz.py (angular rocks specialist)
-- generate_single_in_file.py (single file creation)
+The TOML config is the SOLE source of truth — there are NO scene-config CLI
+flags. The only command-line inputs are the config path and an optional output
+override (``-o``). This guarantees one unambiguous configuration per run.
 
-Supports two modes:
-1. Batch: Generate N samples per fouling class
-2. Single: Generate one .in file with optional PNG visualization
+A single config selects what to generate via ``[job].mode`` (or auto-detection
+from the sections present):
+
+    mode = "batch"   -> per-class dataset (N samples/class)  ([sim] + [batch])
+    mode = "single"  -> one sampled .in file                 ([sim] + [single])
+    mode = "layers"  -> one arbitrary N-layer scene
+                        ([sim]/[source]/[scenario]/[[layer]]/[[command]])
+
+Auto-detection (when [job].mode is absent): [[layer]] -> layers,
+[batch] -> batch, [single] -> single. This keeps legacy scene TOMLs working.
+
+TWO DISTINCT .in FORMATS — by design, not a bug:
+  * batch + single share the CANONICAL DATASET FORMAT (DatasetGenerator +
+    GPRMaxFileWriter): FDTD-guideline-sized domain, the fixed mbubia stack, and
+    the full FI_class / Lab_* / Lab_PSD / CONFIG_* training metadata header.
+    This is the format the v2/v3 corpora and the training/feature pipelines
+    expect — use batch/single for any data that will be modelled.
+  * layers is a SEPARATE lightweight scene-PROTOTYPING tool
+    (layer_scene_builder): arbitrary layer stacks, a small derived domain, and a
+    minimal header WITHOUT training labels. Handy for one-off geometry/physics
+    experiments; NOT a drop-in source of dataset .in files.
 
 Rendering uses src.visualization.render.render_geometry_png directly (in-process).
 All .in files contain embedded CONFIG_* and SOURCE_* headers for replication.
 
-Usage Examples:
+Usage:
 
-    # Batch: 50 files per class, 1.5 GHz (default)
-    python scripts/pipeline/generate_in_files.py output/ --mode batch --labels CL MC MF -n 50
+    # N-layer scene
+    python scripts/pipeline/generate_in_files.py examples/scenes/three_layer_circlify.toml -o out.in
 
-    # Batch: 400 MHz angular rocks, 1000 per class
-    python scripts/pipeline/generate_in_files.py output/ --mode batch --labels CL MC MF F HF \\
-        -n 1000 --freq 400e6 --angular --packing-algo shang_chu
+    # Per-class dataset
+    python scripts/pipeline/generate_in_files.py configs/v3_dataset.toml -o gpr_synth_dataset_v3/
 
-    # Single: Custom PVC, 1.5 GHz, with PNG
-    python scripts/pipeline/generate_in_files.py test.in --mode single --pvc 25 --render
-
-    # Single: 400 MHz, angular triangular rocks with Shang-Chu packing
-    python scripts/pipeline/generate_in_files.py out.in --mode single --freq 400e6 --pvc 50 \\
-        --angular --sides 3 --packing-algo shang_chu --render
-
-    # Render existing .in file as PNG (unified visualizer, auto-detects 2D/3D)
-    python scripts/visualization/unified_visualizer.py output.in --geometry -o output.png --dpi 200
+    # One sampled file
+    python scripts/pipeline/generate_in_files.py configs/single_400mhz.toml -o test.in
 """
 
 import sys
@@ -43,7 +52,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.config import GeneratorConfig, create_per_label_config
 from src.dataset_generator import DatasetGenerator
-from src.fouling import list_all_classes, get_pvc_range
+from src.fouling import get_pvc_range
 from src.work_order import WorkOrder, WorkOrderSystem
 from src.file_writer import GPRMaxFileWriter
 from src.scene_model import parse_toml
@@ -283,70 +292,97 @@ def generate_single(
     return Path(written_path)
 
 
-def generate_layers(args) -> int:
-    """Generate one arbitrary N-layer .in file.
+def _scene_params_from_config(config):
+    """Build a SceneParams (+ provenance dict) from a parsed SceneConfig.
 
-    The TOML config ([sim]/[source]/[[layer]]/[[command]]) is the source of truth;
-    CLI flags (--freq/--domain-x/--dx/--rx-spacing/--seed) override [sim] when given.
+    Shared by layers mode and the [[layer]] path of single/batch so all three
+    read the [sim]/[source] tables identically.
     """
-    from src.layer_spec import parse_layers, parse_config_file, SceneConfig
-    from src.layer_scene_builder import SceneParams, write_scene
-
-    output_path = Path(args.output)
-    if not args.layers and not args.layers_file:
-        print("[FAIL] layers mode requires --layers \"...\" or --layers-file FILE.toml")
-        return 1
-
-    if args.layers_file:
-        config = parse_config_file(args.layers_file)
-        embed_toml = config.toml_text
-    else:
-        config = SceneConfig(layers=parse_layers(args.layers))
-        embed_toml = ""  # builder generates an effective TOML to embed
+    from src.layer_scene_builder import SceneParams
 
     sim, src = config.sim, config.source
-
-    def pick(cli_val, cli_default, key, builtin):
-        """Precedence: explicit CLI flag > [sim] table > built-in default."""
-        if cli_val is not None and cli_val != cli_default:
-            return cli_val, "CLI_OVERRIDE"
-        if key in sim:
-            return sim[key], "TOML"
-        return builtin, "DEFAULT"
-
-    ps: dict[str, str] = {}
-    freq, ps["center_freq_hz"] = pick(args.freq, 1.5e9, "freq_hz", 400e6)
-    domain_x, ps["domain_x"] = pick(args.domain_x, None, "domain_x", 1.0)
-    dx, ps["dx"] = pick(args.dx, None, "dx", None)
-    rx_spacing, ps["rx_spacing"] = pick(args.rx_spacing, 0.05, "rx_spacing", 0.0)
-    seed, _ = pick(args.seed, None, "seed", None)
-    ps["antenna_clearance"] = "TOML" if "antenna_clearance" in sim else "DEFAULT"
-    ps["air_buffer"] = "TOML" if "air_buffer" in sim else "DEFAULT"
-
+    freq = float(sim.get("freq_hz", 400e6))
     params = SceneParams(
-        freq_hz=float(freq),
-        domain_x=float(domain_x),
-        dx=float(dx) if dx is not None else None,
+        freq_hz=freq,
+        domain_x=float(sim.get("domain_x", 1.0)),
+        dx=float(sim["dx"]) if "dx" in sim else None,
         antenna_clearance=float(sim.get("antenna_clearance", 0.5)),
         air_buffer=float(sim.get("air_buffer", 0.1)),
-        rx_spacing=float(rx_spacing),
-        title=str(sim.get("title", f"N-layer ({len(config.layers)} layers) {float(freq)/1e6:.0f} MHz")),
+        rx_spacing=float(sim.get("rx_spacing", 0.0)),
+        title=str(sim.get("title", f"N-layer ({len(config.layers)} layers) {freq/1e6:.0f} MHz")),
         time_window=float(sim["time_window"]) if "time_window" in sim else None,
-        seed=int(seed) if seed is not None else None,
+        seed=int(sim["seed"]) if "seed" in sim else None,
         source_waveform=str(src.get("waveform", "ricker")),
         source_amplitude=float(src.get("amplitude", 1.0)),
         source_polarization=str(src.get("polarization", "z")),
         rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "mbubia_ballast")),
     )
-    ps["rock_packing_algorithm"] = "TOML" if "rock_packing_algorithm" in sim else "DEFAULT"
+    ps = {k: "TOML" for k in ("center_freq_hz", "domain_x", "dx", "rx_spacing",
+                              "antenna_clearance", "air_buffer", "rock_packing_algorithm")}
+    return params, ps
+
+
+def run_batch_layers(config_path: Path, data: dict, output_dir: Path) -> int:
+    """Batch generation over an arbitrary [[layer]] stack.
+
+    Emits N seed-varied realizations of the SAME declared layer stack. Each .in
+    carries the dataset-format header (FI_class/Lab_*/CONFIG_*) computed by
+    LabWorker on that realization — so the label is MEASURED per realization, not
+    a per-class PVC target. (Per-class PVC targeting over arbitrary layers would
+    need a fouling-fill knob; the fixed-stack batch path still does that.)
+    """
+    import dataclasses
+    from src.layer_spec import parse_config_file
+    from src.layer_scene_builder import write_scene
+
+    config = parse_config_file(config_path)
+    params, ps = _scene_params_from_config(config)
+    b = data.get("batch", {}) or {}
+    n = int(b.get("n_per_label", b.get("num", 50)))
+    start_id = int(b.get("start_id", 1000))
+    base_seed = params.seed if params.seed is not None else 0
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n{'='*70}\nBATCH MODE (arbitrary [[layer]] stack)\n{'='*70}")
+    print(f"Config (TOML): {config_path}")
+    print(f"Output Directory: {output_dir}")
+    print(f"Layers (bottom -> top): {len(config.layers)}   Realizations: {n}   "
+          f"Base seed: {base_seed}  (label = measured per realization)")
+    print(f"{'='*70}\n")
+
+    written = []
+    for k in range(n):
+        seed = base_seed + k
+        p = dataclasses.replace(params, seed=seed)
+        out = output_dir / f"s_{start_id + k}.in"
+        write_scene(config.layers, p, out, raw_commands=config.raw_commands,
+                    param_sources=ps, scenario=config.lab if config.lab else None)
+        written.append(out)
+        print(f"  [OK] s_{start_id + k}.in  (seed={seed})")
+
+    print(f"\n{'='*70}\nCompleted: {len(written)} files in {output_dir}\n{'='*70}\n")
+    return 0
+
+
+def generate_layers(config_path: Path, output_path: Path, render: bool = False) -> int:
+    """Generate one arbitrary N-layer .in file from a TOML scene config.
+
+    The TOML ([sim]/[source]/[scenario]/[[layer]]/[[command]]) is the SOLE source
+    of truth — there are no CLI scene overrides. Everything that shapes the scene
+    (frequency, domain, packing algorithm, layers, seed) lives in the file.
+    """
+    from src.layer_spec import parse_config_file
+    from src.layer_scene_builder import write_scene
+
+    config = parse_config_file(config_path)
+    params, ps = _scene_params_from_config(config)
 
     print(f"\n{'='*70}\nN-LAYER MODE: Generate One .in File\n{'='*70}")
+    print(f"Config (TOML): {config_path}")
     print(f"Output File: {output_path}")
-    print(f"Source: {'TOML ' + str(args.layers_file) if args.layers_file else 'inline --layers'}")
     print(f"Frequency: {params.freq_hz/1e6:.0f} MHz   Domain X: {params.domain_x} m   "
           f"Source waveform: {params.source_waveform}")
-    print(f"Rock packing algorithm: {params.rock_packing_algorithm} "
-          f"[{ps.get('rock_packing_algorithm', 'DEFAULT')}]")
+    print(f"Rock packing algorithm: {params.rock_packing_algorithm} [TOML]")
     print(f"Layers (bottom -> top): {len(config.layers)}")
     for i, ly in enumerate(config.layers):
         kind = (f"PACKED rocks(eps={ly.rock_eps}) in matrix '{ly.matrix_name}'"
@@ -361,7 +397,7 @@ def generate_layers(args) -> int:
                           scenario=config.lab if config.lab else None)
     print(f"[OK] Wrote .in file: {written}")
 
-    if args.render:
+    if render:
         try:
             from src.visualization.render import render_geometry_png
             png_path = render_geometry_png(written, output_path.with_suffix(".png"), dpi=150)
@@ -373,306 +409,162 @@ def generate_layers(args) -> int:
     return 0
 
 
-def extract_parameters(source_path: Path) -> dict:
-    """Extract generation parameters from an existing .in file.
+def _load_toml(path: Path) -> dict:
+    """Load a TOML config file into a dict (stdlib tomllib, no deps)."""
+    import tomllib
+    with open(path, "rb") as fh:
+        return tomllib.load(fh)
 
-    Returns dict with keys: pvc, moisture, seed, freq, angular, sides,
-                           packing_algo, psd_type, num_rx, rx_spacing
+
+def _resolve_mode(data: dict) -> str | None:
+    """Pick the generation mode from [job].mode, else auto-detect from sections.
+
+    Auto-detection keeps legacy scene TOMLs (which only carry [[layer]]) working
+    without a [job] table.
     """
-    from src.file_reader import extract_config_from_in_file
+    mode = (data.get("job", {}) or {}).get("mode")
+    if mode:
+        return str(mode).lower()
+    if data.get("layer"):
+        return "layers"
+    if "batch" in data:
+        return "batch"
+    if "single" in data:
+        return "single"
+    return None
 
-    try:
-        config_dict = extract_config_from_in_file(str(source_path))
 
-        # Map CONFIG_ keys to command-line parameter names
-        params = {
-            'pvc': float(config_dict.get('pvc_sampled')) if 'pvc_sampled' in config_dict else None,
-            'moisture': float(config_dict.get('moisture_sampled')) if 'moisture_sampled' in config_dict else None,
-            'seed': int(config_dict.get('actual_seed')) if 'actual_seed' in config_dict else int(config_dict.get('base_seed')) if 'base_seed' in config_dict else None,
-            'freq': float(config_dict.get('center_freq_hz', 1.5e9)),
-            'angular': config_dict.get('angular_rocks', False),
-            'sides': int(config_dict.get('rock_sides', 6)),
-            'packing_algo': config_dict.get('rock_packing_algorithm', 'circlify'),
-            'psd_type': config_dict.get('packing_psd_type', 'uniform'),
-            'num_rx': int(config_dict.get('num_receivers', 1)),
-            'rx_spacing': float(config_dict.get('receiver_spacing', 0.05)),
-        }
+def run_batch_from_toml(data: dict, output_dir: Path) -> int:
+    """Drive per-class dataset generation entirely from a TOML config."""
+    sim = data.get("sim", {}) or {}
+    b = data.get("batch", {}) or {}
+    generate_batch(
+        output_dir=output_dir,
+        labels=list(b.get("labels", ["CL", "MC", "MF", "F"])),
+        n_per_label=int(b.get("n_per_label", b.get("num", 50))),
+        freq_hz=float(sim.get("freq_hz", 1.5e9)),
+        angular=bool(sim.get("angular", False)),
+        sides=int(sim.get("sides", 6)),
+        packing_algo=str(sim.get("rock_packing_algorithm", "circlify")),
+        psd_type=str(sim.get("rock_psd_type", sim.get("psd", "uniform"))),
+        num_rx=int(sim.get("num_rx", 1)),
+        rx_spacing=float(sim.get("rx_spacing", 0.05)),
+        moisture_max=float(b.get("moisture_max", 0.15)),
+        start_id=int(b.get("start_id", 1000)),
+        seed=int(sim["seed"]) if "seed" in sim else None,
+    )
+    return 0
 
-        return params
-    except Exception as e:
-        print(f"[FAIL] Failed to extract parameters from {source_path}: {e}")
-        return None
+
+def run_single_from_toml(data: dict, output_path: Path) -> int:
+    """Drive single-file generation entirely from a TOML config."""
+    sim = data.get("sim", {}) or {}
+    s = data.get("single", {}) or {}
+    generate_single(
+        output_path=output_path,
+        freq_hz=float(sim.get("freq_hz", 1.5e9)),
+        pvc=float(s["pvc"]) if "pvc" in s else None,
+        moisture=float(s["moisture"]) if "moisture" in s else None,
+        angular=bool(sim.get("angular", False)),
+        sides=int(sim.get("sides", 6)),
+        packing_algo=str(sim.get("rock_packing_algorithm", "circlify")),
+        psd_type=str(sim.get("rock_psd_type", sim.get("psd", "uniform"))),
+        num_rx=int(sim.get("num_rx", 1)),
+        domain_x=float(sim["domain_x"]) if "domain_x" in sim else None,
+        dx=float(sim["dx"]) if "dx" in sim else None,
+        rx_spacing=float(sim.get("rx_spacing", 0.05)),
+        render=bool(s.get("render", False)),
+        seed=int(sim["seed"]) if "seed" in sim else None,
+        randomize_rock_materials=bool(s.get("randomize_rocks", False)),
+    )
+    return 0
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Unified .in file generator for GPR simulations",
+        description="TOML-driven .in file generator for GPR simulations. "
+                    "The TOML config is the SOLE source of truth — there are no "
+                    "scene-config CLI flags.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+The config TOML selects what to generate via [job].mode (or auto-detection):
+
+  mode = "batch"   -> per-class dataset from [sim] + [batch]   (CANONICAL FORMAT)
+  mode = "single"  -> one sampled .in file from [sim] + [single] (canonical fmt)
+  mode = "layers"  -> N-layer scene from [sim]/[source]/[scenario]/[[layer]]
+                      (lightweight PROTOTYPING format, no training labels)
+
+batch/single produce the dataset format (FI_class/Lab_*/CONFIG_* header) that the
+v2/v3 corpora and training expect. layers is a separate scene-prototyping tool
+with a different, minimal header — not a source of dataset .in files.
+
+If [job].mode is omitted: [[layer]] -> layers, [batch] -> batch, [single] -> single.
+The output path comes from [job].output, or is overridden by -o/--output.
+
 Examples:
 
-  # Batch: 50 files per class, 1.5 GHz
-  %(prog)s output/ --mode batch --labels CL MC MF -n 50
+  # N-layer scene (output overridden on the CLI)
+  %(prog)s examples/scenes/three_layer_circlify.toml -o out.in
 
-  # Batch: 400 MHz angular rocks
-  %(prog)s output/ --mode batch --labels CL MC MF F HF -n 1000 \\
-    --freq 400e6 --angular --packing-algo circlify
+  # Per-class dataset (output dir in the TOML or via -o)
+  %(prog)s configs/v3_dataset.toml -o gpr_synth_dataset_v3/
 
-  # Single: Custom PVC with seed (reproducible)
-  %(prog)s test.in --mode single --pvc 25 --moisture 0.10 --seed 42
-
-  # Single: 400 MHz, octagonal rocks
-  %(prog)s out.in --mode single --freq 400e6 --pvc 50 --angular --sides 8 --render
-
-  # Reproduce from existing file parameters
-  %(prog)s copy.in --mode single --params-from original.in
-
-  # Extract and override one parameter
-  %(prog)s modified.in --mode single --params-from original.in --pvc 35
+  # One sampled file
+  %(prog)s configs/single_400mhz.toml -o test.in
         """,
     )
-
-    # Mode selection
     parser.add_argument(
-        "--mode",
-        choices=["batch", "single"],
-        default="batch",
-        help="Generation mode: batch (per-class dataset) or single (one file). "
-             "An N-layer scene is auto-selected when --layers / --layers-file is given.",
-    )
-
-    # Positional argument (interpreted based on mode)
-    parser.add_argument(
-        "output",
-        help="Output directory (batch mode) or file path (single mode)",
-    )
-
-    # Batch-specific
-    parser.add_argument(
-        "--labels",
-        nargs="+",
-        default=["CL", "MC", "MF", "F"],
-        help=f"Fouling classes. Valid: {', '.join(list_all_classes())}",
+        "config",
+        help="TOML config file — the sole source of truth for the scene/job.",
     )
     parser.add_argument(
-        "-n",
-        "--num",
-        type=int,
-        default=50,
-        help="Samples per label (batch mode) or ignored (single mode)",
-    )
-    parser.add_argument(
-        "--start-id",
-        type=int,
-        default=1000,
-        help="Starting ID for filenames (batch mode)",
-    )
-    parser.add_argument(
-        "--moisture-max",
-        type=float,
-        default=0.15,
-        help="Maximum volumetric moisture content (batch mode)",
-    )
-
-    # Single-specific
-    parser.add_argument(
-        "--pvc",
-        type=float,
+        "-o", "--output",
         default=None,
-        help="PVC percentage (single mode). If None, sampled randomly",
+        help="Output path (single/layers) or directory (batch). Overrides "
+             "[job].output in the TOML. This is the only non-TOML input.",
     )
-    parser.add_argument(
-        "--moisture",
-        type=float,
-        default=None,
-        help="Moisture fraction (single mode). If None, sampled randomly",
-    )
-    parser.add_argument(
-        "--render",
-        action="store_true",
-        help="Generate PNG visualization (single mode)",
-    )
-
-    # Parameter extraction (for reproducibility)
-    parser.add_argument(
-        "--params-from",
-        type=str,
-        default=None,
-        help="Extract generation parameters from existing .in file and use them (single mode only)",
-    )
-
-    # N-layer mode
-    parser.add_argument(
-        "--layers",
-        type=str,
-        default=None,
-        help='Inline N-layer spec (bottom->top), e.g. '
-             '"subgrade:0.20, formation:0.10, ballast:0.25:packed". '
-             'Presence selects the N-layer creator.',
-    )
-    parser.add_argument(
-        "--layers-file",
-        type=str,
-        default=None,
-        help="TOML scene config ([sim]/[source]/[[layer]]/[[command]]). "
-             "Presence selects the N-layer creator; overrides --layers.",
-    )
-
-    # Common options
-    parser.add_argument(
-        "--freq",
-        type=float,
-        default=1.5e9,
-        help="Center frequency in Hz (default: 1.5e9 = 1.5 GHz)",
-    )
-    parser.add_argument(
-        "--domain-x",
-        type=float,
-        default=None,
-        help="Override domain width in metres (mbubia default: 4.0m)",
-    )
-    parser.add_argument(
-        "--dx",
-        type=float,
-        default=None,
-        help="Override grid resolution in metres (mbubia default: 4mm; use 2mm for finer detail)",
-    )
-    parser.add_argument(
-        "--angular",
-        action="store_true",
-        help="Use polygonal rocks instead of cylinders",
-    )
-    parser.add_argument(
-        "--sides",
-        type=int,
-        default=6,
-        help="Polygon sides for angular rocks (default: 6 = hexagon)",
-    )
-    parser.add_argument(
-        "--packing-algo",
-        type=str,
-        default="circlify",
-        help="Rock packing algorithm (circlify, front_chain, rsa, shang_chu, etc.)",
-    )
-    parser.add_argument(
-        "--psd",
-        type=str,
-        default="uniform",
-        help="Particle size distribution (uniform, en13450, fuller)",
-    )
-    parser.add_argument(
-        "--num-rx",
-        type=int,
-        default=1,
-        help="Number of receivers (default: 1 = single offset)",
-    )
-    parser.add_argument(
-        "--rx-spacing",
-        type=float,
-        default=0.05,
-        help="RX spacing in meters (default: 0.05 = 5cm)",
-    )
-    parser.add_argument(
-        "--randomize-rocks",
-        action="store_true",
-        help="Assign a random material to each rock (useful to visualize individual rocks and voxelization loss)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=None,
-        help="Random seed for reproducibility (batch mode)",
-    )
-
     args = parser.parse_args()
 
-    # An N-layer scene is auto-detected from --layers / --layers-file — no mode needed.
-    if args.layers or args.layers_file:
-        return generate_layers(args)
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"[FAIL] Config file not found: {config_path}")
+        return 1
+    if config_path.suffix.lower() != ".toml":
+        print(f"[FAIL] Config must be a .toml file, got: {config_path.name}")
+        return 1
 
-    if args.mode == "batch":
-        output_dir = Path(args.output)
-        count = generate_batch(
-            output_dir=output_dir,
-            labels=args.labels,
-            n_per_label=args.num,
-            freq_hz=args.freq,
-            angular=args.angular,
-            sides=args.sides,
-            packing_algo=args.packing_algo,
-            psd_type=args.psd,
-            num_rx=args.num_rx,
-            rx_spacing=args.rx_spacing,
-            moisture_max=args.moisture_max,
-            start_id=args.start_id,
-            seed=args.seed,
-        )
-        return 0
+    data = _load_toml(config_path)
 
-    elif args.mode == "single":
-        output_path = Path(args.output)
+    mode = _resolve_mode(data)
+    if mode is None:
+        print("[FAIL] Could not determine mode. Add [job] mode = \"batch|single|layers\", "
+              "or include [[layer]] / [batch] / [single] in the TOML.")
+        return 1
 
-        # Extract parameters from existing file if --params-from is provided
-        if args.params_from:
-            print(f"\n{'='*70}")
-            print("EXTRACTING PARAMETERS FROM EXISTING FILE")
-            print(f"{'='*70}")
-            print(f"Source File: {args.params_from}\n")
+    output = args.output or (data.get("job", {}) or {}).get("output")
+    if output is None:
+        print("[FAIL] No output path. Set [job].output in the TOML or pass -o/--output.")
+        return 1
+    output_path = Path(output)
 
-            params = extract_parameters(Path(args.params_from))
-            if params is None:
-                return 1
+    has_layers = bool(data.get("layer"))
+    render = bool((data.get("job", {}) or {}).get("render",
+                  (data.get("sim", {}) or {}).get("render", False)))
 
-            print("Extracted parameters:")
-            for k, v in params.items():
-                if v is not None:
-                    print(f"  {k}: {v}")
-            print()
-
-            # Use extracted parameters (can be overridden by explicit command-line args)
-            freq_hz = args.freq if args.freq != 1.5e9 else params.get('freq', 1.5e9)
-            pvc = args.pvc if args.pvc is not None else params.get('pvc')
-            moisture = args.moisture if args.moisture is not None else params.get('moisture')
-            angular = args.angular if args.angular else params.get('angular', False)
-            sides = args.sides if args.sides != 6 else params.get('sides', 6)
-            packing_algo = args.packing_algo if args.packing_algo != 'circlify' else params.get('packing_algo', 'circlify')
-            psd_type = args.psd if args.psd != 'uniform' else params.get('psd_type', 'uniform')
-            num_rx = args.num_rx if args.num_rx != 1 else params.get('num_rx', 1)
-            rx_spacing = args.rx_spacing if args.rx_spacing != 0.05 else params.get('rx_spacing', 0.05)
-            seed = args.seed if args.seed is not None else params.get('seed')
-        else:
-            freq_hz = args.freq
-            pvc = args.pvc
-            moisture = args.moisture
-            angular = args.angular
-            sides = args.sides
-            packing_algo = args.packing_algo
-            psd_type = args.psd
-            num_rx = args.num_rx
-            rx_spacing = args.rx_spacing
-            seed = args.seed
-
-        generate_single(
-            output_path=output_path,
-            freq_hz=freq_hz,
-            pvc=pvc,
-            moisture=moisture,
-            angular=angular,
-            sides=sides,
-            packing_algo=packing_algo,
-            psd_type=psd_type,
-            num_rx=num_rx,
-            domain_x=args.domain_x,
-            dx=args.dx,
-            rx_spacing=rx_spacing,
-            render=args.render,
-            seed=seed,
-            randomize_rock_materials=args.randomize_rocks,
-        )
-        return 0
-
+    if mode == "layers":
+        return generate_layers(config_path, output_path, render=render)
+    elif mode == "batch":
+        # An arbitrary [[layer]] stack routes through the layer builder (per-layer
+        # eps/sigma/packing); otherwise the fixed-stack per-class dataset pipeline.
+        if has_layers:
+            return run_batch_layers(config_path, data, output_path)
+        return run_batch_from_toml(data, output_path)
+    elif mode == "single":
+        if has_layers:
+            return generate_layers(config_path, output_path, render=render)
+        return run_single_from_toml(data, output_path)
     else:
-        parser.print_help()
+        print(f"[FAIL] Unknown mode '{mode}' (expected batch|single|layers)")
         return 1
 
 
