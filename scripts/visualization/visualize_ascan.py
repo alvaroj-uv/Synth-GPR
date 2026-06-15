@@ -151,10 +151,13 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     # Approximate direct wave pulse width
     direct_wave_width = max(0.2, direct_wave_time_ns * 0.3)
 
-    # --- Panel 1: Full A-scan (after direct wave, top row, span 3 cols) ---
+    # --- Panel 1: Full A-scan (raw trace incl. direct pulse, top row) ---
+    # Shows the whole trace so the coda callout below magnifies the small
+    # subsurface coda out of the dominant direct pulse. Direct-wave-gated
+    # detail lives in panels 2/2b/3.
     ax1 = fig.add_subplot(gs[0, :])
     ax1.set_facecolor(panel_bg)
-    ax1.plot(t_ns_gated, signal_gated_trimmed, color=accent, lw=0.8, alpha=0.92)
+    ax1.plot(t_ns, signal, color=accent, lw=0.8, alpha=0.92)
     ax1.axhline(0, color=grid_col, lw=0.5)
 
     # Annotate physical features (relative to gated time axis)
@@ -168,11 +171,29 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
         spine.set_edgecolor(grid_col)
     ax1.set_xlabel("Time (ns)", color=text_col, fontsize=9)
     ax1.set_ylabel(f"{component} (V/m)", color=text_col, fontsize=9)
-    ax1.set_title(f"A-scan (after direct wave {direct_wave_time_ns:.2f}ns) — {component}  [Surface reflection {surface_reflection_time_ns:.2f}ns | Ballast gate {coda_win_ns[0]:.1f}-{coda_win_ns[1]:.1f}ns]",
+    ax1.set_title(f"Full A-scan with coda callout — {component}  [Surface reflection {surface_reflection_time_ns:.2f}ns | Ballast gate {coda_win_ns[0]:.1f}-{coda_win_ns[1]:.1f}ns]",
                   color=text_col, fontsize=10, fontweight='bold')
     ax1.tick_params(colors=text_col, labelsize=8)
     ax1.grid(True, color=grid_col, lw=0.5, alpha=0.6)
     ax1.legend(fontsize=8, facecolor=panel_bg, labelcolor=text_col, edgecolor=grid_col, loc='upper right')
+
+    # --- Coda callout: a box outlines the ballast/coda window on the full
+    # A-scan and connector lines link it to a magnified inset. The fouling
+    # signature is a small modulation deep in the coda, invisible at full scale.
+    idx_coda1 = (t_ns >= coda_win_ns[0]) & (t_ns <= coda_win_ns[1])
+    if idx_coda1.any():
+        coda_amp = float(np.max(np.abs(signal[idx_coda1]))) or 1.0
+        full_amp = float(np.max(np.abs(signal))) or coda_amp
+        axins = ax1.inset_axes([0.60, 0.10, 0.37, 0.52], facecolor=panel_bg)
+        axins.plot(t_ns, signal, color=accent, lw=1.1)
+        axins.axhline(0, color=grid_col, lw=0.5)
+        axins.set_xlim(coda_win_ns[0], coda_win_ns[1])
+        axins.set_ylim(-1.3 * coda_amp, 1.3 * coda_amp)
+        axins.set_title(f"CODA magnified ~{full_amp / coda_amp:.0f}x", color='#ffd700', fontsize=8)
+        axins.tick_params(colors=text_col, labelsize=6)
+        for sp in axins.spines.values():
+            sp.set_edgecolor('#ffd700')
+        ax1.indicate_inset_zoom(axins, edgecolor='#ffd700', lw=1.3, alpha=0.7)
 
     # --- Panel 2: Zoom on surface-to-ballast gate transition (post-DW) ---
     ax2 = fig.add_subplot(gs[1, 0])
