@@ -37,6 +37,10 @@ waveform = "gaussian"              # Gaussian (145.6% better than Ricker)
 amplitude = 1.0
 polarization = "z"
 
+# RENDERING
+[job]
+render = true
+
 # LAYER STACK (bottom to top)
 # Layer 1: Air/surface
 [[layer]]

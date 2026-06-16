@@ -1,4 +1,8 @@
 # Antenna height test: 20 cm (antenna_clearance = 0.4)
+
+[job]
+render = true
+
 [sim]
 freq_hz = 420e6
 domain_x = 0.5

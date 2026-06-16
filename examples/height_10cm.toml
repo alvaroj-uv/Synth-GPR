@@ -1,5 +1,9 @@
 # Antenna height test: 10 cm
 # antenna_clearance = 0.2 -> antenna_height = 0.2 * 0.5 = 0.1 m = 10 cm
+
+[job]
+render = true
+
 [sim]
 freq_hz = 420e6
 domain_x = 0.5

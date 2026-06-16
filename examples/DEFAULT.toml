@@ -18,6 +18,9 @@
 #
 # REFERENCE: docs/FINAL_CALIBRATION_SUMMARY.md
 
+[job]
+render = true
+
 [sim]
 # Optimized frequency (420 MHz > nominal 400 MHz)
 freq_hz = 420e6
