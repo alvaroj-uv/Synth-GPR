@@ -26,7 +26,7 @@ antenna_clearance = 1.0         # 50 cm antenna height above surface
 
 # Domain sizing
 air_buffer = 0.1                # 10 cm air above antenna
-time_window = 1.0e-8            # 10 ns (capture coda)
+time_window = 5.0e-8            # 50 ns (match real data window)
 
 # OPTIMIZED ANTENNA
 antenna_mode = "bistatic"       # Bistatic 30mm spacing (optimized)
