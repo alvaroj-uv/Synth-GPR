@@ -102,13 +102,21 @@ def main():
     print(f"  Duration: {(len(real_sig)-1)*real_dt:.2f} ns")
     print(f"  DW Peak: {real_peak_time:.4f} ns (index {real_peak_idx})\n")
 
+    # Apply polarity flip to synthetic
+    print("="*90)
+    print("APPLYING POLARITY FLIP TO SYNTHETIC")
+    print("="*90 + "\n")
+
+    syn_sig_flipped = -syn_sig  # Flip polarity
+    print(f"Synthetic signal flipped (multiplied by -1)\n")
+
     # Apply 4.0 ns cutoff
     print("="*90)
     print("APPLYING 4.0 NS CUTOFF")
     print("="*90 + "\n")
 
     cutoff_ns = 4.0
-    syn_cut, syn_cut_idx = apply_cutoff(syn_sig, syn_peak_idx, cutoff_ns, syn_dt)
+    syn_cut, syn_cut_idx = apply_cutoff(syn_sig_flipped, syn_peak_idx, cutoff_ns, syn_dt)
     real_cut, real_cut_idx = apply_cutoff(real_sig, real_peak_idx, cutoff_ns, real_dt)
 
     syn_t_cut = np.arange(len(syn_cut)) * syn_dt
