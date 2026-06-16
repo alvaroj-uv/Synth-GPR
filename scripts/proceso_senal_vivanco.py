@@ -73,7 +73,7 @@ class VivancoPipeline:
     # ========================================================================
 
     def eliminate_direct_wave(self, signal: np.ndarray, peak_idx: int,
-                             shift_time_ns: float = 3.0) -> Tuple[np.ndarray, int]:
+                             shift_time_ns: float = 4.0) -> Tuple[np.ndarray, int]:
         """
         Eliminate direct wave by:
         1. Setting time zero at direct wave peak
