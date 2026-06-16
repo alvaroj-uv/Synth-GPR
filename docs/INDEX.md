@@ -64,6 +64,7 @@ Navigate by category to find the documentation you need.
 - [Final Calibration Summary](FINAL_CALIBRATION_SUMMARY.md) — ✅ COMPLETE — Complete validation of 88.76% synthetic-real correlation
 - [Waveform Calibration Results](WAVEFORM_CALIBRATION_RESULTS.md) — Detailed 3-parameter optimization (Gaussian, 420 MHz, 30mm bistatic)
 - [gprMax Sampling Control](GPRMAX_SAMPLING_CONTROL.md) — dt fundamentals, CFL condition, post-processing resampling workflow
+- [Default Configuration Guide](DEFAULT_CONFIGURATION_GUIDE.md) — How to use optimized DEFAULT.toml (420 MHz + Gaussian + 30mm bistatic)
 
 ### Analysis & Reports
 - [ML Pipeline Workflow](reports/ML_PIPELINE_WORKFLOW.md) — Feature extraction → Training → Evaluation
@@ -122,10 +123,10 @@ The following documents are kept for historical reference only. **Do not rely on
 ### I want to...
 
 **Generate synthetic GPR data:**
-→ [Setup/README.md](setup/README.md) → Generation Process → Packing Algorithms Guide
+→ [Default Configuration Guide](DEFAULT_CONFIGURATION_GUIDE.md) → Use `examples/DEFAULT.toml` (420 MHz Gaussian bistatic 30mm)
 
 **Run simulations:**
-→ [Input File Generation](architecture/IN_FILE_GENERATION.md) → Running Simulations section
+→ [Default Configuration Guide](DEFAULT_CONFIGURATION_GUIDE.md) → Quick Start section
 
 **Extract features:**
 → [ML Pipeline Workflow](reports/ML_PIPELINE_WORKFLOW.md)

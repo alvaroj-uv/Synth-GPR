@@ -1,0 +1,55 @@
+# DEFAULT OPTIMIZED CONFIGURATION
+# ================================
+# This is the recommended standard configuration for all synthetic GPR generation.
+#
+# VALIDATED CALIBRATION RESULTS (2026-06-16):
+# - Waveform: Gaussian (145.6% better than Ricker)
+# - Frequency: 420 MHz (2.6% better than 400 MHz nominal)
+# - Antenna: Bistatic 30mm spacing (10% better than monostatic)
+# - Final correlation: 88.76% with real field GPR data
+#
+# USE THIS CONFIG FOR:
+# - New synthetic dataset generation
+# - Feature extraction validation
+# - Domain adaptation research
+# - Any simulation not requiring custom parameters
+#
+# TO OVERRIDE: Modify [sim] section or create a new TOML file
+#
+# REFERENCE: docs/FINAL_CALIBRATION_SUMMARY.md
+
+[sim]
+# Optimized frequency (420 MHz > nominal 400 MHz)
+freq_hz = 420e6
+
+# Standard domain size (0.5m x 0.7m x 3mm)
+domain_x = 0.5
+dx = 0.003
+
+# Antenna clearance (default)
+antenna_clearance = 0.1
+
+# Air buffer above surface
+air_buffer = 0.1
+
+# Standard time window (50 ns)
+time_window = 5.0e-8
+
+# Optimized antenna geometry: bistatic with 30mm TX/RX separation
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+
+# Descriptive title
+title = "DEFAULT - 420 MHz Gaussian Bistatic 30mm (Optimized)"
+
+[source]
+# Optimized waveform: Gaussian (not Ricker)
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+# Single air layer (override with [[layer]] sections for multi-layer simulations)
+[[layer]]
+name = "air"
+thickness = 0.5
