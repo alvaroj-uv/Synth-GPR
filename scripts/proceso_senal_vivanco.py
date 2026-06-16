@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Tuple
 import numpy as np
 import h5py
-from scipy.signal import hilbert, butter, filtfilt, find_peaks
+from scipy.signal import hilbert, butter, sosfilt, sosfilt_zi, find_peaks
 from scipy.interpolate import interp1d
 
 
@@ -73,25 +73,29 @@ class VivancoPipeline:
     # ========================================================================
 
     def eliminate_direct_wave(self, signal: np.ndarray, peak_idx: int,
-                             shift_samples: int = 30) -> Tuple[np.ndarray, int]:
+                             shift_time_ns: float = 3.0) -> Tuple[np.ndarray, int]:
         """
         Eliminate direct wave by:
         1. Setting time zero at direct wave peak
-        2. Applying 30-sample shift (travel time from antenna to surface)
+        2. Applying time-based shift (travel time from antenna to surface)
 
         Args:
             signal: Input signal
             peak_idx: Index of direct wave peak
-            shift_samples: Number of samples to shift (default 30)
+            shift_time_ns: Time shift in nanoseconds (default 3.0 ns for real data)
+                          Automatically scaled for synthetic data with different dt
 
         Returns:
             Signal with direct wave removed, new start index
         """
+        # Convert time shift to samples based on actual dt
+        shift_samples = int(round(shift_time_ns / self.dt_ns))
+
         # New time zero at direct wave peak + shift
         new_start_idx = peak_idx + shift_samples
 
         if new_start_idx >= len(signal):
-            raise ValueError(f"Shift {shift_samples} samples beyond signal end")
+            raise ValueError(f"Shift {shift_time_ns} ns ({shift_samples} samples) beyond signal end")
 
         # Truncate signal starting from new time zero
         processed = signal[new_start_idx:]
@@ -108,6 +112,7 @@ class VivancoPipeline:
                              order: int = 4) -> np.ndarray:
         """
         Apply Butterworth bandpass filter (150-800 MHz).
+        Uses second-order sections (SOS) for numerical stability.
 
         Args:
             signal: Input signal
@@ -129,12 +134,20 @@ class VivancoPipeline:
         normalized_low = freq_low / nyquist
         normalized_high = freq_high / nyquist
 
-        # Design filter
+        # Design filter (using SOS for stability)
         sos = butter(order, [normalized_low, normalized_high], btype='band',
                     output='sos')
 
-        # Apply zero-phase filter (forward-backward)
-        filtered = filtfilt(sos[0], sos[1], signal, padtype='even')
+        # Apply forward-backward filter using SOS (more stable than ba)
+        filtered = np.zeros_like(signal)
+
+        # Forward pass
+        zi = sosfilt_zi(sos)
+        filtered, _ = sosfilt(sos, signal, zi=zi*signal[0])
+
+        # Backward pass for zero-phase
+        filtered, _ = sosfilt(sos, filtered[::-1], zi=zi*filtered[0])
+        filtered = filtered[::-1]
 
         return filtered
 
@@ -258,7 +271,7 @@ class VivancoPipeline:
         # Step 3: Direct wave elimination
         if eliminate_dw:
             current_signal, dw_elim_idx = self.eliminate_direct_wave(
-                current_signal, dw_peak_idx, shift_samples=30
+                current_signal, dw_peak_idx, shift_time_ns=3.0
             )
             results['signal_no_dw'] = current_signal.copy()
             results['dw_eliminated_idx'] = dw_elim_idx
