@@ -31,6 +31,10 @@ def main():
     print(f"  dt: {dt_ns:.6f} ns")
     print(f"  Window: {(len(signal)-1)*dt_ns:.2f} ns\n")
 
+    # Apply polarity flip (synthetic needs inversion)
+    signal = -signal
+    print("[POLARIZE] Synthetic signal flipped (multiplied by -1)\n")
+
     # Process with Vivanco pipeline
     pipeline = VivancoPipeline(dt_ns=dt_ns)
     result = pipeline.process_single_trace(signal, window_length_ns=50)

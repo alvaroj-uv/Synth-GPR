@@ -35,6 +35,10 @@ def main():
     print(f"  dt: {dt_ns:.6f} ns")
     print(f"  Duration: {(len(signal)-1)*dt_ns:.2f} ns\n")
 
+    # Apply polarity flip
+    signal = -signal
+    print("[POLARIZE] Synthetic signal flipped (multiplied by -1)\n")
+
     # Find DW peak
     search_ns = 20
     search_idx = int(search_ns / dt_ns)
