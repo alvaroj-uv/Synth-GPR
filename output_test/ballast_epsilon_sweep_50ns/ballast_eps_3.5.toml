@@ -1,0 +1,30 @@
+# Ballast layer - Epsilon sweep (50ns window)
+[job]
+render = false
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.05
+air_buffer = 0.1
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "420 MHz Ballast eps=3.5"
+
+[source]
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "air"
+thickness = 0.05
+
+[[layer]]
+name = "ballast"
+thickness = 0.3
+eps = 3.5
+sigma = 0.0

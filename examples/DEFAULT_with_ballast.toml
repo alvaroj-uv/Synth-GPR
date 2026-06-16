@@ -51,7 +51,7 @@ thickness = 0.05                   # 5 cm air buffer
 [[layer]]
 name = "clean_ballast"
 thickness = 0.3                    # 30 cm ballast layer
-eps = 3.45                         # Clean ballast permittivity
+eps = 5.1                          # Clean ballast permittivity (optimized)
 sigma = 0.0                        # No conductivity (clean, dry)
 
 # Optional: Add more layers below for realistic scenarios
