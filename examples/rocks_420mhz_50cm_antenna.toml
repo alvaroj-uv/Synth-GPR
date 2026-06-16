@@ -1,0 +1,62 @@
+# 420 MHz Gaussian with 50cm Rock Layer and High Antenna
+# ========================================================
+# Configuration:
+# - Frequency: 420 MHz (optimized)
+# - Waveform: Gaussian (optimized)
+# - Antenna mode: Bistatic 30mm (optimized)
+# - Antenna height: 50 cm above surface (high clearance)
+# - Subsurface: 1 layer of rocks (50 cm thick, mbubia packing)
+#
+# Purpose: Test realistic rock scattering with elevated antenna
+# Expected: Coda should show rock reflections/scattering signature
+
+[job]
+render = true
+
+[sim]
+# OPTIMIZED PARAMETERS
+freq_hz = 420e6                 # 420 MHz (optimized)
+domain_x = 0.5                  # 0.5 m width
+dx = 0.003                      # 3 mm grid (FDTD stable)
+
+# HIGH ANTENNA CLEARANCE
+# antenna_height = antenna_clearance * 0.5
+# 50 cm = 1.0 * 0.5 → antenna_clearance = 1.0
+antenna_clearance = 1.0         # 50 cm antenna height above surface
+
+# Domain sizing
+air_buffer = 0.1                # 10 cm air above antenna
+time_window = 1.0e-8            # 10 ns (capture coda)
+
+# OPTIMIZED ANTENNA
+antenna_mode = "bistatic"       # Bistatic 30mm spacing (optimized)
+num_receivers = 1
+receiver_spacing = 0.03
+
+title = "420 MHz Gaussian Bistatic - 50cm Antenna - 50cm Rock Layer"
+
+[source]
+# OPTIMIZED WAVEFORM
+waveform = "gaussian"           # Gaussian (145.6% better than Ricker)
+amplitude = 1.0
+polarization = "z"
+
+# ROCK LAYER CONFIGURATION (no air gap - rocks directly at surface)
+[[layer]]
+name = "rocks"
+thickness = 0.5                 # 50 cm rock layer
+packed = true                   # Enable rock packing
+# Rock packing parameters
+rock_packing_algorithm = "mbubia"  # Realistic polygon packing
+rock_diameter = 0.05            # 50 mm rocks (typical ballast)
+rock_porosity = 0.35            # 35% porosity (realistic)
+# Rock material properties
+eps = 6.0                       # Rock permittivity (typical igneous)
+sigma = 0.001                   # Low conductivity (clean rocks)
+
+# Optional: Add more layers below
+# [[layer]]
+# name = "subgrade"
+# thickness = 0.5
+# eps = 4.0
+# sigma = 0.001
