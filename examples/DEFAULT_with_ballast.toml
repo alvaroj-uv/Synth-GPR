@@ -1,0 +1,58 @@
+# DEFAULT CONFIGURATION WITH BALLAST LAYER
+# ==========================================
+# Extends DEFAULT.toml with a single ballast layer to test coda response
+# (5 ns after direct wave arrival)
+#
+# CONFIGURATION:
+# - 420 MHz Gaussian bistatic 30mm (optimized)
+# - Single clean ballast layer (0.3 m thick)
+# - Ballast material: eps=3.45, sigma=0.0 (validated from literature)
+# - Time window extended to 10 ns to capture coda
+#
+# PURPOSE:
+# - Test synthetic coda structure vs real field data
+# - Validate ballast material parameters
+# - Compare clean vs fouled responses
+#
+# REFERENCE:
+# - Benedetto 2017: Clean ballast eps=3.51 (we use 3.45 from in-house calibration)
+# - docs/FINAL_CALIBRATION_SUMMARY.md
+
+[sim]
+# OPTIMIZED PARAMETERS (from calibration)
+freq_hz = 420e6                    # 420 MHz (optimized)
+domain_x = 0.5                     # 0.5 m width
+dx = 0.003                         # 3 mm grid
+antenna_clearance = 0.05           # 5 cm above ballast (reduced from 0.1)
+air_buffer = 0.05                  # 5 cm air above surface
+time_window = 1.0e-8               # 10 ns (extended from 5 ns to capture coda)
+antenna_mode = "bistatic"          # Bistatic geometry
+num_receivers = 1
+receiver_spacing = 0.03            # 30 mm TX/RX separation
+title = "420 MHz Gaussian Bistatic 30mm + Clean Ballast Layer"
+
+[source]
+# OPTIMIZED WAVEFORM
+waveform = "gaussian"              # Gaussian (145.6% better than Ricker)
+amplitude = 1.0
+polarization = "z"
+
+# LAYER STACK (bottom to top)
+# Layer 1: Air/surface
+[[layer]]
+name = "air"
+thickness = 0.05                   # 5 cm air buffer
+
+# Layer 2: Clean ballast (MAIN LAYER FOR CODA TESTING)
+[[layer]]
+name = "clean_ballast"
+thickness = 0.3                    # 30 cm ballast layer
+eps = 3.45                         # Clean ballast permittivity
+sigma = 0.0                        # No conductivity (clean, dry)
+
+# Optional: Add more layers below for realistic scenarios
+# [[layer]]
+# name = "subgrade"
+# thickness = 0.5
+# eps = 4.0
+# sigma = 0.001
