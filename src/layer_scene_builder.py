@@ -46,7 +46,10 @@ class SceneParams:
     dx: Optional[float] = None      # if None, derived from freq + er_max
     antenna_clearance: float = 0.5  # air above the surface for the antenna
     air_buffer: float = 0.1         # extra air above the antenna
-    rx_spacing: float = 0.0         # 0 -> monostatic (co-located TX/RX)
+    rx_spacing: float = 0.0         # DEPRECATED: use antenna_mode + receiver_spacing
+    antenna_mode: str = "monostatic"  # "monostatic" (TX=RX) or "bistatic" (separate TX/RX)
+    num_receivers: int = 1          # number of receivers (1=single, >1=array)
+    receiver_spacing: float = 0.05  # spacing between TX/RX in bistatic, or spacing between RX in array
     title: str = "N-layer scene"
     time_window: Optional[float] = None  # if None, derived
     seed: Optional[int] = None
@@ -375,9 +378,9 @@ def effective_toml(params: SceneParams, layers: List[Layer]) -> str:
 def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
                   time_window, rock_count, param_sources, scenario=None, computed_lab=None):
     names = ", ".join(f"{ly.name}*" if ly.packed else ly.name for ly in layers)
-    mode = "monostatic" if params.rx_spacing == 0 else f"bistatic {params.rx_spacing:g}m"
+    mode = "monostatic" if params.antenna_mode == "monostatic" else f"bistatic {params.receiver_spacing:g}m"
     seed = params.seed if params.seed is not None else "None"
-    ant_label = "TX=RX" if params.rx_spacing == 0 else "TX/RX"
+    ant_label = "TX=RX" if params.antenna_mode == "monostatic" else "TX/RX"
 
     lines = [
         _BAR,
@@ -499,8 +502,15 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     subsurface_top = sum(ly.thickness for ly in layers)
     domain_y = subsurface_top + params.antenna_clearance + params.air_buffer
     antenna_y = subsurface_top + params.antenna_clearance * 0.5
+
+    # Antenna positioning (monostatic vs bistatic)
     tx_x = params.domain_x / 2.0
-    rx_x = tx_x + params.rx_spacing
+    if params.antenna_mode == "bistatic":
+        # Bistatic: RX offset from TX by receiver_spacing
+        rx_x = tx_x + params.receiver_spacing
+    else:
+        # Monostatic: RX at same position as TX
+        rx_x = tx_x
 
     # Literature guideline check (Khosravi Largani et al. 2025): warn, don't
     # block — small domains are sometimes a deliberate speed/accuracy trade.
@@ -604,10 +614,15 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
 
     # --- SOURCE section ---
     wave_id = "the_wave"
-    out += ["", "## === SOURCE (single monostatic Hertzian dipole) ===",
+    antenna_type = "bistatic" if params.antenna_mode == "bistatic" else "monostatic"
+    out += ["", f"## === SOURCE (single {antenna_type} Hertzian dipole) ===",
             WaveformCommand(params.source_waveform, params.source_amplitude, params.freq_hz, wave_id).get_cmd_string(),
-            HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wave_id).get_cmd_string(),
-            RxCommand(rx_x, antenna_y, dz / 2.0).get_cmd_string()]
+            HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wave_id).get_cmd_string()]
+
+    # Add receivers (single or array)
+    for i in range(params.num_receivers):
+        rx_x_i = rx_x + (i * params.receiver_spacing)
+        out.append(RxCommand(rx_x_i, antenna_y, dz / 2.0).get_cmd_string())
 
     # --- BACKGROUND BOXES section ---
     out += ["", f"## === BACKGROUND BOXES ({len(box_lines)}, painter order bottom->top) ==="]

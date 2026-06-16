@@ -1,0 +1,25 @@
+# Free space 400 MHz configuration - EXTENDED time window
+# Purpose: Generate extended reference waveform matching real DZT duration (49.8 ns)
+# Bistatic mode with optimized 30mm TX/RX spacing from metaheuristic calibration
+
+[sim]
+freq_hz = 400e6        # 400 MHz GSSI antenna
+domain_x = 0.5         # 0.5m domain
+dx = 0.003             # 3mm grid (CFL-safe for air)
+antenna_clearance = 0.1 # 10cm antenna standoff
+air_buffer = 0.1       # Additional air above antenna
+time_window = 5.0e-8   # 50 ns (matches real DZT window 49.8 ns) - EXTENDED from 20 ns
+antenna_mode = "bistatic" # Separate TX/RX for field matching
+num_receivers = 1
+receiver_spacing = 0.03 # 30mm optimal spacing from grid search
+title = "Free Space 400 MHz - Extended Time Window (Matched to Real DZT) - Bistatic 30mm"
+
+[source]
+waveform = "ricker"
+amplitude = 1.0
+polarization = "z"     # Vertical dipole
+
+# Single air layer (free space only, no ballast)
+[[layer]]
+name = "air"
+thickness = 0.5        # Will be overridden by antenna_clearance

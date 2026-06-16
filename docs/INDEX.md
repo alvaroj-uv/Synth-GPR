@@ -1,6 +1,6 @@
 # Synth-GPR Documentation Index
 
-**Last Updated:** 2026-06-04  
+**Last Updated:** 2026-06-16  
 **Status:** Current
 
 Navigate by category to find the documentation you need.
@@ -59,6 +59,11 @@ Navigate by category to find the documentation you need.
 - [Validation Framework](reports/VALIDATION.md) — Testing strategy and metrics
 - [Verification Report](reports/VERIFICATION.md) — Current test coverage status
 - [FI 2D Verification](FI_2D_VERIFICATION.md) — Literature-backed methods to map 2D virtual-sieve FI to lab FI thresholds
+
+### Waveform Calibration & Validation (2026-06-16)
+- [Final Calibration Summary](FINAL_CALIBRATION_SUMMARY.md) — ✅ COMPLETE — Complete validation of 88.76% synthetic-real correlation
+- [Waveform Calibration Results](WAVEFORM_CALIBRATION_RESULTS.md) — Detailed 3-parameter optimization (Gaussian, 420 MHz, 30mm bistatic)
+- [gprMax Sampling Control](GPRMAX_SAMPLING_CONTROL.md) — dt fundamentals, CFL condition, post-processing resampling workflow
 
 ### Analysis & Reports
 - [ML Pipeline Workflow](reports/ML_PIPELINE_WORKFLOW.md) — Feature extraction → Training → Evaluation

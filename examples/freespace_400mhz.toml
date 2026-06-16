@@ -1,0 +1,21 @@
+# Free space 400 MHz configuration for GSSI antenna characterization
+# Purpose: Generate reference waveform for synthetic-to-real scaling
+
+[sim]
+freq_hz = 400e6        # 400 MHz GSSI antenna
+domain_x = 0.5         # 0.5m domain
+dx = 0.003             # 3mm grid (CFL-safe for air)
+antenna_clearance = 0.1 # 10cm antenna standoff
+air_buffer = 0.1       # Additional air above antenna
+time_window = 2.0e-8   # 20 ns (captures direct pulse + ringing)
+title = "Free Space 400 MHz - GSSI Antenna Direct Wave"
+
+[source]
+waveform = "ricker"
+amplitude = 1.0
+polarization = "z"     # Vertical dipole
+
+# Single air layer (free space only, no ballast)
+[[layer]]
+name = "air"
+thickness = 0.5        # Will be overridden by antenna_clearance

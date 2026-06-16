@@ -1,0 +1,21 @@
+# Monostatic antenna (TX=RX) - Baseline for comparison
+[sim]
+freq_hz = 400e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.1
+air_buffer = 0.1
+time_window = 5.0e-8
+antenna_mode = "monostatic"
+num_receivers = 1
+receiver_spacing = 0.0
+title = "Monostatic 400MHz - TX=RX"
+
+[source]
+waveform = "ricker"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "air"
+thickness = 0.5

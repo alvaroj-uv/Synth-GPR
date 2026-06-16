@@ -18,7 +18,9 @@
       "Read(//d/gprMax/**)",
       "Bash(C:/Users/barba/miniconda3/python.exe -c ' *)",
       "PowerShell(Get-Command gprMax -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Command gprmax -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Command gprmax -ErrorAction SilentlyContinue)",
+      "Bash(conda activate *)",
+      "Bash(python -m gprMax output_test/freespace_400mhz_extended.in)"
     ],
     "additionalDirectories": [
       "d:\\Codigo\\Synth-GPR"

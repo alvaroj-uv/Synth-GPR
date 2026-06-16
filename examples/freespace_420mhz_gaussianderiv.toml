@@ -1,0 +1,21 @@
+# Free space 420 MHz - Gaussian derivative (narrowband antenna response)
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.1
+air_buffer = 0.1
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "420 MHz - Gaussian Derivative (Narrowband)"
+
+[source]
+waveform = "gaussianderiv"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "air"
+thickness = 0.5

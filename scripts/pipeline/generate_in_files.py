@@ -308,7 +308,10 @@ def _scene_params_from_config(config):
         dx=float(sim["dx"]) if "dx" in sim else None,
         antenna_clearance=float(sim.get("antenna_clearance", 0.5)),
         air_buffer=float(sim.get("air_buffer", 0.1)),
-        rx_spacing=float(sim.get("rx_spacing", 0.0)),
+        rx_spacing=float(sim.get("rx_spacing", 0.0)),  # DEPRECATED: use antenna_mode + receiver_spacing
+        antenna_mode=str(sim.get("antenna_mode", "monostatic")),
+        num_receivers=int(sim.get("num_receivers", 1)),
+        receiver_spacing=float(sim.get("receiver_spacing", 0.05)),
         title=str(sim.get("title", f"N-layer ({len(config.layers)} layers) {freq/1e6:.0f} MHz")),
         time_window=float(sim["time_window"]) if "time_window" in sim else None,
         seed=int(sim["seed"]) if "seed" in sim else None,
@@ -318,7 +321,7 @@ def _scene_params_from_config(config):
         rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "mbubia_ballast")),
         mbubia_settle_time=float(sim["mbubia_settle_time"]) if "mbubia_settle_time" in sim else None,
     )
-    ps = {k: "TOML" for k in ("center_freq_hz", "domain_x", "dx", "rx_spacing",
+    ps = {k: "TOML" for k in ("center_freq_hz", "domain_x", "dx", "rx_spacing", "antenna_mode", "num_receivers", "receiver_spacing",
                               "antenna_clearance", "air_buffer", "rock_packing_algorithm")}
     return params, ps
 

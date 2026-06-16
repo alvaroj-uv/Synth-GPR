@@ -1,0 +1,20 @@
+[
+  {
+    "config": "freespace_400mhz_extended",
+    "toml_file": "examples\\freespace_400mhz_extended.toml",
+    "correlation": -0.027556851086508287,
+    "out_file": "output_test\\antenna_modes\\freespace_400mhz_extended.out"
+  },
+  {
+    "config": "freespace_bisatic_050mm",
+    "toml_file": "examples\\freespace_bisatic_050mm.toml",
+    "correlation": -0.027556851086508287,
+    "out_file": "output_test\\antenna_modes\\freespace_bisatic_050mm.out"
+  },
+  {
+    "config": "freespace_bisatic_075mm",
+    "toml_file": "examples\\freespace_bisatic_075mm.toml",
+    "correlation": -0.027556851086508287,
+    "out_file": "output_test\\antenna_modes\\freespace_bisatic_075mm.out"
+  }
+]
