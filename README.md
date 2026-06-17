@@ -19,6 +19,21 @@ The core innovation is **predicting fouling class from GPR Ez waveform features 
 
 ---
 
+## ✅ What's Currently Operational
+
+This project provides a **fully functional pipeline** for:
+
+1. **🟢 Generate synthetic GPR geometries** — `generate_in_files.py` (TOML-driven, configurable fouling levels & rock packing)
+2. **🟢 Extract waveform features** — `extract_features.py` (572-dimensional feature extraction from simulations)
+3. **🟢 Comprehensive visualization** — `unified_visualizer.py` + 8 specialized plotting tools
+4. **🟢 Antenna analysis** — Radiation patterns, mode diagrams, antenna signals visualization
+
+For the **gprMax electromagnetic simulation step**, you'll need gprMax installed separately. Once `.out` files are generated (via `gprmax` command directly or your own simulation runner), feature extraction and visualization work immediately.
+
+**ML training** (Random Forest, XGBoost) infrastructure is built into the codebase (`src/`) but production training scripts are customizable per your dataset. See `docs/` for examples.
+
+---
+
 ## What This Project Does
 
 ### 1. **Synthetic Data Generation**
@@ -76,15 +91,21 @@ Synth-GPR/
 │
 ├── scripts/                       # Executable scripts
 │   ├── pipeline/                  # Core pipeline scripts
-│   │   ├── generate_gprmax_scenes.py   # Generate .in geometry files
-│   │   ├── run_simulations.py     # Execute gprMax simulations
-│   │   ├── extract_features.py    # Extract features from .out files
-│   │   ├── build_parquet.py       # Consolidate features into Parquet
-│   │   └── train_rf*.py           # Train Random Forest classifiers
-│   ├── analysis/                  # Validation & sim-to-real studies
-│   ├── experiments/               # Research experiments (transient)
-│   ├── tools/                     # Maintenance & debugging utilities
-│   └── visualization/             # Plotting & rendering scripts
+│   │   ├── generate_in_files.py   # 🟢 Generate .in geometry files (TOML-driven)
+│   │   └── extract_features.py    # 🟢 Extract 572-dim features from .out files
+│   ├── visualization/             # 🟢 Plotting & rendering scripts
+│   │   ├── unified_visualizer.py              # Main multi-purpose visualizer
+│   │   ├── plot_coda_energy_vs_fi.py          # Coda energy analysis
+│   │   ├── plot_fouling_classes.py            # Per-class A-scan stacks
+│   │   ├── plot_window_energy_features.py     # Windowed feature plots
+│   │   ├── visualize_ascan.py                 # A-scan from .out file
+│   │   ├── visualize_antenna_signals.py       # Antenna mode signals
+│   │   ├── antenna_radiation_pattern.py       # Antenna pattern diagram
+│   │   └── antenna_mode_diagram.py            # Mode distribution diagram
+│   ├── analysis/                  # (Reserved for validation studies)
+│   ├── experiments/               # (Reserved for research experiments)
+│   ├── tools/                     # (Reserved for utilities)
+│   └── convert_snapshots.py       # EM field snapshot conversion
 │
 ├── docs/                          # Comprehensive documentation
 │   ├── setup/                     # Installation & configuration
@@ -156,48 +177,87 @@ Synth-GPR/
 
 ### 1. Generate Synthetic GPR Geometries
 
-Generate 50 samples per fouling class with angular rocks:
+Generate `.in` geometry files using TOML configuration:
 ```bash
-python scripts/pipeline/generate_gprmax_scenes.py output/ \
-  --mode batch \
-  --labels CL MC MF F HF \
-  -n 50 \
-  --freq 400e6 \
-  --angular
+# Generate a single sample
+python scripts/pipeline/generate_in_files.py config.toml -o output.in
+
+# Generate a batch dataset (50 samples per fouling class)
+python scripts/pipeline/generate_in_files.py batch_config.toml -o output_dir/
 ```
 
-**Output:** `.in` files in `output/` directory with embedded configuration metadata.
+**Output:** `.in` files with embedded configuration metadata.
+**Note:** Configuration is TOML-driven (the sole source of truth). See `docs/setup/USER_GUIDE.md` for TOML format.
 
 ### 2. Run Electromagnetic Simulations
 
 Execute gprMax FDTD simulations (requires gprMax installed):
 ```bash
-python scripts/pipeline/run_simulations.py output/ -j 4
+# Manual simulation of a single file
+gprmax output.in
+
+# Or use the batch runner (when available)
+python scripts/pipeline/run_simulations.py output_dir/
 ```
 
-**Output:** `.out` HDF5 files with Ez waveform recordings.
+**Output:** `.out` HDF5 files with Ez electric field time-domain waveforms.
 
 ### 3. Extract Features
 
 Extract 572-dimensional feature vectors from simulation outputs:
 ```bash
-python scripts/pipeline/extract_features.py output/ --output features.csv
+python scripts/pipeline/extract_features.py output_dir/ --output features.csv
 ```
 
-**Output:** `features.csv` with 612 columns (572 features + 40 metadata columns).
+**Output:** `features.csv` with 572 waveform features + 40 metadata columns.
+**Requirements:** Output directory must contain:
+- `.in` and `.out` files
+- `metadata.csv` with FI_class labels
 
-### 4. Train ML Classifier
+### 4. Visualize Results
 
-Train a Random Forest classifier on waveform features only (production approach):
+Visualize geometries and A-scan signals:
+
+**Geometry only (from `.in` file):**
 ```bash
-python scripts/pipeline/train_rf_waveform_only.py
+python scripts/visualization/unified_visualizer.py test.in --geometry
 ```
 
-### 5. Visualize Results
-
-Render diagrams of simulated geometries and A-scans:
+**A-scan + spectrum (from `.out` file):**
 ```bash
-python scripts/visualization/unified_visualizer.py output/s_00000.in
+python scripts/visualization/unified_visualizer.py test.out --ascan
+```
+
+**Full dashboard (geometry + signals):**
+```bash
+python scripts/visualization/unified_visualizer.py test.in --dashboard
+```
+
+**Generate all visualizations:**
+```bash
+python scripts/visualization/unified_visualizer.py test.in --all
+```
+
+### 5. Advanced Analysis & Visualization
+
+**Coda energy vs. Fouling Index scatter plot:**
+```bash
+python scripts/visualization/plot_coda_energy_vs_fi.py --dir output_dir/
+```
+
+**Stacked A-scans per fouling class:**
+```bash
+python scripts/visualization/plot_fouling_classes.py --dir output_dir/ --class-field FI_class
+```
+
+**Windowed energy features visualization:**
+```bash
+python scripts/visualization/plot_window_energy_features.py --out output.png
+```
+
+**Single A-scan from .out file:**
+```bash
+python scripts/visualization/visualize_ascan.py test.out --component Ez
 ```
 
 ---
@@ -283,60 +343,82 @@ Five fouling classes defined by **Fouling Index (FI)** and **Percentage Void Con
 
 ## Command Reference
 
-### Main Scripts
+### Core Pipeline Scripts
 
-**Generate Synthetic Geometries:**
+**Generate Synthetic Geometries (TOML-driven):**
 ```bash
-python scripts/pipeline/generate_gprmax_scenes.py <output_file|output_dir> \
-  --mode batch|single|layers \
-  --labels CL MC MF F HF \
-  -n <samples_per_class> \
-  --freq <frequency_hz> \
-  --angular \
-  --packing-algo shang-chu
+# Single file generation
+python scripts/pipeline/generate_in_files.py config.toml -o output.in
+
+# Batch dataset generation
+python scripts/pipeline/generate_in_files.py config.toml -o output_dir/
+
+# Get help and TOML format info
+python scripts/pipeline/generate_in_files.py --help
 ```
 
-**Load Rocks from Existing File:**
+**Extract Features from Simulations:**
 ```bash
-python scripts/main/generate_from_rocks.py \
-  --source reference.in \
-  --freq 400e6 \
-  --pvc 35 \
-  output.in
+python scripts/pipeline/extract_features.py <data_dir> --output features.csv
 ```
 
-**Run Simulations:**
+### Visualization Scripts
+
+**Unified Visualizer (geometry + A-scan + dashboard):**
 ```bash
-python scripts/main/run_simulations.py <input_folder> \
-  -j <num_jobs> \
-  --gpu <device_ids>
+# Geometry only
+python scripts/visualization/unified_visualizer.py test.in --geometry
+
+# A-scan + spectrum
+python scripts/visualization/unified_visualizer.py test.out --ascan
+
+# Full 4-panel dashboard
+python scripts/visualization/unified_visualizer.py test.in --dashboard
+
+# All three visualizations
+python scripts/visualization/unified_visualizer.py test.in --all
+
+# Custom output path
+python scripts/visualization/unified_visualizer.py test.in -o custom_output.png
+
+# Additional options
+python scripts/visualization/unified_visualizer.py test.out \
+  --component Ez \
+  --title "My Custom Title" \
+  --dpi 150 \
+  --gain exp \
+  --no-show
 ```
 
-**Extract Features:**
+**Analysis Visualizations:**
 ```bash
-python scripts/main/extract_features.py <input_folder> <output_csv>
+# Coda energy vs. Fouling Index
+python scripts/visualization/plot_coda_energy_vs_fi.py --dir output_dir/ --limit 1000
+
+# Stacked A-scans per fouling class
+python scripts/visualization/plot_fouling_classes.py --dir output_dir/ --class-field FI_class
+
+# Windowed energy features
+python scripts/visualization/plot_window_energy_features.py --out features_plot.png
+
+# Single A-scan from .out file
+python scripts/visualization/visualize_ascan.py test.out --component Ez
+
+# Antenna signals visualization
+python scripts/visualization/visualize_antenna_signals.py test.out
+
+# Antenna radiation pattern
+python scripts/visualization/antenna_radiation_pattern.py --freq 400e6
+
+# Antenna mode diagram
+python scripts/visualization/antenna_mode_diagram.py --freq 400e6
 ```
 
-**Visualize Geometry:**
-```bash
-python scripts/tools/visualization/visualize_gprmax_blueprint.py \
-  <input_file.in> \
-  -o <output_image.png> \
-  --dpi 150
-```
+### Utility Scripts
 
-### Additional Utilities
-
-**Validate Dataset Consistency:**
+**Convert EM Field Snapshots:**
 ```bash
-python scripts/tools/data_management/validate_dataset.py <dataset_dir>
-```
-
-**Merge Multiple Feature Datasets:**
-```bash
-python scripts/tools/data_management/merge_datasets.py \
-  <input1.csv> <input2.csv> ... \
-  -o <output.csv>
+python scripts/convert_snapshots.py <input_snapshot> <output_hdf5>
 ```
 
 ---
