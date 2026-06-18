@@ -14,7 +14,9 @@ from src.visualization.render import render_geometry_png
 
 
 def render_in_file(in_path: Path, output_png: Path = None, dpi: int = 150) -> Path:
-    """Render a single .in file to PNG."""
+    """Render a single .in file to PNG using the data access layer."""
+    from src.data_access import INFileReader, PNGWriter
+    
     in_path = Path(in_path)
 
     if not in_path.exists():
@@ -28,7 +30,9 @@ def render_in_file(in_path: Path, output_png: Path = None, dpi: int = 150) -> Pa
     print(f"[RENDER] {in_path.name} -> {output_png.name}...", end=" ", flush=True)
 
     try:
-        png_path = render_geometry_png(in_path, output_png, dpi=dpi)
+        # Use PNGWriter which internally uses render_geometry_png
+        writer = PNGWriter()
+        png_path = writer.write(output_png, in_path, dpi=dpi)
         print(f"[OK] {png_path.stat().st_size / 1024:.1f} KB")
         return png_path
     except Exception as e:

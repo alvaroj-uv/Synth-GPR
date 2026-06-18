@@ -663,15 +663,19 @@ def write_scene(layers: List[Layer], params: SceneParams, out_path: Path,
                 param_sources: Optional[dict] = None,
                 scenario: Optional[dict] = None,
                 computed_lab: Optional[dict] = None) -> Path:
-    """Build the scene and write it to ``out_path`` (.in)."""
+    """Build the scene and write it to ``out_path`` (.in) using the data access layer."""
+    from src.data_access import INFileWriter
+    
     out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     filename = out_path.name
     lines = build_scene_commands(layers, params, raw_commands=raw_commands,
                                  param_sources=param_sources, scenario=scenario, computed_lab=computed_lab,
                                  filename=filename)
-    out_path.write_text("\n".join(lines) + "\n")
-    return out_path
+    content = "\n".join(lines) + "\n"
+    
+    # Use INFileWriter to write the file
+    writer = INFileWriter()
+    return writer.write(out_path, content)
 
 
 def build_scene_from_model(scene: SceneModel, **kwargs) -> Dict[str, Any]:

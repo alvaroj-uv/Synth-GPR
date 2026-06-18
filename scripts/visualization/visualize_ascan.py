@@ -20,6 +20,7 @@ Usage:
 import sys
 import argparse
 import struct
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,13 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.signal import hilbert, find_peaks, spectrogram
 from scipy.stats import skew, kurtosis
+
+# Configure logging for data access operations
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.data_loader import read_ascan
@@ -42,62 +50,49 @@ from src.signal_processing import (
 from src.file_reader import parse_metadata_file
 from src.dzt_io import get_dzt_metadata
 from src.constants import SC
+from src.data_access import (
+    DZTReader, NumpyReader, INFileReader, HDF5Reader, PNGWriter
+)
 
 
 def read_dzt_trace(dzt_path: Path, trace_idx: int = 50) -> tuple:
     """
     Read a single A-scan from DZT file (drop first 2 samples).
+    Uses data access layer for reading.
     Extracts antenna metadata from DZT header.
 
     Returns:
         (signal, dt_ns, metadata)
     """
-    HEADER_SIZE = 128 * 1024
-    SAMPLES_PER_TRACE = 512
-    BYTES_PER_SAMPLE = 4
-    DT_NS = 50 / 511  # nanoseconds per sample
-
-    with open(dzt_path, 'rb') as f:
-        header = f.read(HEADER_SIZE)
-        data = f.read()
-        data_size_aligned = (len(data) // BYTES_PER_SAMPLE) * BYTES_PER_SAMPLE
-        data_aligned = data[:data_size_aligned]
-        num_samples_total = data_size_aligned // BYTES_PER_SAMPLE
-        fmt = f'<{num_samples_total}i'
-        all_samples = struct.unpack(fmt, data_aligned)
-        all_samples = np.array(all_samples, dtype=np.float32)
-        num_complete_traces = len(all_samples) // SAMPLES_PER_TRACE
-        all_samples = all_samples[:num_complete_traces * SAMPLES_PER_TRACE]
-        traces_raw = all_samples.reshape(-1, SAMPLES_PER_TRACE)
-
-    # Drop first 2 samples (indices 0-1: timing markers)
-    trace = traces_raw[min(trace_idx, traces_raw.shape[0]-1), 2:]
-
-    # GSSI antenna specs (from Data/README.md: GSSI 400 MHz, ground-coupled)
-    # Extracted from filename or use defaults
-    antenna_name = 'GSSI 400 MHz'
-    antenna_freq_hz = 400e6
-    system = 'GSSI SIR-3000'
-
-    metadata = {
-        'file': dzt_path.name,
-        'trace_idx': trace_idx,
-        'total_traces': traces_raw.shape[0],
-        'samples_per_trace': len(trace),
-        'dt_ns': DT_NS,
-        'time_window_ns': len(trace) * DT_NS,
-        'antenna_name': antenna_name,
-        'antenna_freq_hz': antenna_freq_hz,
-        'antenna_freq_mhz': antenna_freq_hz / 1e6,
-        'system': system,
-    }
-
-    return trace, DT_NS, metadata
+    # Use DZTReader from data access layer
+    dzt_reader = DZTReader()
+    data = dzt_reader.read(dzt_path, trace_idx=trace_idx)
+    
+    signal = data['signal']
+    dt_ns = data['dt_ns']
+    metadata = data['metadata']
+    
+    # Ensure metadata has all expected fields
+    if 'antenna_name' not in metadata:
+        metadata['antenna_name'] = 'GSSI 400 MHz'
+    if 'antenna_freq_hz' not in metadata:
+        metadata['antenna_freq_hz'] = 400e6
+    if 'antenna_freq_mhz' not in metadata:
+        metadata['antenna_freq_mhz'] = 400.0
+    if 'system' not in metadata:
+        metadata['system'] = 'GSSI SIR-3000'
+    
+    # Add file info
+    metadata['file'] = dzt_path.name
+    metadata['trace_idx'] = trace_idx
+    
+    return signal, dt_ns, metadata
 
 
 def read_npy_trace(npy_path: Path) -> tuple:
     """
     Read a single A-scan from numpy .npy file.
+    Uses data access layer for reading.
 
     Assumes:
     - Signal is 1D float64 array
@@ -107,15 +102,12 @@ def read_npy_trace(npy_path: Path) -> tuple:
     Returns:
         (signal, dt_ns, metadata)
     """
-    # Load numpy array
-    signal = np.load(npy_path).astype(np.float64)
+    # Use NumpyReader from data access layer
+    npy_reader = NumpyReader()
+    signal = npy_reader.read(npy_path).astype(np.float64)
 
     # Default: DZT sampling rate (50/511 ns per sample)
     DT_NS = 50 / 511
-
-    # Try to extract dt from filename if it contains "dt_" or similar
-    filename = npy_path.stem
-    # For now, use standard DZT dt
 
     metadata = {
         'file': npy_path.name,
@@ -133,10 +125,12 @@ def read_npy_trace(npy_path: Path) -> tuple:
 
 
 def read_header_meta(in_path: Path) -> dict:
-    """Extract ## comment metadata from the companion .in file (shared parser)."""
+    """Extract ## comment metadata from the companion .in file using data access layer."""
     if not in_path.exists():
         return {}
-    return parse_metadata_file(in_path)
+    # Use INFileReader from data access layer
+    in_reader = INFileReader()
+    return in_reader.read_metadata(in_path)
 
 
 def visualize_simple_wave(signal, t_ns, file_path: Path, title: str = "A-scan", unit: str = "V/m") -> Path:
@@ -205,7 +199,9 @@ def visualize_simple_wave(signal, t_ns, file_path: Path, title: str = "A-scan", 
             fontfamily='monospace', color="#c8d0e0")
 
     plt.tight_layout()
-    plt.savefig(file_path, dpi=150, bbox_inches='tight', facecolor="#0f1117")
+    # Use PNGWriter for saving
+    png_writer = PNGWriter()
+    png_writer.write(file_path, fig, dpi=150)
     plt.close(fig)
 
     return file_path
@@ -215,8 +211,14 @@ def visualize_npy_ascan(npy_path: Path) -> Path:
     """Visualize a numpy-extracted A-scan (typically from DZT binary extraction)."""
     npy_path = npy_path.resolve()
 
-    # Read NPY trace
-    signal, dt_ns, meta = read_npy_trace(npy_path)
+    # Read NPY trace using data access layer
+    from src.data_access import NumpyReader
+    numpy_reader = NumpyReader()
+    signal = numpy_reader.read(npy_path)
+    
+    # For now, use defaults for dt_ns and meta (would need to be in the npy file)
+    dt_ns = 50 / 511  # Default DZT sampling rate
+    meta = {'source': 'numpy_extraction', 'file': npy_path.name}
     t_ns = np.arange(len(signal)) * dt_ns
 
     # Auto-detect direct wave end using peak-relative gating
@@ -417,8 +419,12 @@ def visualize_npy_ascan(npy_path: Path) -> Path:
         color=text_col, fontsize=12, fontweight='bold', y=0.965,
     )
 
+    # Use PNGWriter for the analysis figure
+    from src.data_access import PNGWriter
+    png_writer = PNGWriter()
+    
     out_png = npy_path.with_name(npy_path.stem + "_ascan_analysis.png")
-    fig.savefig(out_png, dpi=150, bbox_inches="tight", facecolor=dark_bg)
+    png_writer.write(out_png, fig, dpi=150)
     plt.close(fig)
     print(f"[OK] Numpy A-scan analysis saved -> {out_png}")
 
@@ -436,8 +442,13 @@ def visualize_dzt_ascan(dzt_path: Path, trace_idx: int = 50) -> Path:
     """Visualize a real DZT A-scan (field data from Puerto-Limache)."""
     dzt_path = dzt_path.resolve()
 
-    # Read DZT trace
-    signal, dt_ns, meta = read_dzt_trace(dzt_path, trace_idx)
+    # Read DZT trace using data access layer
+    from src.data_access import DZTReader
+    dzt_reader = DZTReader()
+    data = dzt_reader.read(dzt_path, trace_idx=trace_idx)
+    signal = data['signal']
+    dt_ns = data['dt_ns']
+    meta = data['metadata']
     t_ns = np.arange(len(signal)) * dt_ns
 
     # Auto-detect direct wave end using peak-relative gating (SC.CODA_GATE_START_AFTER_PEAK_NS)
@@ -644,8 +655,12 @@ def visualize_dzt_ascan(dzt_path: Path, trace_idx: int = 50) -> Path:
         color=text_col, fontsize=12, fontweight='bold', y=0.965,
     )
 
+    # Use PNGWriter for the analysis figure
+    from src.data_access import PNGWriter
+    png_writer = PNGWriter()
+    
     out_png = dzt_path.with_name(dzt_path.stem + f"_trace{trace_idx}_ascan_analysis.png")
-    fig.savefig(out_png, dpi=150, bbox_inches="tight", facecolor=dark_bg)
+    png_writer.write(out_png, fig, dpi=150)
     plt.close(fig)
     print(f"[OK] DZT A-scan analysis saved -> {out_png}")
 
@@ -663,8 +678,12 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     out_path = out_path.resolve()
     in_path  = out_path.with_suffix(".in")
 
-    # --- Read A-scan trace (shared reader; handles B-scan trace selection) ---
-    data = read_ascan(out_path, component)
+    # --- Read A-scan trace using data access layer ---
+    from src.data_access import HDF5Reader, INFileReader
+    
+    hdf5_reader = HDF5Reader()
+    data = hdf5_reader.read(out_path, component=component)
+    
     if data["component"] != component:
         print(f"[!] Component '{component}' not found. Available: {data['available']}")
     component  = data["component"]
@@ -678,8 +697,9 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
     # --- Frequency spectrum (computed from gated signal, after direct wave) ---
     # Will be computed after gating below
 
-    # --- Metadata from .in ---
-    meta = read_header_meta(in_path)
+    # --- Metadata from .in using data access layer ---
+    in_reader = INFileReader()
+    meta = in_reader.read_metadata(in_path) if in_path.exists() else {}
     pvc       = meta.get("pvc", "?")
     fi_class  = meta.get("FI_class", "?")
     lab_class = meta.get("Lab_Class", "?")
@@ -997,8 +1017,12 @@ def visualize_ascan(out_path: Path, component: str = "Ez") -> Path:
         color=text_col, fontsize=12, fontweight='bold', y=0.965,
     )
 
+    # Use PNGWriter for the analysis figure
+    from src.data_access import PNGWriter
+    png_writer = PNGWriter()
+    
     out_png = out_path.with_name(out_path.stem + "_ascan_analysis.png")
-    fig.savefig(out_png, dpi=150, bbox_inches="tight", facecolor=dark_bg)
+    png_writer.write(out_png, fig, dpi=150)
     plt.close(fig)
     print(f"[OK] Comprehensive A-scan analysis saved -> {out_png}")
 

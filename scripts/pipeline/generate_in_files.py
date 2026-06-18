@@ -47,6 +47,14 @@ import sys
 import argparse
 from pathlib import Path
 import time
+import logging
+
+# Configure logging for data access operations
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -57,6 +65,7 @@ from src.work_order import WorkOrder, WorkOrderSystem
 from src.file_writer import GPRMaxFileWriter
 from src.scene_model import parse_toml
 from src.exporter import JSONExporter
+from src.data_access import PNGWriter
 
 
 def apply_seed(seed: int | None):
@@ -279,11 +288,11 @@ def generate_single(
 
     print(f"[OK] Wrote .in file: {written_path}")
 
-    # Optionally render PNG via the shared facade (auto-detects 2D/3D)
+    # Optionally render PNG using data access layer
     if render:
         try:
-            from src.visualization.render import render_geometry_png
-            png_path = render_geometry_png(written_path, output_path.with_suffix('.png'), dpi=150)
+            png_writer = PNGWriter()
+            png_path = png_writer.write(output_path.with_suffix('.png'), written_path, dpi=150)
             print(f"[OK] Rendered visualization: {png_path}")
         except Exception as e:
             print(f"[WARN] Could not render PNG: {e}")
@@ -403,8 +412,8 @@ def generate_layers(config_path: Path, output_path: Path, render: bool = False) 
 
     if render:
         try:
-            from src.visualization.render import render_geometry_png
-            png_path = render_geometry_png(written, output_path.with_suffix(".png"), dpi=150)
+            png_writer = PNGWriter()
+            png_path = png_writer.write(output_path.with_suffix(".png"), written, dpi=150)
             print(f"[OK] Rendered visualization: {png_path}")
         except Exception as e:
             print(f"[WARN] Could not render PNG: {e}")
@@ -414,10 +423,10 @@ def generate_layers(config_path: Path, output_path: Path, render: bool = False) 
 
 
 def _load_toml(path: Path) -> dict:
-    """Load a TOML config file into a dict (stdlib tomllib, no deps)."""
-    import tomllib
-    with open(path, "rb") as fh:
-        return tomllib.load(fh)
+    """Load a TOML config file into a dict using the data access layer."""
+    from src.data_access import TOMLReader
+    reader = TOMLReader()
+    return reader.read(path)
 
 
 def _resolve_mode(data: dict) -> str | None:
