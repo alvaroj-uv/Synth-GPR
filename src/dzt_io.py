@@ -8,12 +8,14 @@ All traces are read as raw (unnormalized) 16-bit signed integers with full
 time window (typically 22,652 samples at 0.1 ns intervals).
 """
 
+import logging
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional, Any
 import numpy as np
 import pandas as pd
 from readgssi.dzt import readdzt
 from readgssi.gps import readdzg
+from .logging_config import get_logger
 
 
 def get_dzt_metadata(dzt_path: Path) -> Dict[str, Any]:
@@ -175,11 +177,12 @@ def extract_traces_to_parquet(dzt_files: List[Path], output_path: Path,
         channel: Channel index (default 0)
         verbose: Print progress (default True)
     """
+    logger = get_logger(__name__)
     dzt_files = sorted([Path(f) for f in dzt_files])
 
     if verbose:
-        print(f"\nExtracting {len(dzt_files)} DZT files to parquet (FULL SAMPLES)\n")
-        print("="*70)
+        logger.info(f"Extracting {len(dzt_files)} DZT files to parquet (FULL SAMPLES)")
+        logger.info("=" * 70)
 
     all_traces = []
     all_metadata = []
@@ -187,13 +190,13 @@ def extract_traces_to_parquet(dzt_files: List[Path], output_path: Path,
 
     for file_idx, dzt_file in enumerate(dzt_files):
         if verbose:
-            print(f"[{file_idx+1}/{len(dzt_files)}] {dzt_file.name}")
+            logger.info(f"[{file_idx+1}/{len(dzt_files)}] {dzt_file.name}")
 
         traces, metadata = read_dzt_traces(dzt_file, channel=channel)
         nsamp = metadata['samples_per_trace']
 
         if verbose:
-            print(f"      Traces: {len(traces)}, Samples/trace: {nsamp}")
+            logger.info(f"      Traces: {len(traces)}, Samples/trace: {nsamp}")
 
         # Convert to DataFrame rows
         for trace_idx, trace in enumerate(traces):
@@ -207,27 +210,27 @@ def extract_traces_to_parquet(dzt_files: List[Path], output_path: Path,
             trace_count += 1
 
         if verbose and (file_idx + 1) % max(1, len(dzt_files) // 5) == 0:
-            print(f"      Progress: {trace_count} traces extracted\n")
+            logger.info(f"      Progress: {trace_count} traces extracted")
 
     # Create DataFrame
     if verbose:
-        print("\n" + "="*70)
-        print("Creating DataFrame and saving parquet...\n")
+        logger.info("=" * 70)
+        logger.info("Creating DataFrame and saving parquet...")
 
     df = pd.DataFrame(all_traces)
 
-    print(f"DataFrame shape: {df.shape}")
-    print(f"  Rows (traces): {len(df)}")
-    print(f"  Columns: {len(df.columns)}")
-    print(f"    - Sample columns: {nsamp}")
-    print(f"    - Metadata: 4 (file, trace_idx, peak_amplitude, rms)")
+    logger.info(f"DataFrame shape: {df.shape}")
+    logger.info(f"  Rows (traces): {len(df)}")
+    logger.info(f"  Columns: {len(df.columns)}")
+    logger.info(f"    - Sample columns: {nsamp}")
+    logger.info(f"    - Metadata: 4 (file, trace_idx, peak_amplitude, rms)")
 
     # Data statistics
     peaks = df['peak_amplitude']
-    print(f"\nData Statistics:")
-    print(f"  Peak amplitudes: {peaks.min():.2e} to {peaks.max():.2e}")
-    print(f"  Peak std dev: {peaks.std():.2e}")
-    print(f"  Peak variation: {peaks.std()/peaks.mean()*100:.1f}%")
+    logger.info(f"Data Statistics:")
+    logger.info(f"  Peak amplitudes: {peaks.min():.2e} to {peaks.max():.2e}")
+    logger.info(f"  Peak std dev: {peaks.std():.2e}")
+    logger.info(f"  Peak variation: {peaks.std()/peaks.mean()*100:.1f}%")
 
     # Save parquet
     output_path = Path(output_path)
@@ -236,13 +239,13 @@ def extract_traces_to_parquet(dzt_files: List[Path], output_path: Path,
     df.to_parquet(output_path, index=False, engine='pyarrow', compression='snappy')
 
     if verbose:
-        print(f"\nSaved: {output_path}")
-        print(f"File size: {output_path.stat().st_size / 1e9:.3f} GB")
+        logger.info(f"Saved: {output_path}")
+        logger.info(f"File size: {output_path.stat().st_size / 1e9:.3f} GB")
 
-        print(f"\n" + "="*70)
-        print(f"SUCCESS: Created parquet with {len(df)} traces × {nsamp} full samples")
-        print(f"This retains 100% of original signal (no information loss)")
-        print(f"Time window: {nsamp * 0.1:.1f} ns ({nsamp * 0.1 / 1000:.2f} μs)")
-        print(f"="*70 + "\n")
+        logger.info("=" * 70)
+        logger.info(f"SUCCESS: Created parquet with {len(df)} traces × {nsamp} full samples")
+        logger.info(f"This retains 100% of original signal (no information loss)")
+        logger.info(f"Time window: {nsamp * 0.1:.1f} ns ({nsamp * 0.1 / 1000:.2f} μs)")
+        logger.info("=" * 70)
 
     return df

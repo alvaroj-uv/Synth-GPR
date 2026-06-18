@@ -1,3 +1,4 @@
+import logging
 import os
 import glob
 import h5py
@@ -6,6 +7,9 @@ import pandas as pd
 from scipy.signal import hilbert
 from src.signal_processing import preprocess_signal
 from .constants import PC
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 def read_gprmax_hdf5(filename, fields=['E', 'H']):
     """
@@ -15,10 +19,10 @@ def read_gprmax_hdf5(filename, fields=['E', 'H']):
     try:
         f = h5py.File(filename, 'r')
     except FileNotFoundError:
-        print(f"Error: File {filename} not found.")
+        logger.error(f"File {filename} not found.")
         return pd.DataFrame()
     except OSError:
-        print(f"Error: Could not open file {filename}. It might be corrupted or not an HDF5 file.")
+        logger.error(f"Could not open file {filename}. It might be corrupted or not an HDF5 file.")
         return pd.DataFrame()
 
     # Extract Time
@@ -169,10 +173,10 @@ def load_batch_dataset(input_dir, field='Ez'):
     """
     files = glob.glob(os.path.join(input_dir, '*.out'))
     if not files:
-        print(f"No .out files found in {input_dir}")
+        logger.warning(f"No .out files found in {input_dir}")
         return None
 
-    print(f"Found {len(files)} files. Loading data...")
+    logger.info(f"Found {len(files)} files. Loading data...")
 
     raw_signals = []
     treated_signals = []
@@ -227,7 +231,7 @@ def load_batch_dataset(input_dir, field='Ez'):
             fourier_spectra.append(spectrum)
             
         except Exception as e:
-            print(f"Error processing {filepath}: {e}")
+            logger.error(f"Error processing {filepath}: {e}")
 
     return {
         'raw': raw_signals,

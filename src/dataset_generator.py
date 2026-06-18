@@ -13,11 +13,13 @@ This generator creates labeled training data for ML-based fouling classification
 Simplified geometry (cylinders) provides sufficient electromagnetic complexity
 for GPR while enabling efficient large-scale dataset generation.
 """
+import logging
 import random
 from pathlib import Path
 from typing import List
 
 from .config import GeneratorConfig
+from .logging_config import get_logger
 from .work_order import WorkOrder, WorkOrderSystem
 from .production_line import ProductionLine
 from .sampling import ParameterSampler
@@ -40,6 +42,7 @@ class DatasetGenerator:
         self.config = config
         self.pipeline = ProductionLine(config)
         self.sampler = ParameterSampler(config)
+        self.logger = get_logger(__name__)
 
     def generate_samples(
         self,
@@ -99,17 +102,17 @@ class DatasetGenerator:
                         metadata[k] = params[k]
                 
                 # Log explicit virtual lab results
-                print(f"  -> Virtual Lab Results for Sample {sample_id}:")
-                print(f"       Classification : Target={metadata.get('FI_class', 'N/A')} | Lab_Class={metadata.get('Lab_Class', 'N/A')} | Lab_FI={metadata.get('Lab_FI', 0):.1f} | PVC={metadata.get('pvc', 0):.2f}%")
-                print(f"       Virtual LDCP   : FI_est={metadata.get('Lab_LDCP_FI_est', 0):.1f} | qs_mean={metadata.get('Lab_LDCP_qs_mean', 0):.2f} MPa")
-                print(f"       GPR Physics    : bulk_eps={metadata.get('Lab_bulk_eps', 0):.3f} | clean_depth={metadata.get('Lab_clean_ballast_mm', 0):.1f} mm | rocks={checkpoint.rock_count}")
+                self.logger.debug(f"Virtual Lab Results for Sample {sample_id}:")
+                self.logger.debug(f"  Classification: Target={metadata.get('FI_class', 'N/A')} | Lab_Class={metadata.get('Lab_Class', 'N/A')} | Lab_FI={metadata.get('Lab_FI', 0):.1f} | PVC={metadata.get('pvc', 0):.2f}%")
+                self.logger.debug(f"  Virtual LDCP: FI_est={metadata.get('Lab_LDCP_FI_est', 0):.1f} | qs_mean={metadata.get('Lab_LDCP_qs_mean', 0):.2f} MPa")
+                self.logger.debug(f"  GPR Physics: bulk_eps={metadata.get('Lab_bulk_eps', 0):.3f} | clean_depth={metadata.get('Lab_clean_ballast_mm', 0):.1f} mm | rocks={checkpoint.rock_count}")
                 
                 # Validation check (non-blocking, just informational)
                 validation_errors = checkpoint.validate_all()
                 if validation_errors:
-                    print(f"  [!] Validation warnings: {len(validation_errors)} issue(s)")
+                    self.logger.warning(f"Validation warnings for sample {sample_id}: {len(validation_errors)} issue(s)")
                     for err in validation_errors[:3]:  # Show first 3
-                        print(f"    - {err}")
+                        self.logger.warning(f"  - {err}")
                 
                 # Save to file using GPRMaxFileWriter
                 from .file_writer import GPRMaxFileWriter
@@ -133,11 +136,11 @@ class DatasetGenerator:
                     'center_freq': self.config.center_freq,
                 })
                 
-                print(f"[OK] Sample {sample_id}: 1 file generated")
+                self.logger.info(f"Sample {sample_id}: 1 file generated")
                 
             except Exception as e:
-                print(f"[ERROR] Sample {sample_id} failed: {e}")
+                self.logger.error(f"Sample {sample_id} failed: {e}")
                 import traceback
-                traceback.print_exc()
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
         
         return generated_files

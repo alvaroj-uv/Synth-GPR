@@ -1,4 +1,5 @@
 # Standard library
+import logging
 import warnings
 
 # Third-party imports
@@ -10,6 +11,7 @@ from scipy.stats import skew, kurtosis
 # Local imports
 from src.constants import PC, SC
 from src.signal_processing import calculate_instantaneous_attributes, peak_relative_coda_gate
+from .logging_config import get_logger
 
 def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str = "sig",
                                  center_freq_hz=None, coda_seek_peak: bool = True,
@@ -67,8 +69,10 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
     features — exclude any column starting with 'meta_' (and 'Signal') from
     training matrices.
     """
+    logger = get_logger(__name__)
+    
     if df.empty:
-        print("DataFrame is empty. Cannot extract features.")
+        logger.warning("DataFrame is empty. Cannot extract features.")
         return pd.DataFrame()
 
     if dt is None:

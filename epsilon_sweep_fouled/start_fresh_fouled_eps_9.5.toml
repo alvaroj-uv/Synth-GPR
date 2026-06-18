@@ -1,0 +1,26 @@
+# 420 MHz Fouled Ballast - Epsilon sweep
+[job]
+render = true
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.3
+air_buffer = 0.0
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "420 MHz Fouled Ballast eps=9.5"
+
+[source]
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "ballast"
+thickness = 0.3
+eps = 9.5
+sigma = 0.0

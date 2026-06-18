@@ -18,7 +18,7 @@ Reference:
 """
 
 from __future__ import annotations
-
+import logging
 import math
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,6 +26,7 @@ from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .worker import SceneCheckpoint
+from .logging_config import get_logger
 
 
 class Severity(str, Enum):
@@ -68,18 +69,19 @@ class ValidationReport:
         return f"{e} error(s), {w} warning(s), {i} info"
 
     def print_report(self) -> None:
-        print()
-        print("=" * 70)
-        print("GEOMETRY VALIDATION REPORT")
-        print("=" * 70)
+        logger = get_logger(__name__)
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("GEOMETRY VALIDATION REPORT")
+        logger.info("=" * 70)
         if not self.issues:
-            print("  [OK] No issues found.")
+            logger.info("  [OK] No issues found.")
         else:
             for issue in self.issues:
-                print(f"  {issue}")
-        print(f"\n  Summary: {self.summary()}")
-        print("=" * 70)
-        print()
+                logger.info(f"  {issue}")
+        logger.info(f"\n  Summary: {self.summary()}")
+        logger.info("=" * 70)
+        logger.info("")
 
 
 class GeometryValidator:

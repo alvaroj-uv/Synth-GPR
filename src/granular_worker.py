@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import random
 import math
@@ -9,6 +10,7 @@ from .constants import MC, PC
 from .physics import classify_pvc
 from .rock_model import PackingBounds, Rock
 from .rock_loader import RockLoader
+from .logging_config import get_logger
 
 
 def _polygon_area(verts) -> float:
@@ -38,6 +40,10 @@ class GranularMatrixWorker(Worker):
     """
     
     name = "GranularMatrixWorker"
+    
+    def __init__(self):
+        super().__init__()
+        self.logger = get_logger(__name__)
 
     def execute(self, scene: SceneCheckpoint, keeper: "WarehouseKeeper", params: Optional[Dict[str, Any]] = None) -> None:
         """Fill the ballast volume with rocks and fouling.
@@ -83,7 +89,7 @@ class GranularMatrixWorker(Worker):
         if source_file:
             # Load rocks from existing .in file
             algo = "loaded"
-            print(f"[{self.name}] Loading rocks from {source_file}...")
+            self.logger.info(f"Loading rocks from {source_file}...")
             try:
                 source_path = Path(source_file)
                 loaded_rocks, source_meta = RockLoader.extract_rocks_from_file(source_path)
@@ -102,7 +108,7 @@ class GranularMatrixWorker(Worker):
                     # Try loading all rocks in ballast range
                     ballast_rocks = [r for r in loaded_rocks if start_y <= r.y <= top_y + 0.5]
 
-                print(f"[{self.name}] Loaded {len(ballast_rocks)} rocks from source file")
+                self.logger.info(f"Loaded {len(ballast_rocks)} rocks from source file")
 
                 # Convert loaded rocks to circle-like objects for processing
                 all_circles = [r.to_rock() for r in ballast_rocks]
