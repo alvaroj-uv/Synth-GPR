@@ -1,0 +1,84 @@
+# Multi-layer trackbed with clean and fouled ballast layers
+# Purpose: Realistic 2D synthetic of railway ballast with fouling progression
+# References: Benedetto 2017 (tank ground truth), Brancadoro papers
+#
+# LAYER STRUCTURE (bottom to top):
+#   [3] Fouling layer (thin, eps ~8-11 depending on FI)
+#   [2] Ballast (clean, homogeneous CRIM, eps ~3.5)
+#   [1] Subgrade (silty soil, eps ~3.5)
+#   [0] Air (with antenna clearance)
+
+[job]
+mode = "layers"
+render = true
+
+[sim]
+# 420 MHz is optimized (88.76% correlation with real data per DEFAULT.toml)
+freq_hz = 420e6
+
+# Domain: 0.5 m wide, fine grid for 420 MHz
+domain_x = 0.5
+dx = 0.003
+
+# Antenna standoff: 10 cm (monostatic GSSI-400 style)
+antenna_clearance = 0.1
+air_buffer = 0.1
+
+# Time window: 100 ns (captures direct wave + deep reflections)
+time_window = 1.0e-7
+
+# Bistatic antenna (30 mm TX/RX separation) — optimized configuration
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+
+# Descriptive title for gprMax output
+title = "420 MHz Trackbed: Clean Ballast vs Fouled (CRIM)"
+
+[source]
+# Gaussian waveform is 145.6% better than Ricker (per DEFAULT.toml calibration)
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+# ============================================================================
+# LAYER STACK (bottom to top)
+# ============================================================================
+
+# LAYER 0: Subgrade (silty soil, below ballast)
+# Typical: 0.15 m depth, slightly conductive
+[[layer]]
+name = "subgrade"
+thickness = 0.15
+eps = 3.5
+sigma = 0.01
+
+# LAYER 1: Clean Ballast (homogeneous CRIM approximation)
+# Ballast: crushed rock (dolomite/granite), angular, ~49% porosity (air voids)
+# CRIM formula: eps_eff ≈ (1 - phi)·eps_rock + phi·eps_air
+#   => (1 - 0.49)·6.1 + 0.49·1.0 ≈ 3.5
+# Reference: Benedetto 2017 tank (clean bulk eps=3.51)
+[[layer]]
+name = "ballast_clean"
+thickness = 0.30
+eps = 3.5
+sigma = 0.01
+
+# LAYER 2: Fouled Layer (clogging fines, contamination)
+# Fouling: clay/silt filling voids, raising permittivity + conductivity
+# Dry fouling cap (Benedetto 2017): eps ~5.35
+# Moderate moisture (FI ~30-40%): eps ~8.0
+# High moisture (FI ~60%+): eps ~11.3
+#
+# For this example: moderate fouling (FI ~35%), moistness adds conductivity
+[[layer]]
+name = "fouling"
+thickness = 0.05
+eps = 8.0
+sigma = 0.05
+
+# LAYER 3: Air (handled by antenna_clearance, but included for completeness)
+# The antenna geometry will override this with antenna_clearance + air_buffer
+[[layer]]
+name = "air"
+thickness = 0.5
