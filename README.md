@@ -76,7 +76,7 @@ Synth-GPR/
 │
 ├── scripts/                       # Executable scripts
 │   ├── pipeline/                  # Core pipeline scripts
-│   │   ├── generate_in_files.py   # Generate .in geometry files
+│   │   ├── generate_gprmax_scenes.py   # Generate .in geometry files
 │   │   ├── run_simulations.py     # Execute gprMax simulations
 │   │   ├── extract_features.py    # Extract features from .out files
 │   │   ├── build_parquet.py       # Consolidate features into Parquet
@@ -158,7 +158,7 @@ Synth-GPR/
 
 Generate 50 samples per fouling class with angular rocks:
 ```bash
-python scripts/pipeline/generate_in_files.py output/ \
+python scripts/pipeline/generate_gprmax_scenes.py output/ \
   --mode batch \
   --labels CL MC MF F HF \
   -n 50 \
@@ -287,8 +287,8 @@ Five fouling classes defined by **Fouling Index (FI)** and **Percentage Void Con
 
 **Generate Synthetic Geometries:**
 ```bash
-python scripts/main/generate_in_files.py <output_file|output_dir> \
-  --mode batch|single|replicate \
+python scripts/pipeline/generate_gprmax_scenes.py <output_file|output_dir> \
+  --mode batch|single|layers \
   --labels CL MC MF F HF \
   -n <samples_per_class> \
   --freq <frequency_hz> \

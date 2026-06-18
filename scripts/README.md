@@ -12,7 +12,7 @@ For the packer API used by the generation scripts, see
 ### `pipeline/` — Core Pipeline
 Dataset generation, simulation, feature extraction, and model training.
 
-- **`generate_in_files.py`** — Generate gprMax `.in` geometry files (dataset or single sample)
+- **`generate_gprmax_scenes.py`** — Generate gprMax `.in` geometry files (dataset or single sample)
 - **`run_simulations.py`** — Batch runner for executing gprMax on multiple `.in` files
 - **`extract_features.py`** — Extract waveform features from `.out` files (`extract_features_real.py` / `extract_features_rojas.py` for real data)
 - **`build_parquet.py`** — Consolidate features into Parquet format (`build_parquet_merged.py`, `build_parquet_coda_aligned.py` variants)
@@ -42,10 +42,10 @@ Dataset generation, simulation, feature extraction, and model training.
 
 ### `visualization/` — Plotting & Rendering
 - **`unified_visualizer.py`** — Main visualizer (geometry, A-scan, dashboard; auto-detects 2D/3D; `--title`/`--metadata` annotations)
-- **`visualize_ascan.py`**, **`plot_fouling_classes.py`** — Signal and classification plots
+- **`visualize_gprmax_ascans.py`**, **`plot_fouling_classes.py`** — Signal and classification plots
 
 ### Root-level
-- **`convert_snapshots.py`** — EM field snapshot conversion
+- **`convert_gprmax_snapshots.py`** — EM field snapshot conversion
 
 ## Usage
 
@@ -53,7 +53,7 @@ Dataset generation, simulation, feature extraction, and model training.
 
 ```bash
 # Generate .in files
-python scripts/pipeline/generate_in_files.py --help
+python scripts/pipeline/generate_gprmax_scenes.py --help
 
 # Run simulations
 python scripts/pipeline/run_simulations.py <dataset_dir>
