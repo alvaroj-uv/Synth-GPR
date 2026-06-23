@@ -1,6 +1,4 @@
 @echo off
-REM Activate gprMax environment and run simulation
-
 cd /d "d:\Codigo\Synth-GPR"
 
 echo.
@@ -18,12 +16,12 @@ if %errorlevel% neq 0 (
 echo [OK] gprMax environment activated
 echo.
 echo ============================================================
-echo Running gprMax simulation
+echo Running gprMax simulation: 8-layer multi-epsilon model
 echo ============================================================
 echo.
 
-set IN_FILE=start_fresh_10layers.in
-set OUT_FILE=start_fresh_10layers.out
+set IN_FILE=start_fresh_layered.in
+set OUT_FILE=start_fresh_layered.out
 
 if not exist "%IN_FILE%" (
     echo ERROR: %IN_FILE% not found

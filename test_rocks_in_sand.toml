@@ -1,0 +1,43 @@
+# Two-layer ballast: Rocks in air void (top) + Rocks in sand (bottom)
+# Mimics real railway subballast structure
+[job]
+render = true
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.3
+air_buffer = 0.0
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "Rocks in Sand: Two-layer ballast"
+
+[source]
+waveform = "gaussian"
+amplitude = 0.3
+polarization = "z"
+
+# Layer 1: Subballast (sand with embedded rocks) - BOTTOM
+[[layer]]
+name = "subballast"
+thickness = 0.15
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.50
+eps = 5.0
+sigma = 0.0002
+
+# Layer 2: Top ballast (rocks in air void) - TOP (antenna sees this first)
+[[layer]]
+name = "ballast_top"
+thickness = 0.15
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.50
+eps = 7.5
+sigma = 0.0001

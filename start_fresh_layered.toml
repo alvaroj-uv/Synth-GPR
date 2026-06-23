@@ -1,0 +1,68 @@
+[job]
+render = true
+
+[sim]
+freq_hz = 420000000
+domain_x = 0.6
+dx = 0.0025
+antenna_clearance = 0.3
+air_buffer = 0.1
+time_window = 5.00e-08
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.05
+title = "8-Layer Zero-Crossing Model (420 MHz)"
+
+[source]
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "layer_1"
+thickness = 0.158
+eps = 5.1
+sigma = 0.0
+
+[[layer]]
+name = "layer_2"
+thickness = 0.158
+eps = 5.8
+sigma = 0.0
+
+[[layer]]
+name = "layer_3"
+thickness = 0.158
+eps = 6.5
+sigma = 0.0
+
+[[layer]]
+name = "layer_4"
+thickness = 0.158
+eps = 7.2
+sigma = 0.0
+
+[[layer]]
+name = "layer_5"
+thickness = 0.158
+eps = 8.0
+sigma = 0.0
+
+[[layer]]
+name = "layer_6"
+thickness = 0.158
+eps = 8.7
+sigma = 0.0
+
+[[layer]]
+name = "layer_7"
+thickness = 0.158
+eps = 9.2
+sigma = 0.0
+
+[[layer]]
+name = "layer_8"
+thickness = 0.158
+eps = 9.8
+sigma = 0.0
+

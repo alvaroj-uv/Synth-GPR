@@ -1,0 +1,80 @@
+# 420 MHz 10-Layer Epsilon Sweep
+[job]
+render = true
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.6
+dx = 0.0025
+antenna_clearance = 0.3
+air_buffer = 0.0
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.05
+title = "420 MHz 10-Layer Epsilon Sweep"
+
+[source]
+waveform = "gaussian"
+amplitude = 1.0
+polarization = "z"
+
+[[layer]]
+name = "layer_1"
+thickness = 0.05
+eps = 3.0
+sigma = 0.0
+
+[[layer]]
+name = "layer_2"
+thickness = 0.05
+eps = 3.78
+sigma = 0.0
+
+[[layer]]
+name = "layer_3"
+thickness = 0.05
+eps = 4.56
+sigma = 0.0
+
+[[layer]]
+name = "layer_4"
+thickness = 0.05
+eps = 5.33
+sigma = 0.0
+
+[[layer]]
+name = "layer_5"
+thickness = 0.05
+eps = 6.11
+sigma = 0.0
+
+[[layer]]
+name = "layer_6"
+thickness = 0.05
+eps = 6.89
+sigma = 0.0
+
+[[layer]]
+name = "layer_7"
+thickness = 0.05
+eps = 7.67
+sigma = 0.0
+
+[[layer]]
+name = "layer_8"
+thickness = 0.05
+eps = 8.44
+sigma = 0.0
+
+[[layer]]
+name = "layer_9"
+thickness = 0.05
+eps = 9.22
+sigma = 0.0
+
+[[layer]]
+name = "layer_10"
+thickness = 0.05
+eps = 10.0
+sigma = 0.0

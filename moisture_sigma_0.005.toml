@@ -1,4 +1,4 @@
-# 420 MHz Clean Ballast - Fresh Start
+# 420 MHz Ballast with Moisture (sigma = 0.005 S/m)
 [job]
 render = true
 
@@ -12,7 +12,7 @@ time_window = 5.0e-8
 antenna_mode = "bistatic"
 num_receivers = 1
 receiver_spacing = 0.03
-title = "420 MHz Clean Ballast - Fresh Start"
+title = "420 MHz Rocks + Moisture (sigma=0.005)"
 
 [source]
 waveform = "gaussian"
@@ -22,5 +22,9 @@ polarization = "z"
 [[layer]]
 name = "ballast"
 thickness = 0.3
-eps = 5.1
-sigma = 0.0
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.50
+eps = 7.5
+sigma = 0.005

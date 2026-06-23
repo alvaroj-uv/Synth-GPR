@@ -1,4 +1,4 @@
-# 420 MHz Clean Ballast - Fresh Start
+# 420 MHz Fouled Ballast - High Epsilon Variant
 [job]
 render = true
 
@@ -12,7 +12,7 @@ time_window = 5.0e-8
 antenna_mode = "bistatic"
 num_receivers = 1
 receiver_spacing = 0.03
-title = "420 MHz Clean Ballast - Fresh Start"
+title = "420 MHz Fouled Ballast (eps=9.5)"
 
 [source]
 waveform = "gaussian"
@@ -20,7 +20,7 @@ amplitude = 0.3
 polarization = "z"
 
 [[layer]]
-name = "ballast"
+name = "ballast_fouled"
 thickness = 0.3
-eps = 5.1
+eps = 9.5
 sigma = 0.0

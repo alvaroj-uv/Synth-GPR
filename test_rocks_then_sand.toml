@@ -1,0 +1,39 @@
+# Correct order: ROCKS at bottom, SAND on top before air
+[job]
+render = true
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.3
+air_buffer = 0.0
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "ROCKS at bottom, SAND on top, then AIR"
+
+[source]
+waveform = "gaussian"
+amplitude = 0.3
+polarization = "z"
+
+# Layer 1 (BOTTOM): Rocks
+[[layer]]
+name = "ballast"
+thickness = 0.27
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.50
+eps = 7.5
+sigma = 0.0001
+
+# Layer 2 (TOP): Sand interface
+[[layer]]
+name = "sand"
+thickness = 0.03
+packed = false
+eps = 4.5
+sigma = 0.0001

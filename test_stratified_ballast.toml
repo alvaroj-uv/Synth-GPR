@@ -1,0 +1,50 @@
+# Realistic stratified ballast: SAND → ROCKS+SAND → ROCKS+AIR
+[job]
+render = true
+
+[sim]
+freq_hz = 420e6
+domain_x = 0.5
+dx = 0.003
+antenna_clearance = 0.3
+air_buffer = 0.0
+time_window = 5.0e-8
+antenna_mode = "bistatic"
+num_receivers = 1
+receiver_spacing = 0.03
+title = "Stratified: Sand (0-0.1m) → Rocks+Sand (0.1-0.2m) → Rocks+Air (0.2-0.3m)"
+
+[source]
+waveform = "gaussian"
+amplitude = 0.3
+polarization = "z"
+
+# Layer 1 (0-0.1m BOTTOM): Pure sand
+[[layer]]
+name = "sand_base"
+thickness = 0.1
+packed = false
+eps = 4.5
+sigma = 0.0001
+
+# Layer 2 (0.1-0.2m): Rocks in sand matrix (sub-ballast)
+[[layer]]
+name = "subballast"
+thickness = 0.1
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.40
+eps = 5.5
+sigma = 0.0001
+
+# Layer 3 (0.2-0.3m TOP): Rocks in air void (top ballast)
+[[layer]]
+name = "ballast"
+thickness = 0.1
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.50
+eps = 7.5
+sigma = 0.0001

@@ -1,4 +1,4 @@
-# 420 MHz Clean Ballast - Fresh Start
+# 420 MHz Clean Ballast WITH ROCKS (generates coda spikes)
 [job]
 render = true
 
@@ -12,15 +12,20 @@ time_window = 5.0e-8
 antenna_mode = "bistatic"
 num_receivers = 1
 receiver_spacing = 0.03
-title = "420 MHz Clean Ballast - Fresh Start"
+title = "420 MHz Ballast with Rock Scattering"
 
 [source]
 waveform = "gaussian"
 amplitude = 0.3
 polarization = "z"
 
+# Rock layer: packed geometry generates coda spikes
 [[layer]]
-name = "ballast"
+name = "ballast_clean"
 thickness = 0.3
+packed = true
+rock_packing_algorithm = "mbubia"
+rock_diameter = 0.025
+rock_porosity = 0.35
 eps = 5.1
 sigma = 0.0
