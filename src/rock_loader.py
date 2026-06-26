@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 from .rock_model import Rock
+from .data_access import INFileReader
 
 
 @dataclass
@@ -54,8 +55,7 @@ class RockLoader:
         if not in_file.exists():
             raise FileNotFoundError(f"Input file not found: {in_file}")
 
-        with open(in_file, 'r') as f:
-            lines = f.readlines()
+        lines = INFileReader().read(in_file, as_lines=True)
 
         # Extract metadata from header
         for line in lines:

@@ -52,7 +52,9 @@ waveform = "gaussian"
 amplitude = 1.0
 polarization = "z"
 
-# Single air layer (override with [[layer]] sections for multi-layer simulations)
+# Free-space simulation: single air layer defines the subsurface height.
+# For multi-layer scenes, list layers top → bottom (shallowest first).
+# Air is the background — no need to declare it in non-freespace configs.
 [[layer]]
 name = "air"
 thickness = 0.5

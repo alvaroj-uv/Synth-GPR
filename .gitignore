@@ -15,7 +15,7 @@
 *.parquet
 *.joblib
 *.DZT
-*.dzt
+*.toml
 
 # Images (keep output/test_images tracked)
 test_*.png
@@ -45,3 +45,4 @@ test_run_mac/
 tools/
 output/
 test/
+examples/10layer_packed_420mhz.toml

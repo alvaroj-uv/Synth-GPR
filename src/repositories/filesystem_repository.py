@@ -11,6 +11,7 @@ import pandas as pd
 
 from .scene_repository import SceneRepository, SceneMetadata
 from ..file_reader import parse_metadata_comments
+from ..data_access import INFileReader
 
 
 class FileSystemSceneRepository(SceneRepository):
@@ -219,7 +220,7 @@ class FileSystemSceneRepository(SceneRepository):
         metadata_rows = []
         for in_file in in_files:
             scene_id = in_file.stem
-            content = in_file.read_text()
+            content = INFileReader().read(in_file)
             
             # Parse metadata from .in file comments
             # (This would need to be implemented based on your .in file format)

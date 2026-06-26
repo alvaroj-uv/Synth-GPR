@@ -7,7 +7,8 @@ and exporters.
 """
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
-import tomllib  # stdlib (Python 3.11+); read-only TOML parser
+
+from .data_access import TOMLReader
 
 
 @dataclass
@@ -34,8 +35,7 @@ def parse_toml(path: str) -> SceneModel:
     fields (frequency, layers, targets) and preserves any extra keys in
     metadata for downstream components.
     """
-    with open(path, "rb") as f:  # tomllib requires a binary file object
-        data = tomllib.load(f)
+    data = TOMLReader().read(path)
 
     freq = data.get("frequency") or data.get("f0") or data.get("f")
     if freq is None:

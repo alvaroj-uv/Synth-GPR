@@ -41,20 +41,17 @@ polarization = "z"
 [job]
 render = true
 
-# LAYER STACK (bottom to top)
-# Layer 1: Air/surface
-[[layer]]
-name = "air"
-thickness = 0.05                   # 5 cm air buffer
+# LAYER STACK (top → bottom, as the radar sees it)
+# Air is the painter's-algorithm background — no need to declare it.
 
-# Layer 2: Clean ballast (MAIN LAYER FOR CODA TESTING)
+# Clean ballast (MAIN LAYER FOR CODA TESTING) — shallowest, first radar return
 [[layer]]
 name = "clean_ballast"
 thickness = 0.3                    # 30 cm ballast layer
 eps = 5.1                          # Clean ballast permittivity (optimized)
 sigma = 0.0                        # No conductivity (clean, dry)
 
-# Optional: Add more layers below for realistic scenarios
+# Optional: add deeper layers below
 # [[layer]]
 # name = "subgrade"
 # thickness = 0.5

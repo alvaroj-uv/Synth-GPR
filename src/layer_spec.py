@@ -1,37 +1,46 @@
 """N-layer scene specification for the .in creator.
 
-A :class:`Layer` is one horizontal stratum, ordered bottom -> top. Each layer is
-either a flat homogeneous box, or a ``packed`` ballast layer filled with rocks of
-a contrasting material sitting in a matrix/void material.
+A :class:`Layer` is one horizontal stratum. Each layer is either a flat
+homogeneous box, or a ``packed`` ballast layer filled with rocks of a contrasting
+material sitting in a matrix/void material.
 
 Materials may be given by NAME (resolved from the validated constants in
 ``MaterialConstants``) or explicitly as ``(eps, sigma)``.
 
-Two input forms are supported (see ``parse_layers`` / ``parse_layers_file``):
+## TOML convention: top → bottom (as the radar sees it)
 
-  inline string :  "subgrade:0.20, formation:0.10, ballast:0.25:packed"
-                   "clay:0.15:12:0.05, ballast:0.25:4:0.001:packed"
-  TOML file     :  [[layer]]
-                   name = "subgrade"
-                   thickness = 0.20
-                   [[layer]]
-                   name = "ballast"
-                   thickness = 0.25
-                   packed = true
+The first ``[[layer]]`` in the TOML is the shallowest (closest to the antenna);
+the last is the deepest.  Air/free-space is the painter's-algorithm background —
+you do NOT need to declare it.  Example trackbed (top → bottom):
 
-The ``packed`` flag marks the rock-packed layer: the NAMED material becomes the
+    [[layer]]
+    name = "fouling"
+    thickness = 0.05
+
+    [[layer]]
+    name = "ballast"
+    thickness = 0.30
+    packed = true
+
+    [[layer]]
+    name = "subgrade"
+    thickness = 0.20
+
+Internally the list is reversed to bottom → top before being passed to the scene
+builder (which stacks layers from y = 0 upward).
+
+The ``packed`` flag marks the rock-filled layer: the NAMED material becomes the
 ROCK material and the inter-rock matrix defaults to air (``free_space``). This
-guarantees rock/matrix dielectric contrast (the painter's-algorithm safeguard:
-a rock must never share its material with the box directly beneath it).
+guarantees rock/matrix dielectric contrast (painter's-algorithm safeguard).
 """
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 from .constants import MC
+from .data_access import TOMLReader
 
 # Named material registry -> (eps, sigma). Single source of truth = MaterialConstants.
 NAMED_MATERIALS: dict[str, Tuple[float, float]] = {
@@ -230,7 +239,12 @@ def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
 
 
 def _layers_from_table(table) -> List[Layer]:
-    """Build + validate the layer stack from an array of [[layer]] tables."""
+    """Build + validate the layer stack from an array of [[layer]] tables.
+
+    TOML order is top → bottom (first entry = shallowest, as the radar sees it).
+    The list is reversed before returning so the internal representation is always
+    bottom → top, matching the scene builder's coordinate system (y = 0 at bottom).
+    """
     if not isinstance(table, list) or not table:
         raise ValueError(
             "layer TOML must contain a non-empty array of [[layer]] tables"
@@ -240,14 +254,14 @@ def _layers_from_table(table) -> List[Layer]:
         if "name" not in obj or "thickness" not in obj:
             raise ValueError(f"[[layer]] #{i}: requires 'name' and 'thickness'")
         layers.append(_layer_from_table_obj(obj, i))
+    layers.reverse()  # TOML: top→bottom; internal: bottom→top
     _validate_stack(layers)
     return layers
 
 
 def parse_layers_file(path: Union[str, Path]) -> List[Layer]:
     """Parse a TOML layer file: an array of ``[[layer]]`` tables, bottom -> top."""
-    with open(path, "rb") as fh:
-        data = tomllib.load(fh)
+    data = TOMLReader().read(path)
     return _layers_from_table(data.get("layer"))
 
 
@@ -271,9 +285,8 @@ class SceneConfig:
 def parse_config_file(path: Union[str, Path]) -> SceneConfig:
     """Parse a full scene-config TOML: [sim], [source], [lab], [[layer]], [[command]]."""
     path = Path(path)
-    text = path.read_text()
-    with open(path, "rb") as fh:
-        data = tomllib.load(fh)
+    data = TOMLReader().read(path)
+    text = path.read_text(encoding='utf-8')
 
     layers = _layers_from_table(data.get("layer"))
 

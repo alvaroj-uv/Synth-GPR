@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from ..file_reader import parse_metadata_comments
+from ..data_access import INFileReader
 from .model import (
     AntennaPos,
     BoxGeom,
@@ -159,8 +160,7 @@ def parse_in_file(path: Path) -> SceneData:
             pinpoints it as ``{file}:{lineno}: {line}``.
     """
     scene = SceneData()
-    with open(path, encoding="utf-8", errors="replace") as fh:
-        lines = fh.readlines()
+    lines = INFileReader().read(path, as_lines=True)
 
     scene.meta = parse_metadata_comments(lines)
 

@@ -394,7 +394,7 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
         f"## Frequency: {params.freq_hz/1e6:.0f} MHz",
         f"## Source: single Hertzian dipole ({mode}), {params.source_waveform}",
         "## Rock geometry: gravity-settled polygons as #triangle fans",
-        f"## Layers ({len(layers)}, bottom->top): {names}   (* = packed)",
+        f"## Layers ({len(layers)}, bottom->top internally): {names}   (* = packed)",
         f"## Discretisation: dx={dx*1e3:.1f} mm   Domain: {params.domain_x:g} x {domain_y:.3f} m",
         _BAR,
         "## GEOMETRY (per-section stats annotated inline in the deck below)",
@@ -408,7 +408,7 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
     # Add antenna position to GEOMETRY section
     lines += [f"## Antenna position: y={antenna_y:.3f} m (above surface at {subsurface_top:.3f} m)"]
 
-    # Add ballast layer bounds for visualization (full packed stack, bottom->top)
+    # Add ballast layer bounds for visualization (full packed stack, internal bottom->top)
     packed_spans = [
         (sum(layers[j].thickness for j in range(i)),
          sum(layers[j].thickness for j in range(i)) + ly.thickness)
@@ -452,6 +452,56 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
         lines.append(f"## CONFIG_layer_packing[{nm}]: {algo}")
 
     return lines
+
+
+def _print_cross_section(layers: List[Layer], params: SceneParams,
+                         subsurface_top: float, antenna_y: float) -> None:
+    """Print a visual cross-section of the layer stack to stdout.
+
+    Layers are shown top-to-bottom (as the radar sees them), with y coordinates
+    on the left so the user can immediately verify TOML ordering is correct.
+    """
+    W = 36  # box width in characters
+    border = "+" + "-" * W + "+"
+
+    def row(label: str, detail: str = "") -> str:
+        content = f"  {label}"
+        if detail:
+            content += f"  ({detail})"
+        return f"|{content:<{W}}|"
+
+    # Ground surface = top of the deepest non-air layer counting from the top.
+    # Users sometimes include an explicit air [[layer]] at the top of their stack;
+    # the "<-- ground surface" label belongs at the air/ground interface, not at
+    # the top of the entire layer stack.
+    ground_surface_y = subsurface_top
+    for ly in reversed(layers):
+        if ly.eps == 1.0 and ly.sigma == 0.0 and not ly.packed:
+            ground_surface_y -= ly.thickness
+        else:
+            break
+
+    print()
+    print("  Layer cross-section (antenna at top, y=0 at bottom of domain)")
+    print()
+    print(f"  y={antenna_y:.3f} m  {border}")
+    print(f"           {row('antenna', params.source_waveform + ' ' + params.antenna_mode)}")
+    top_suffix = "  <-- ground surface" if abs(ground_surface_y - subsurface_top) < 1e-9 else ""
+    print(f"  y={subsurface_top:.3f} m  {border}{top_suffix}")
+
+    y_top = subsurface_top
+    for ly in reversed(layers):
+        y_bot = y_top - ly.thickness
+        if ly.packed:
+            detail = f"eps={ly.rock_eps} in {ly.matrix_name}, PACKED"
+        else:
+            detail = f"eps={ly.eps}, sigma={ly.sigma}"
+        print(f"           {row(ly.name, detail)}")
+        bot_suffix = "  <-- ground surface" if abs(y_bot - ground_surface_y) < 1e-9 and y_bot < subsurface_top else ""
+        print(f"  y={y_bot:.3f} m  {border}{bot_suffix}")
+        y_top = y_bot
+
+    print()
 
 
 def build_scene_commands(layers: List[Layer], params: SceneParams,
@@ -502,6 +552,8 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     subsurface_top = sum(ly.thickness for ly in layers)
     domain_y = subsurface_top + params.antenna_clearance + params.air_buffer
     antenna_y = subsurface_top + params.antenna_clearance * 0.5
+
+    _print_cross_section(layers, params, subsurface_top, antenna_y)
 
     # Antenna positioning (monostatic vs bistatic)
     tx_x = params.domain_x / 2.0

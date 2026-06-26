@@ -20,14 +20,14 @@ from .drawing import render_geometry_figure
 from .overlays import draw_research_overlays
 from .parser import parse_in_file
 from .scene_3d import render_3d_views
+from ..data_access import INFileReader
 
 logger = logging.getLogger(__name__)
 
 
 def detect_3d_file(in_path: Path) -> bool:
     """Detect if a .in file is 3D (contains #sphere commands)."""
-    with open(in_path, "r", encoding="utf-8", errors="replace") as f:
-        return any("#sphere:" in line for line in f)
+    return any("#sphere:" in line for line in INFileReader().read(in_path, as_lines=True))
 
 
 def render_geometry_png(
