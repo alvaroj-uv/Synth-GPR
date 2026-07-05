@@ -36,6 +36,8 @@ Navigate by category to find the documentation you need.
 ### Data Organization
 - [Single Source of Truth](architecture/SINGLE_SOURCE_OF_TRUTH.md) — File format and consistency
 - [IO Consolidation Plan](architecture/IO_CONSOLIDATION_PLAN.md) — Unified data I/O operations
+- [Debt Register](architecture/DEBT_REGISTER.md) — Known architecture debts (D1–D14), severity-ranked with order of attack (2026-07-02 audit)
+- [Scripts Inventory](architecture/SCRIPTS_INVENTORY.md) — All 93 scripts categorized keep/archive/delete (feeds debt D11)
 
 ---
 

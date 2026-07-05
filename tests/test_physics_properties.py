@@ -247,3 +247,45 @@ def test_psd_exact_match_values(psd):
         result = get_percent_passing(diameter, psd)
         assert abs(result - expected_percent) < 1e-6, \
             f"Exact match failed: d={diameter}, expected={expected_percent}, got={result}"
+
+
+# ── CRIM ballast mixing (physics.ballast_crim) ───────────────────────────────
+# The hull anchors are FIELD calibration points hit with zero tuning
+# (experiments/2026-07-01/crim_inversion_poc). If a CRIM_* constant or the
+# mixing law changes, these assertions catch the drift before an inversion
+# silently re-anchors.
+
+def test_ballast_crim_hull_anchors():
+    from src.physics import ballast_crim
+    eps_clean, sig_clean = ballast_crim(0.0, 0.0)
+    assert abs(eps_clean - 3.43) < 0.05      # pit-ID11 analytic clean 3.45
+    assert sig_clean == pytest.approx(0.001)  # sigma floor
+    eps_dry, _ = ballast_crim(1.0, 0.0)
+    assert abs(eps_dry - 4.80) < 0.05        # Benedetto dry cap (< 5.35)
+    eps_sat, sig_sat = ballast_crim(1.0, 1.0)
+    assert abs(eps_sat - 12.5) < 0.1         # field fouled 11.3-12 (Mbubia)
+    assert sig_sat > 0.015                   # wet = conductive
+
+
+@given(f1=st.floats(0, 1), f2=st.floats(0, 1), sw=st.floats(0, 1))
+@settings(max_examples=200, deadline=2000)
+def test_ballast_crim_monotone_in_fill(f1, f2, sw):
+    """More fines (at fixed saturation) never lowers eps or sigma."""
+    from src.physics import ballast_crim
+    lo, hi = sorted((f1, f2))
+    eps_lo, sig_lo = ballast_crim(lo, sw)
+    eps_hi, sig_hi = ballast_crim(hi, sw)
+    assert eps_hi >= eps_lo - 1e-9
+    assert sig_hi >= sig_lo - 1e-9
+
+
+@given(f=st.floats(0.01, 1), s1=st.floats(0, 1), s2=st.floats(0, 1))
+@settings(max_examples=200, deadline=2000)
+def test_ballast_crim_monotone_in_saturation(f, s1, s2):
+    """More water (at fixed fill) never lowers eps or sigma."""
+    from src.physics import ballast_crim
+    lo, hi = sorted((s1, s2))
+    eps_lo, sig_lo = ballast_crim(f, lo)
+    eps_hi, sig_hi = ballast_crim(f, hi)
+    assert eps_hi >= eps_lo - 1e-9
+    assert sig_hi >= sig_lo - 1e-9

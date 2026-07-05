@@ -148,16 +148,12 @@ class GranularMatrixWorker(Worker):
         scene.add_material(rock_mat)
         scene.add_material(foul_mat)
         
-        # The mbubia_ballast packer returns the FULL settled polygon packing
-        # already confined to the ballast bounds. Keep every rock (no rock/fine
-        # size threshold, no target-fill cap, no extra gravity settle) for a
-        # dense, settled ballast skeleton. Area is computed from
-        # the true polygon (shoelace), and each rock's radius is replaced by the
-        # area-equivalent radius so the density and fouling-void maths stay valid
-        # for the irregular shapes.
-        mbubia_ballast = (scene.config.rock_packing_algorithm == "mbubia_ballast")
+        # Both pymunk_ballast and rip return polygon rocks (no rock/fine split, no
+        # extra gravity settle): keep every rock and compute area-equivalent radius
+        # from the true polygon via shoelace so density maths stay valid.
+        pymunk_ballast = scene.config.rock_packing_algorithm in ("pymunk_ballast", "rip")
 
-        if mbubia_ballast:
+        if pymunk_ballast:
             assigned_rocks = []
             current_rock_area = 0.0
             for c in all_circles:
@@ -290,7 +286,7 @@ class GranularMatrixWorker(Worker):
         # Stamp the structural rocks ON TOP of the background box (Painter's Algorithm)
         for r in assigned_rocks:
             verts = getattr(r, 'vertices', None)
-            if mbubia_ballast and verts and len(verts) >= 3:
+            if pymunk_ballast and verts and len(verts) >= 3:
                 # Stamp the TRUE settled polygon (mbubia shape), not a synthetic one
                 self._stamp_polygon(scene, r, z_start, z_end)
             elif getattr(scene.config, 'angular_rocks', False):
@@ -371,10 +367,10 @@ class GranularMatrixWorker(Worker):
             ))
 
     def _stamp_polygon(self, scene: SceneCheckpoint, rock: Any, z_start: float, z_end: float) -> None:
-        """Stamp a rock's TRUE polygon (mbubia settled shape) as fan triangles.
+        """Stamp a rock's TRUE polygon (pymunk settled shape) as fan triangles.
 
         Vertices are clamped to the domain; the fan apex is the recomputed
-        centroid of the clamped polygon (matching the mbubia_ballast packer), so
+        centroid of the clamped polygon (matching the pymunk_ballast packer), so
         edge rocks degrade gracefully instead of producing inverted triangles.
         """
         from .gpr_commands import TriangleCommand

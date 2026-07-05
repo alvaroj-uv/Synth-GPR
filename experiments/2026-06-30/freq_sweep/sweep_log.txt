@@ -1,0 +1,84 @@
+
+=== 100 MHz ===
+  [OK] three_layer_0100mhz.out written in 6.0s
+
+=== 200 MHz ===
+  [OK] three_layer_0200mhz.out written in 6.4s
+
+=== 300 MHz ===
+  [OK] three_layer_0300mhz.out written in 5.9s
+
+=== 400 MHz ===
+  [OK] three_layer_0400mhz.out written in 5.8s
+
+=== 500 MHz ===
+  [OK] three_layer_0500mhz.out written in 6.0s
+
+=== 600 MHz ===
+  [OK] three_layer_0600mhz.out written in 5.7s
+
+=== 700 MHz ===
+  [OK] three_layer_0700mhz.out written in 6.0s
+
+=== 800 MHz ===
+  [OK] three_layer_0800mhz.out written in 6.7s
+
+=== 900 MHz ===
+  [OK] three_layer_0900mhz.out written in 8.6s
+
+=== 1000 MHz ===
+  [OK] three_layer_1000mhz.out written in 7.9s
+
+=== 1100 MHz ===
+  [OK] three_layer_1100mhz.out written in 9.0s
+
+=== 1200 MHz ===
+  [OK] three_layer_1200mhz.out written in 8.7s
+
+=== 1300 MHz ===
+  [OK] three_layer_1300mhz.out written in 10.1s
+
+=== 1400 MHz ===
+  [OK] three_layer_1400mhz.out written in 10.6s
+
+=== 1500 MHz ===
+  [OK] three_layer_1500mhz.out written in 10.7s
+
+=== 1600 MHz ===
+  [OK] three_layer_1600mhz.out written in 14.6s
+
+=== 1700 MHz ===
+  [OK] three_layer_1700mhz.out written in 13.1s
+
+=== 1800 MHz ===
+  [OK] three_layer_1800mhz.out written in 13.1s
+
+=== 1900 MHz ===
+  [OK] three_layer_1900mhz.out written in 20.2s
+
+=== 2000 MHz ===
+  [OK] three_layer_2000mhz.out written in 20.7s
+
+============================================================
+SWEEP SUMMARY
+============================================================
+    100 MHz  ok               6.0s
+    200 MHz  ok               6.4s
+    300 MHz  ok               5.9s
+    400 MHz  ok               5.8s
+    500 MHz  ok               6.0s
+    600 MHz  ok               5.7s
+    700 MHz  ok               6.0s
+    800 MHz  ok               6.7s
+    900 MHz  ok               8.6s
+   1000 MHz  ok               7.9s
+   1100 MHz  ok               9.0s
+   1200 MHz  ok               8.7s
+   1300 MHz  ok               10.1s
+   1400 MHz  ok               10.6s
+   1500 MHz  ok               10.7s
+   1600 MHz  ok               14.6s
+   1700 MHz  ok               13.1s
+   1800 MHz  ok               13.1s
+   1900 MHz  ok               20.2s
+   2000 MHz  ok               20.7s

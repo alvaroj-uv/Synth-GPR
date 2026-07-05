@@ -48,8 +48,13 @@ render = true
 [[layer]]
 name = "clean_ballast"
 thickness = 0.3                    # 30 cm ballast layer
-eps = 5.1                          # Clean ballast permittivity (optimized)
-sigma = 0.0                        # No conductivity (clean, dry)
+packed = true                      # discrete rocks instead of homogeneous CRIM box
+rock_packing_algorithm = "pymunk_ballast"
+eps = 6.0                          # rock (solid mineral) permittivity
+sigma = 0.001                      # low conductivity (clean, dry rock)
+matrix = "free_space"              # voids between rocks = air (clean, not fouled)
+# rock_radius_min = 0.004          # per-layer rock size override (m); omit to
+# rock_radius_max = 0.025          # use the [sim] scene-level default
 
 # Optional: add deeper layers below
 # [[layer]]

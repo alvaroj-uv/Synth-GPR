@@ -1,0 +1,15 @@
+https://doi.org/10.1016/j.jappgeo.2011.12.001
+https://doi.org/10.1109/TGRS.2007.901048
+https://doi.org/10.1046/j.1365-246X.1998.00498.x
+https://doi.org/10.1190/geo2016-0008.1
+https://doi.org/10.1109/TGRS.2021.3077476
+https://doi.org/10.1007/s10958-006-0049-2
+https://doi.org/10.4310/CMS.2014.v12.n5.a7
+https://doi.org/10.1190/tle35121060.1
+https://doi.org/10.4310/CMS.2016.v14.n8.a9
+https://doi.org/10.4310/ICCM.2020.v8.n1.a3
+https://doi.org/10.1093/gji/ggac119
+https://doi.org/10.1109/TAP.2022.3209745
+https://doi.org/10.1002/cpa.21990
+https://doi.org/10.1016/j.cageo.2005.11.006
+https://doi.org/10.1190/geo2016-0663.1

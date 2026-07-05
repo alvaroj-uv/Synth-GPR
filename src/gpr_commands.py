@@ -281,11 +281,20 @@ class PolygonCommand(GPRCommand):
 
 @dataclass
 class SphereCommand(GPRCommand):
+    """#sphere: x y z r material [averaging]
+
+    averaging: None = gprMax default (dielectric smoothing ON for volumetric
+    objects), 'y'/'n' = explicit. Use 'n' when comparing against voxel rocks
+    imported via #geometry_objects_read, which NEVER get smoothing — with the
+    default the interface Yee edges differ even for identical solid geometry
+    (~6% peak A-scan residual, measured 2026-07-01).
+    """
     x: float
     y: float
     z: float
     radius: float
     material: str
+    averaging: str = None
     commented: bool = False
 
     @property
@@ -293,7 +302,45 @@ class SphereCommand(GPRCommand):
         return 20  # Objects (3D Rocks) - Render AFTER Box
 
     def get_cmd_string(self) -> str:
-        return f"#sphere: {fmt(self.x)} {fmt(self.y)} {fmt(self.z)} {fmt(self.radius)} {self.material}"
+        s = f"#sphere: {fmt(self.x)} {fmt(self.y)} {fmt(self.z)} {fmt(self.radius)} {self.material}"
+        if self.averaging is not None:
+            s += f" {self.averaging}"
+        return s
+
+
+@dataclass
+class GeometryObjectsReadCommand(GPRCommand):
+    """gprMax #geometry_objects_read: import a voxelised geometry array.
+
+    #geometry_objects_read: x y z file.h5 materials.txt
+
+    (x, y, z) is the domain coordinate where the lower-left corner of the
+    array is placed. The HDF5 file must hold a root dataset ``data`` of
+    np.int16 shaped (nx, ny, nz) plus a root attribute ``dx_dy_dz`` matching
+    the model resolution; -1 cells are transparent (keep existing material),
+    values >= 0 index the #material lines in the materials file in order.
+
+    gprMax resolves both filenames against the CWD, then the input-file
+    directory — and materials get namespaced as ``name{filestem}``, so they
+    cannot clash with materials defined in the main deck. Use bare filenames
+    with both files placed next to the .in deck (same Windows drive-letter
+    caveat as #excitation_file). See src/rock_voxelizer.py for the writer.
+    """
+    x: float
+    y: float
+    z: float
+    geometry_file: str
+    materials_file: str
+    commented: bool = False
+
+    @property
+    def priority(self) -> int:
+        return 20  # Objects (voxel rocks) - Render AFTER Box (10)
+
+    def get_cmd_string(self) -> str:
+        return (f"#geometry_objects_read: {fmt(self.x)} {fmt(self.y)} {fmt(self.z)} "
+                f"{self.geometry_file} {self.materials_file}")
+
 
 @dataclass
 class WaveformCommand(GPRCommand):

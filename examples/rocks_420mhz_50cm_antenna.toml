@@ -5,7 +5,7 @@
 # - Waveform: Gaussian (optimized)
 # - Antenna mode: Bistatic 30mm (optimized)
 # - Antenna height: 50 cm above surface (high clearance)
-# - Subsurface: 1 layer of rocks (50 cm thick, mbubia packing)
+# - Subsurface: 1 layer of rocks (50 cm thick, pymunk packing)
 #
 # Purpose: Test realistic rock scattering with elevated antenna
 # Expected: Coda should show rock reflections/scattering signature
@@ -47,9 +47,9 @@ name = "rocks"
 thickness = 0.5                 # 50 cm rock layer
 packed = true                   # Enable rock packing
 # Rock packing parameters
-rock_packing_algorithm = "mbubia"  # Realistic polygon packing
-rock_diameter = 0.05            # 50 mm rocks (typical ballast)
-rock_porosity = 0.35            # 35% porosity (realistic)
+rock_packing_algorithm = "pymunk_ballast"  # Realistic gravity-settled packing
+rock_radius_min = 0.020         # 40 mm min rock diameter (typical ballast)
+rock_radius_max = 0.025         # 50 mm max rock diameter
 # Rock material properties
 eps = 6.0                       # Rock permittivity (typical igneous)
 sigma = 0.001                   # Low conductivity (clean rocks)

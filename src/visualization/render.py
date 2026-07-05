@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from .drawing import render_geometry_figure
 from .overlays import draw_research_overlays
 from .parser import parse_in_file
-from .scene_3d import render_3d_views
+from .scene_3d import render_rocks_3d
 from ..data_access import INFileReader
 
 logger = logging.getLogger(__name__)
@@ -78,12 +78,35 @@ def render_geometry_png(
 
 
 def _render_3d(in_path: Path, out_path: Path, dpi: int = 150, title: str = None) -> None:
-    """Render a 3D .in file via the orthogonal-views renderer."""
+    """Render a 3D .in file as a perspective view (spheres + layer slabs).
+
+    Uses the perspective ``render_rocks_3d`` (a scene's ``#sphere`` objects
+    already expose .x/.y/.z/.radius), draws ``#box`` layers as translucent
+    slabs, and overlays the source / receivers. For the three orthogonal 2-D
+    projections instead, call ``scene_3d.render_3d_views`` directly.
+    """
     logger.info(f"Parsing 3D scene {in_path.name}...")
     scene = parse_in_file(in_path)
     if title is None:
         title = f"{in_path.stem} - {scene.meta.get('Lab_Class', '?')} class"
-    fig = render_3d_views(scene, title=title, dpi=dpi)
+    fig = render_rocks_3d(
+        scene.spheres,
+        boxes=scene.boxes,
+        domain=(scene.domain_x, scene.domain_y, scene.domain_z),
+        title=title,
+        dpi=dpi,
+    )
+    ax = fig.axes[0]
+    if scene.tx:
+        ax.scatter([scene.tx.x], [scene.tx.y], [scene.tx.z], c="red", marker="*",
+                   s=180, edgecolors="darkred", linewidths=0.5,
+                   depthshade=False, label="TX")
+    for i, rxr in enumerate(scene.receivers):
+        ax.scatter([rxr.x], [rxr.y], [rxr.z], c="blue", marker="^", s=60,
+                   edgecolors="darkblue", linewidths=0.5, depthshade=False,
+                   label="RX" if i == 0 else None)
+    if scene.tx or scene.receivers:
+        ax.legend(loc="upper right", fontsize=8)
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     logger.info(f"✓ Saved: {out_path}")
     plt.close(fig)

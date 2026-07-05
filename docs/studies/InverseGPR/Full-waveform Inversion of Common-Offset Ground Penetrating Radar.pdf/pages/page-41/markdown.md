@@ -1,0 +1,3 @@
+300% of the true diameter value using the ray-based analysis. The full-waveform inversion process can be used to improve the subsurface models from common-offset GPR data, however it requires an effective estimated wavelet. In this paper we have shown that the sparse blind deconvolution can effectively be used to define both the source wavelet and the subsurface reflectivity model. The initial model is then defined by performing the ray-based analysis on the estimated reflectivity model. On average the rebar sizes are estimated with around 1.5% error with this proposed. The numerical results suggest an improved estimate of permittivity and conductivity as well as diameters.
+
+31

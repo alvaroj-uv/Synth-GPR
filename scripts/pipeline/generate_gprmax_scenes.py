@@ -61,10 +61,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.config import GeneratorConfig, create_per_label_config
 from src.dataset_generator import DatasetGenerator
 from src.fouling import get_pvc_range
-from src.work_order import WorkOrder, WorkOrderSystem
-from src.file_writer import GPRMaxFileWriter
-from src.scene_model import parse_toml
-from src.exporter import JSONExporter
 from src.data_access import PNGWriter
 
 
@@ -227,63 +223,17 @@ def generate_single(
 
     gen = DatasetGenerator(config)
 
-    # For single file, use simple sample ID
-    sample_id = 1
+    # Provenance for SOURCE_* headers (pinned vs sampled vs default)
+    override = pvc is not None and moisture is not None
+    param_sources = {
+        'pvc': 'CLI_OVERRIDE' if override else 'SAMPLED',
+        'moisture': 'CLI_OVERRIDE' if override else 'SAMPLED',
+        'base_seed': 'CLI_OVERRIDE' if seed is not None else 'DEFAULT',
+    }
 
-    # Track parameter sources for SOURCE_* headers
-    param_sources = {}
-
-    # If specific PVC/moisture given, use exact values (no sampling)
-    if pvc is not None and moisture is not None:
-        params = {
-            'pvc': pvc,
-            'moisture': moisture,
-            'pvc_bottom': pvc,
-            'pvc_top': pvc,
-            'FI_bottom': pvc,
-            'FI_top': pvc,
-        }
-        param_sources['pvc'] = 'CLI_OVERRIDE'
-        param_sources['moisture'] = 'CLI_OVERRIDE'
-        work_order = WorkOrder.from_sampled_params(sample_id, params)
-        wos = WorkOrderSystem(work_order)
-    else:
-        # Sample parameters
-        gen.sampler = gen.sampler  # Use default sampler from config
-        params = gen.sampler.sample()
-        param_sources['pvc'] = 'SAMPLED'
-        param_sources['moisture'] = 'SAMPLED'
-        work_order = WorkOrder.from_sampled_params(sample_id, params)
-        wos = WorkOrderSystem(work_order)
-
-    # Track seed source
-    if seed is not None:
-        param_sources['base_seed'] = 'CLI_OVERRIDE'
-    else:
-        param_sources['base_seed'] = 'DEFAULT'
-
-    # Run production line
-    pipeline = gen.pipeline
-    checkpoint = pipeline.run(wos)
-
-    # Validate
-    validation_errors = checkpoint.validate_all()
-    if validation_errors:
-        print(f"[!] Validation warnings: {len(validation_errors)} issue(s)")
-        for err in validation_errors[:3]:
-            print(f"  - {err}")
-    else:
-        print(f"[OK] Geometry validation passed")
-
-    # Write .in file with config embedded
-    from src.file_writer import GPRMaxFileWriter
-
-    written_path = GPRMaxFileWriter.save_scene_checkpoint(
-        checkpoint,
-        output_path=str(output_path),
-        scenario_type="Sim",
-        config=config,  # Embed config for replication
-        param_sources=param_sources,  # Track parameter sources
+    # Production-line orchestration lives in DatasetGenerator, not the CLI.
+    written_path = gen.generate_one(
+        output_path, pvc=pvc, moisture=moisture, param_sources=param_sources,
     )
 
     print(f"[OK] Wrote .in file: {written_path}")
@@ -301,40 +251,6 @@ def generate_single(
     return Path(written_path)
 
 
-def _scene_params_from_config(config):
-    """Build a SceneParams (+ provenance dict) from a parsed SceneConfig.
-
-    Shared by layers mode and the [[layer]] path of single/batch so all three
-    read the [sim]/[source] tables identically.
-    """
-    from src.layer_scene_builder import SceneParams
-
-    sim, src = config.sim, config.source
-    freq = float(sim.get("freq_hz", 400e6))
-    params = SceneParams(
-        freq_hz=freq,
-        domain_x=float(sim.get("domain_x", 1.0)),
-        dx=float(sim["dx"]) if "dx" in sim else None,
-        antenna_clearance=float(sim.get("antenna_clearance", 0.5)),
-        air_buffer=float(sim.get("air_buffer", 0.1)),
-        rx_spacing=float(sim.get("rx_spacing", 0.0)),  # DEPRECATED: use antenna_mode + receiver_spacing
-        antenna_mode=str(sim.get("antenna_mode", "monostatic")),
-        num_receivers=int(sim.get("num_receivers", 1)),
-        receiver_spacing=float(sim.get("receiver_spacing", 0.05)),
-        title=str(sim.get("title", f"N-layer ({len(config.layers)} layers) {freq/1e6:.0f} MHz")),
-        time_window=float(sim["time_window"]) if "time_window" in sim else None,
-        seed=int(sim["seed"]) if "seed" in sim else None,
-        source_waveform=str(src.get("waveform", "ricker")),
-        source_amplitude=float(src.get("amplitude", 1.0)),
-        source_polarization=str(src.get("polarization", "z")),
-        rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "mbubia_ballast")),
-        mbubia_settle_time=float(sim["mbubia_settle_time"]) if "mbubia_settle_time" in sim else None,
-    )
-    ps = {k: "TOML" for k in ("center_freq_hz", "domain_x", "dx", "rx_spacing", "antenna_mode", "num_receivers", "receiver_spacing",
-                              "antenna_clearance", "air_buffer", "rock_packing_algorithm")}
-    return params, ps
-
-
 def run_batch_layers(config_path: Path, data: dict, output_dir: Path) -> int:
     """Batch generation over an arbitrary [[layer]] stack.
 
@@ -349,7 +265,7 @@ def run_batch_layers(config_path: Path, data: dict, output_dir: Path) -> int:
     from src.layer_scene_builder import write_scene
 
     config = parse_config_file(config_path)
-    params, ps = _scene_params_from_config(config)
+    params, ps = config.to_scene_params()
     b = data.get("batch", {}) or {}
     n = int(b.get("n_per_label", b.get("num", 50)))
     start_id = int(b.get("start_id", 1000))
@@ -388,7 +304,7 @@ def generate_layers(config_path: Path, output_path: Path, render: bool = False) 
     from src.layer_scene_builder import write_scene
 
     config = parse_config_file(config_path)
-    params, ps = _scene_params_from_config(config)
+    params, ps = config.to_scene_params()
 
     print(f"\n{'='*70}\nN-LAYER MODE: Generate One .in File\n{'='*70}")
     print(f"Config (TOML): {config_path}")

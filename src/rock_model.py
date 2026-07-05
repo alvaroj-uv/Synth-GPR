@@ -3,6 +3,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Any
 
+import numpy as np
+
 
 @dataclass
 class Rock:
@@ -29,10 +31,23 @@ class Rock:
     z_end: float = 0.005
     vertices: Optional[List[Tuple[float, float]]] = field(default=None, repr=False)
     material: Optional[str] = None
+    # 3-D centre coordinate. None → 2-D rock (z_start/z_end are the thin-slab
+    # extrusion for 2-D rendering). Set → 3-D sphere centred at (x, y, z).
+    z: Optional[float] = None
+
+    @property
+    def ndim(self) -> int:
+        """2 for a planar rock, 3 when a z centre is set (sphere)."""
+        return 3 if self.z is not None else 2
+
+    @property
+    def position(self) -> Tuple[float, ...]:
+        """(x, y) in 2-D, (x, y, z) in 3-D — the dimension-agnostic centre."""
+        return (self.x, self.y, self.z) if self.z is not None else (self.x, self.y)
 
     @property
     def is_polygon(self) -> bool:
-        """True if this rock has explicit polygon geometry."""
+        """True if this rock has explicit polygon geometry (2-D only)."""
         return self.vertices is not None and len(self.vertices) >= 3
 
     @property
@@ -57,13 +72,22 @@ class Rock:
 
 @dataclass
 class PackingBounds:
-    """
-    Defines the rectangular bounding box for rock placement.
+    """Axis-aligned packing region — 2-D by default, 3-D when z bounds are set.
+
+    Dimension-agnostic: ``ndim`` reports 2 or 3, and ``lengths`` / ``mins`` give
+    the per-axis spans and origins so a packer can pack into either without
+    knowing the dimension up front.
     """
     x_min: float
     x_max: float
     y_min: float
     y_max: float
+    z_min: Optional[float] = None
+    z_max: Optional[float] = None
+
+    @property
+    def ndim(self) -> int:
+        return 3 if (self.z_min is not None and self.z_max is not None) else 2
 
     @property
     def width(self) -> float:
@@ -74,8 +98,27 @@ class PackingBounds:
         return self.y_max - self.y_min
 
     @property
+    def depth(self) -> float:
+        return (self.z_max - self.z_min) if self.ndim == 3 else 0.0
+
+    @property
     def area(self) -> float:
         return self.width * self.height
+
+    @property
+    def volume(self) -> float:
+        """3-D volume (== area in 2-D)."""
+        return self.area * self.depth if self.ndim == 3 else self.area
+
+    @property
+    def lengths(self) -> List[float]:
+        """Per-axis spans: [w, h] in 2-D, [w, h, d] in 3-D."""
+        return [self.width, self.height, self.depth] if self.ndim == 3 else [self.width, self.height]
+
+    @property
+    def mins(self) -> List[float]:
+        """Per-axis origins: [x_min, y_min] or [x_min, y_min, z_min]."""
+        return [self.x_min, self.y_min, self.z_min] if self.ndim == 3 else [self.x_min, self.y_min]
 
 
 @dataclass
@@ -111,5 +154,44 @@ class Layer:
     def bounds(self) -> PackingBounds:
         """PackingBounds for this layer (x-extent set to zero; caller fills x)."""
         return PackingBounds(x_min=0.0, x_max=0.0, y_min=self.y_min, y_max=self.y_max)
+
+
+def rip_polygon_vertices(
+    cx: float,
+    cy: float,
+    r_mean: float,
+    rng: Optional[np.random.Generator] = None,
+    n_vertices_range: Tuple[int, int] = (8, 12),
+    roughness: float = 0.25,
+) -> List[Tuple[float, float]]:
+    """Build one Random Irregular Polygon (RIP, Li et al. 2023) centred at
+    (cx, cy) with mean radius r_mean:
+
+        vertex_i = (r_mean + delta_r_i) * [cos(theta_i), sin(theta_i)]
+
+    with uniform angular base plus small jitter to break regular symmetry,
+    and per-vertex radial perturbation delta_r_i in [-roughness, +roughness] *
+    r_mean.
+
+    Shape-only helper, decoupled from any packing/placement algorithm — the
+    RSA-based rip_packing.RIPPacking uses this internally for its own placed
+    rocks, but it can equally be applied to circles from ANY packer (pymunk,
+    circlify, rcpgen, ...) to get Li-2023-style irregular polygon rocks
+    without being tied to RIP's own RSA placement. See
+    layer_scene_builder._pack_layer_rocks's ``rock_shape="rip"`` option.
+    """
+    rng = rng if rng is not None else np.random.default_rng()
+    n = int(rng.integers(n_vertices_range[0], n_vertices_range[1] + 1))
+
+    angles = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+    angle_jitter = rng.uniform(-math.pi / n * 0.4, math.pi / n * 0.4, n)
+    angles = np.sort(angles + angle_jitter)
+
+    radii = r_mean * (1.0 + rng.uniform(-roughness, roughness, n))
+
+    return [
+        (cx + float(r) * math.cos(float(a)), cy + float(r) * math.sin(float(a)))
+        for r, a in zip(radii, angles)
+    ]
 
 

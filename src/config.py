@@ -342,12 +342,14 @@ class GeneratorConfig:
         # validation with descriptive error messages.
         # Spatial discretization validation
 
-        # The standalone "mbubia" two-layer scene generator has been removed.
-        # Alias it to "mbubia_ballast": dense mbubia physics packing inside the
-        # STANDARD subgrade/formation/ballast layer stack (the contrasted path,
-        # with no fixed-geometry generator).
-        if self.rock_packing_algorithm == "mbubia":
-            object.__setattr__(self, "rock_packing_algorithm", "mbubia_ballast")
+        # Normalise packing algorithm aliases.
+        # "pymunk"/"pymunk_ballast" are the canonical names.
+        # "mbubia"/"mbubia_ballast" are kept as backward-compatible aliases.
+        _algo = self.rock_packing_algorithm
+        if _algo in ("mbubia", "mbubia_ballast"):
+            object.__setattr__(self, "rock_packing_algorithm", "pymunk_ballast")
+        elif _algo == "pymunk":
+            object.__setattr__(self, "rock_packing_algorithm", "pymunk_ballast")
 
         if self.dx <= 0:
             raise ValueError("#dx_dy_dz: x-direction spatial step (dx) must be greater than zero")
@@ -372,14 +374,11 @@ class GeneratorConfig:
             object.__setattr__(self, "rock_z_start", 0.0)
             object.__setattr__(self, "rock_z_end", self.domain_z)
 
-        # pymunk / mbubia_ballast packing: polygon rocks + 4m scan width.
-        # mbubia_ballast = dense mbubia physics packing inside the STANDARD layer
-        # stack; it shares pymunk's wide-scan geometry (and keeps the standard,
-        # frequency-appropriate dx).
-        if self.rock_packing_algorithm in ("pymunk", "mbubia_ballast"):
-            if self.rock_packing_algorithm == "pymunk" and not self.angular_rocks:
-                # mbubia_ballast stamps its TRUE settled polygons, so it does not
-                # need the synthetic-angular path that pymunk's circles do.
+        # pymunk_ballast / rip: both produce polygon rocks stamped via _stamp_polygon,
+        # so angular_rocks must be True to activate the polygon stamping path in
+        # granular_worker. pymunk_ballast also enforces a minimum domain width.
+        if self.rock_packing_algorithm in ("pymunk_ballast", "rip"):
+            if not self.angular_rocks:
                 object.__setattr__(self, "angular_rocks", True)
             if self.domain_x < self.scan_width:
                 rx_offset = self.rx_x - self.tx_x

@@ -1,0 +1,15 @@
+https://doi.org/10.3389/feart.2023.1340484
+https://doi.org/10.1088/1361-6420/aa9581
+https://doi.org/10.1088/1361-6420/aa9581
+https://doi.org/10.1016/j.conbuildmat.2018.07.039
+https://doi.org/10.1007/s10346-023-02140-5
+https://doi.org/10.1016/j.aei.2019.100931
+https://doi.org/10.1016/j.aei.2019.100931
+https://doi.org/10.1061/%28asce%29cf.1943-5509.0000986
+https://doi.org/10.1109/jstars.2015.2468597
+https://doi.org/10.1007/s12665-022-10575-7
+https://doi.org/10.1515/geo-2022-0468
+https://doi.org/10.1007/s10064-019-01492-4
+https://doi.org/10.1515/geo-2022-0468
+https://www.frontiersin.org/journals/earth-science
+https://www.frontiersin.org

@@ -1,0 +1,13 @@
+https://doi.org/10.1190/1.2742813
+https://doi.org/10.1029/2000WR000089
+https://doi.org/10.1190/1.1443265
+https://doi.org/10.1111/1365-2478.13400
+https://doi.org/10.1029/2020JB021047
+https://doi.org/10.1109/TGRS.2020.3046454
+https://doi.org/10.1088/0266-5611/32/1/015007
+https://doi.org/10.1093/gji/ggt528
+https://doi.org/10.1111/j.1365-246X.2006.02978.x
+https://doi.org/10.1007/BF01589116
+https://doi.org/10.1190/1.3238367
+https://doi.org/10.1190/1.1441754
+https://doi.org/10.1190/geo2018-0597.1

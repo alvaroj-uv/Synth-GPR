@@ -4,8 +4,13 @@ DZT file I/O using readgssi library.
 Provides unified interface for reading GSSI DZT files and extracting traces
 to parquet format with full sample preservation (no downsampling).
 
-All traces are read as raw (unnormalized) 16-bit signed integers with full
-time window (typically 22,652 samples at 0.1 ns intervals).
+Puerto-Limache GSSI format (confirmed by file-size verification):
+  - Header:          128 KiB  (131072 bytes)
+  - Sample dtype:    int32    (4 bytes/sample)
+  - Samples/trace:   512      (indices 0-1 are marker artefacts — dropped)
+  - Usable samples:  510
+  - dt:              50/511 ns ≈ 0.0978 ns
+  - Time window:     ~49.8 ns
 """
 
 import logging
@@ -57,82 +62,71 @@ def get_dzt_metadata(dzt_path: Path) -> Dict[str, Any]:
     }
 
 
+# Puerto-Limache GSSI DZT constants (confirmed via file-size arithmetic)
+_DZT_HEADER_BYTES = 128 * 1024   # 131072 bytes
+_DZT_NSAMP_RAW   = 512           # samples per raw trace (indices 0-1 are markers)
+_DZT_DT_NS       = 50.0 / 511    # ≈ 0.0978 ns  (50 ns window / 511 intervals)
+
+
 def read_dzt_traces(dzt_path: Path, channel: int = 0,
-                   start_trace: int = 0, num_traces: Optional[int] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
+                    start_trace: int = 0, num_traces: Optional[int] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Read traces from a DZT file (raw data, no normalization).
-    Simple binary parsing without dependency on readgssi reshape logic.
+
+    Format: 128 KiB header + int32 samples (4 bytes each).
+    The first two samples of every trace are GSSI marker artefacts and are
+    dropped automatically — the returned array has 510 usable samples per trace.
 
     Args:
-        dzt_path: Path to the DZT file
-        channel: Channel index (default 0)
-        start_trace: Start trace index (default 0)
-        num_traces: Number of traces to read; None = all
+        dzt_path:    Path to the DZT file
+        channel:     Ignored (reserved for multi-channel files)
+        start_trace: First trace index to return (default 0)
+        num_traces:  How many traces to return; None = all
 
     Returns:
-        Tuple of:
-        - traces: numpy array of shape (num_traces, samples_per_trace), dtype float64
-        - metadata: dictionary with file metadata (antenna, samples, etc.)
+        - traces:   float64 array  (n_traces, 510)
+        - metadata: dict with 'samples_per_trace', 'sample_interval_ns', etc.
     """
     import struct
 
     dzt_path = Path(dzt_path)
+    file_size = dzt_path.stat().st_size
+    data_bytes = file_size - _DZT_HEADER_BYTES
 
     with open(dzt_path, 'rb') as f:
-        # Read 1024-byte header
-        header = f.read(1024)
+        # Peek at offset 8 in the header for rh_nsamp (standard GSSI 1 KiB layout)
+        header_peek = f.read(16)
+        rh_nsamp_hdr = struct.unpack('<H', header_peek[8:10])[0]
+        rh_nsamp = rh_nsamp_hdr if 32 < rh_nsamp_hdr <= 4096 else _DZT_NSAMP_RAW
 
-        # Extract key header fields (GSSI DZT format)
-        # Offsets from working extract_dzt_correct.py
-        rh_nsamp = struct.unpack('<H', header[8:10])[0]  # samples per A-scan (offset 8)
-        ntraces = struct.unpack('<H', header[18:20])[0]  # number of records/scans (offset 18)
+        bytes_per_sample = 4  # int32
+        total_traces = data_bytes // (rh_nsamp * bytes_per_sample)
 
-        # Assume 16-bit signed samples (standard GSSI)
-        dtype = np.int16
-        bytes_per_sample = 2
-        rh_bits = 16
-        rh_nchan = 1  # Assume single channel unless proven otherwise
+        # Clamp the requested range
+        if num_traces is None:
+            end_trace = total_traces
+        else:
+            end_trace = min(start_trace + num_traces, total_traces)
+        n_read = max(0, end_trace - start_trace)
 
-        # Verify file size
-        file_size = dzt_path.stat().st_size
-        data_size = file_size - 1024
-        expected_data_size = ntraces * rh_nsamp * bytes_per_sample
+        # Jump directly to the first requested trace — no loop overhead
+        f.seek(_DZT_HEADER_BYTES + start_trace * rh_nsamp * bytes_per_sample)
+        raw = np.frombuffer(f.read(n_read * rh_nsamp * bytes_per_sample), dtype=np.int32)
 
-        if abs(expected_data_size - data_size) > 100:
-            # Size mismatch - recalculate
-            ntraces = data_size // (rh_nsamp * bytes_per_sample)
-
-        # Read all traces
-        f.seek(1024)
-        traces_list = []
-
-        for trace_idx in range(ntraces):
-            # Read one trace
-            trace_data = f.read(rh_nsamp * bytes_per_sample)
-
-            if len(trace_data) < rh_nsamp * bytes_per_sample:
-                break
-
-            # Unpack as signed 16-bit integers
-            samples = struct.unpack(f'<{rh_nsamp}h', trace_data)
-            traces_list.append(np.array(samples, dtype=np.float64))
-
-        # Convert to 2D array (ntraces, rh_nsamp)
-        traces = np.array(traces_list) if traces_list else np.array([])
-
-        # Select subset if requested
-        if start_trace > 0 or num_traces is not None:
-            end_trace = start_trace + (num_traces if num_traces else traces.shape[0])
-            traces = traces[start_trace:end_trace, :]
+    traces = raw.reshape(n_read, rh_nsamp).astype(np.float64)
+    # Drop GSSI marker artefacts at indices 0-1
+    traces = traces[:, 2:]
+    n_samples = traces.shape[1]  # 510
 
     metadata = {
         'antenna_name': 'Unknown',
-        'antenna_freq': 400e6,  # Default to 400 MHz
-        'samples_per_trace': rh_nsamp,
-        'num_traces_in_file': ntraces,
-        'bits_per_sample': rh_bits,
-        'time_window_ns': rh_nsamp * 0.1,
-        'sample_interval_ns': 0.1,
+        'antenna_freq': 400e6,
+        'samples_per_trace': n_samples,
+        'samples_raw': rh_nsamp,
+        'num_traces_in_file': total_traces,
+        'bits_per_sample': 32,
+        'sample_interval_ns': _DZT_DT_NS,
+        'time_window_ns': n_samples * _DZT_DT_NS,
     }
 
     return traces, metadata
@@ -243,9 +237,237 @@ def extract_traces_to_parquet(dzt_files: List[Path], output_path: Path,
         logger.info(f"File size: {output_path.stat().st_size / 1e9:.3f} GB")
 
         logger.info("=" * 70)
-        logger.info(f"SUCCESS: Created parquet with {len(df)} traces × {nsamp} full samples")
+        dt_ns = _DZT_DT_NS
+        logger.info(f"SUCCESS: Created parquet with {len(df)} traces × {nsamp} usable samples")
         logger.info(f"This retains 100% of original signal (no information loss)")
-        logger.info(f"Time window: {nsamp * 0.1:.1f} ns ({nsamp * 0.1 / 1000:.2f} μs)")
+        logger.info(f"Time window: {nsamp * dt_ns:.1f} ns  (dt={dt_ns:.4f} ns)")
         logger.info("=" * 70)
 
     return df
+
+
+# ── EFE archive lifecycle: stitch DZTs -> HDF5, AGC variant ──────────────────
+# Moved from scripts/visualization/unified_visualizer.py (2026-07-02, debt D12:
+# processing does not belong in the visualizer). The visualizer re-exports both
+# names so its CLI and existing imports keep working.
+
+def stitch_dzt_files(
+    dzt_paths: list,
+    out_h5: Path,
+) -> dict:
+    """Concatenate multiple DZT files into a single HDF5 archive.
+
+    Reads every DZT file in *dzt_paths* (must be provided in spatial order),
+    stacks all raw traces into one array, and saves to *out_h5* with segment
+    metadata stored as HDF5 attributes and a companion dataset.
+
+    The filename convention ``PKC<km_start>_PKF<km_end>`` is used to derive
+    approximate metric positions for each trace.
+
+    Args:
+        dzt_paths: Ordered list of Path objects pointing to DZT files.
+        out_h5:    Output HDF5 path (created or overwritten).
+
+    Returns:
+        dict with keys ``n_traces``, ``n_samples``, ``dt_ns``, ``segments``.
+
+    Output HDF5 layout::
+
+        /traces        float32 (n_total, n_samples) - raw ADC counts
+        /pk_m          float32 (n_total,)           - km position in metres
+        /segment_idx   int32   (n_total,)           - which DZT file (0-based)
+        /segments      str     dataset              - DZT filenames in order
+        attrs: dt_ns, n_traces, n_samples, created
+
+    Example::
+
+        paths = sorted(Path('D:/Codigo/Data').glob('*.DZT'))
+        stitch_dzt_files(paths, Path('output/efe_full.h5'))
+    """
+    import re
+    from datetime import datetime
+
+    import h5py
+
+    logger = get_logger(__name__)
+
+    def _parse_pk(name: str):
+        """Extract (pk_start_m, pk_end_m) from filename, or (None, None)."""
+        m = re.search(r'PKC(\d+)_(\d+).*PKF(\d+)_(\d+)', name, re.IGNORECASE)
+        if not m:
+            return None, None
+        km_start = int(m.group(1)) + int(m.group(2)) / 1000.0
+        km_end   = int(m.group(3)) + int(m.group(4)) / 1000.0
+        return km_start * 1e3, km_end * 1e3   # metres
+
+    # ── First pass: collect metadata ─────────────────────────────────────────
+    segments_meta = []
+    dt_ns_ref = None
+    n_samples_ref = None
+    total_traces = 0
+
+    for seg_idx, dzt_path in enumerate(dzt_paths):
+        logger.info(f'Reading segment {seg_idx}: {dzt_path.name}')
+        bscan, meta = read_dzt_traces(dzt_path)
+        dt_ns = meta['sample_interval_ns']
+        n_tr, n_samp = bscan.shape
+
+        if dt_ns_ref is None:
+            dt_ns_ref = dt_ns
+            n_samples_ref = n_samp
+        else:
+            if abs(dt_ns - dt_ns_ref) > 1e-6:
+                logger.warning(f'dt mismatch: {dzt_path.name} dt={dt_ns} vs {dt_ns_ref}')
+            if n_samp != n_samples_ref:
+                logger.warning(f'sample count mismatch: {dzt_path.name} {n_samp} vs {n_samples_ref}')
+
+        pk_start_m, pk_end_m = _parse_pk(dzt_path.name)
+        segments_meta.append({
+            'name':       dzt_path.name,
+            'seg_idx':    seg_idx,
+            'n_traces':   n_tr,
+            'trace_start': total_traces,
+            'trace_end':   total_traces + n_tr,
+            'pk_start_m':  pk_start_m,
+            'pk_end_m':    pk_end_m,
+            'bscan':       bscan,
+        })
+        total_traces += n_tr
+        logger.info(f'  {n_tr} traces, pk {pk_start_m}-{pk_end_m} m')
+
+    # ── Concatenate ──────────────────────────────────────────────────────────
+    logger.info(f'Concatenating {total_traces} traces x {n_samples_ref} samples ...')
+    all_traces   = np.empty((total_traces, n_samples_ref), dtype=np.float32)
+    all_pk_m     = np.empty(total_traces, dtype=np.float32)
+    all_seg_idx  = np.empty(total_traces, dtype=np.int32)
+
+    for seg in segments_meta:
+        s, e = seg['trace_start'], seg['trace_end']
+        all_traces[s:e] = seg['bscan'].astype(np.float32)
+        all_seg_idx[s:e] = seg['seg_idx']
+        # interpolate pk positions linearly within segment
+        if seg['pk_start_m'] is not None:
+            all_pk_m[s:e] = np.linspace(seg['pk_start_m'], seg['pk_end_m'],
+                                         seg['n_traces'], dtype=np.float32)
+        else:
+            all_pk_m[s:e] = np.arange(seg['n_traces'], dtype=np.float32)
+        del seg['bscan']   # free memory
+
+    # ── Write HDF5 ───────────────────────────────────────────────────────────
+    out_h5 = Path(out_h5)
+    out_h5.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(f'Writing HDF5: {out_h5}')
+
+    seg_names = [s['name'] for s in segments_meta]
+    with h5py.File(out_h5, 'w') as f:
+        f.create_dataset('traces',      data=all_traces,   compression='gzip',
+                         compression_opts=4, chunks=(512, n_samples_ref))
+        f.create_dataset('pk_m',        data=all_pk_m,     compression='gzip')
+        f.create_dataset('segment_idx', data=all_seg_idx,  compression='gzip')
+        dt = h5py.special_dtype(vlen=str)
+        ds = f.create_dataset('segments', (len(seg_names),), dtype=dt)
+        ds[:] = seg_names
+        f.attrs['dt_ns']      = float(dt_ns_ref)
+        f.attrs['n_traces']   = total_traces
+        f.attrs['n_samples']  = n_samples_ref
+        f.attrs['created']    = datetime.now().isoformat()
+
+    size_mb = out_h5.stat().st_size / 1e6
+    logger.info(f'Saved {out_h5} ({size_mb:.1f} MB)')
+
+    return {
+        'n_traces':  total_traces,
+        'n_samples': n_samples_ref,
+        'dt_ns':     dt_ns_ref,
+        'segments':  segments_meta,
+    }
+
+
+def apply_agc_to_h5(
+    in_h5: Path,
+    out_h5: Path,
+    window_ns: float = 5.0,
+    noise_gate: float = 1e-3,
+    chunk_traces: int = 4000,
+) -> None:
+    """Apply Automatic Gain Control to every trace in an HDF5 B-scan archive.
+
+    Reads the HDF5 produced by :func:`stitch_dzt_files`, applies AGC to each
+    trace, and writes a new HDF5 with the same structure.  All non-trace
+    datasets and attributes are copied verbatim; an ``agc_window_ns`` attribute
+    is added to document the processing.
+
+    WARNING (memory: AGC breaks matching): AGC output is DISPLAY-ONLY. Never
+    match/stack/invert on AGC'd traces - the per-trace nonlinear gain destroys
+    coda coherence (0.99 raw vs 0.02 AGC trace-to-trace r).
+
+    AGC algorithm: each sample is divided by the RMS of its local time window::
+
+        rms[i] = sqrt( mean( x[i-w : i+w]^2 ) )
+        x_agc[i] = x[i] / max(rms[i], noise_gate)
+
+    This equalises amplitude across depth so that deep interfaces (ballast base,
+    subgrade) are as bright as the near-surface direct wave.
+
+    Args:
+        in_h5:        Path to the input HDF5 (output of stitch_dzt_files).
+        out_h5:       Path for the AGC-corrected output HDF5.
+        window_ns:    Half-length of the AGC sliding window in ns (default 5 ns,
+                      roughly two 400 MHz wavelengths).
+        noise_gate:   Minimum RMS value; prevents division by noise (default 1e-3).
+        chunk_traces: Number of traces processed per iteration (memory budget).
+    """
+    import h5py
+
+    from .bscan_processing import agc_bscan
+
+    logger = get_logger(__name__)
+
+    out_h5 = Path(out_h5)
+    out_h5.parent.mkdir(parents=True, exist_ok=True)
+
+    with h5py.File(in_h5, 'r') as fin, h5py.File(out_h5, 'w') as fout:
+        dt_ns    = float(fin.attrs['dt_ns'])
+        n_tr     = int(fin.attrs['n_traces'])
+        n_samp   = int(fin.attrs['n_samples'])
+        half_win = max(1, int(round(window_ns / dt_ns)))
+        win_size = 2 * half_win + 1
+
+        logger.info(
+            f'AGC: {n_tr:,} traces, window={window_ns} ns '
+            f'({win_size} samples), noise_gate={noise_gate}'
+        )
+
+        # ── Create output trace dataset ──────────────────────────────────────
+        ds_out = fout.create_dataset(
+            'traces', shape=(n_tr, n_samp), dtype=np.float32,
+            compression='gzip', compression_opts=4,
+            chunks=(min(512, n_tr), n_samp),
+        )
+
+        # ── Process in chunks using agc_bscan() ──────────────────────────────
+        n_chunks = (n_tr + chunk_traces - 1) // chunk_traces
+        for k in range(n_chunks):
+            s = k * chunk_traces
+            e = min(n_tr, s + chunk_traces)
+            chunk = fin['traces'][s:e].astype(np.float32)   # (C, n_samp)
+            chunk_agc = agc_bscan(chunk, dt_ns * 1e-9,
+                                  window_ns=window_ns,
+                                  noise_gate=noise_gate).astype(np.float32)
+            ds_out[s:e] = chunk_agc
+            if (k + 1) % 10 == 0 or k == n_chunks - 1:
+                logger.info(f'  chunk {k+1}/{n_chunks}  ({e:,}/{n_tr:,} traces)')
+
+        # ── Copy ancillary datasets and attributes verbatim ──────────────────
+        for key in ('pk_m', 'segment_idx', 'segments'):
+            if key in fin:
+                fin.copy(key, fout)
+
+        for attr_key, attr_val in fin.attrs.items():
+            fout.attrs[attr_key] = attr_val
+        fout.attrs['agc_applied']   = True
+        fout.attrs['agc_window_ns'] = window_ns
+        fout.attrs['agc_noise_gate'] = noise_gate
+
+    size_mb = out_h5.stat().st_size / 1e6
+    logger.info(f'AGC file saved -> {out_h5}  ({size_mb:.1f} MB)')

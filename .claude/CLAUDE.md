@@ -17,6 +17,21 @@ Use `C:\Users\barba\miniconda3\python.exe` as the interpreter on this machine.
 
 This prevents duplication and maintains consistency across the codebase.
 
+## Experiment Folders
+
+**Every simulation experiment must have its own timestamped folder.**
+
+When starting a new experiment (new geometry, new sweep, new parameter test):
+1. Create `experiments/YYYY-MM-DD/` using the current date
+2. Copy the TOML config and generated `.in` file into the folder immediately
+3. Write a `README.md` in the folder describing the goal, expected results, and file list
+4. After the simulation completes, copy `.out`, `.vti`, and any plots into the folder
+
+Format: `experiments/2026-06-28/` (year-month-day, zero-padded)
+Multiple experiments on the same day share the same folder.
+
+This creates a permanent, self-contained record of every experiment.
+
 ## Documentation Standards
 
 - Keep documentation **accurate and up-to-date** with current code state

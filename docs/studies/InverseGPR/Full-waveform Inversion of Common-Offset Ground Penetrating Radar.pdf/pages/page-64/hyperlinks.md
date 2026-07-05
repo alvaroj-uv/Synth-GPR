@@ -1,0 +1,1 @@
+https://www.copyright.com/confirmCoiCartPurchase.do?operation=confirmPurchase

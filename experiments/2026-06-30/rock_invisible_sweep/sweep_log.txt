@@ -1,0 +1,51 @@
+
+=== invisible_fraction=0.0 (0%) ===
+  [OK] 8.0s  envelope_corr=0.9785  raw_corr_flipped=0.9458
+
+=== invisible_fraction=0.1 (10%) ===
+  [OK] 7.8s  envelope_corr=0.9769  raw_corr_flipped=0.9443
+
+=== invisible_fraction=0.2 (20%) ===
+  [OK] 7.5s  envelope_corr=0.9795  raw_corr_flipped=0.9482
+
+=== invisible_fraction=0.3 (30%) ===
+  [OK] 7.5s  envelope_corr=0.9789  raw_corr_flipped=0.9470
+
+=== invisible_fraction=0.4 (40%) ===
+  [OK] 7.5s  envelope_corr=0.9791  raw_corr_flipped=0.9468
+
+=== invisible_fraction=0.5 (50%) ===
+  [OK] 7.5s  envelope_corr=0.9794  raw_corr_flipped=0.9479
+
+=== invisible_fraction=0.6 (60%) ===
+  [OK] 8.0s  envelope_corr=0.9805  raw_corr_flipped=0.9526
+
+=== invisible_fraction=0.7 (70%) ===
+  [OK] 8.4s  envelope_corr=0.9795  raw_corr_flipped=0.9513
+
+=== invisible_fraction=0.8 (80%) ===
+  [OK] 8.5s  envelope_corr=0.9771  raw_corr_flipped=0.9517
+
+=== invisible_fraction=0.9 (90%) ===
+  [OK] 8.3s  envelope_corr=0.9770  raw_corr_flipped=0.9536
+
+=== invisible_fraction=1.0 (100%) ===
+  [OK] 8.1s  envelope_corr=0.9750  raw_corr_flipped=0.9513
+
+============================================================
+SWEEP SUMMARY
+============================================================
+  frac   env_corr   raw_corr   time_s
+   0.0     0.9785     0.9458      8.0
+   0.1     0.9769     0.9443      7.8
+   0.2     0.9795     0.9482      7.5
+   0.3     0.9789     0.9470      7.5
+   0.4     0.9791     0.9468      7.5
+   0.5     0.9794     0.9479      7.5
+   0.6     0.9805     0.9526      8.0
+   0.7     0.9795     0.9513      8.4
+   0.8     0.9771     0.9517      8.5
+   0.9     0.9770     0.9536      8.3
+   1.0     0.9750     0.9513      8.1
+
+Saved D:\Codigo\Synth-GPR\experiments\2026-06-30\rock_invisible_sweep\invisible_fraction_sweep_correlation.png

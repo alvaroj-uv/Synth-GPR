@@ -180,6 +180,15 @@ class ToolWarehouse:
             elif algo == "rsa":
                 from .rock_packing import RSAPacking
                 return RSAPacking()
+            elif algo == "rip":
+                from .rip_packing import RIPPacking
+                return RIPPacking()
+            elif algo == "rcp":
+                from .rcp_packing import RCPPacking
+                return RCPPacking()
+            elif algo in ("rcpgen", "rcpgenerator"):
+                from .rcpgenerator_packing import RCPGeneratorPacking
+                return RCPGeneratorPacking()
             elif algo == "pymunk":
                 try:
                     from .rock_packing import PymunkBallastPacking
@@ -189,13 +198,12 @@ class ToolWarehouse:
                         "pymunk packing requires 'pymunk' package. "
                         "Install with: pip install pymunk"
                     )
-            elif algo == "mbubia_ballast":
-                # Dense mbubia physics packing confined to the ballast region,
-                # for use inside the STANDARD layer stack (Air/Subgrade/Formation/
-                # Fouling). Returns full-grading polygon rocks; GranularMatrixWorker
-                # keeps ALL of them (no size filter, no fill cap) for a dense,
-                # settled ballast skeleton. clean_ballast grading gives the rock
-                # skeleton (fouling is added separately as a layer).
+            elif algo in ("pymunk_ballast", "mbubia_ballast"):
+                # Dense pymunk gravity-settle packing confined to the ballast region.
+                # Returns full-grading polygon rocks; GranularMatrixWorker keeps ALL
+                # of them (no size filter, no fill cap) for a dense, settled ballast
+                # skeleton. clean_ballast grading gives the rock skeleton (fouling is
+                # added separately as a layer).
                 try:
                     from .pymunk_packing import MbubiaPymunkSceneGenerator
                     return MbubiaPymunkSceneGenerator(
@@ -205,7 +213,7 @@ class ToolWarehouse:
                     )
                 except ImportError:
                     raise ImportError(
-                        "mbubia_ballast packing requires 'pymunk' package. "
+                        "pymunk_ballast packing requires 'pymunk' package. "
                         "Install with: pip install pymunk"
                     )
             else:

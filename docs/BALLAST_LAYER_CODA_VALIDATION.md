@@ -211,9 +211,9 @@ Hypothesis: Transition zone should show different reflection pattern than single
 
 ### 3. Rock Geometry (Advanced)
 
-Use mbubia packing (rocks + voids) instead of homogeneous ballast:
+Use pymunk packing (rocks + voids) instead of homogeneous ballast:
 ```toml
-rock_packing_algorithm = "mbubia"
+rock_packing_algorithm = "pymunk_ballast"
 rock_diameter = 0.05  # 50mm rocks (typical)
 ```
 
@@ -307,7 +307,7 @@ This proves:
 
 3. **For future research**:
    - Vary material parameters (eps, sigma) to match field surveys
-   - Add rock geometry (mbubia packing) for heterogeneity
+   - Add rock geometry (pymunk packing) for heterogeneity
    - Stratify layers (clean/fouled interface)
    - Validate against known fouling conditions (ground truth FI)
 
