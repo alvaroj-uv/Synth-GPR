@@ -3,8 +3,10 @@ Trace preprocessing: direct-wave removal (Wang & Liu 2017), SVD coherent-noise r
 
 Split out of signal_processing.py (2026-07-02, debt D12); import via src.signal_processing.
 """
+import warnings
+
 import numpy as np
-from scipy.signal import butter, filtfilt, convolve, hilbert
+from scipy.signal import butter, filtfilt, convolve, hilbert, resample
 
 
 # ── Direct wave removal (Wang & Liu 2017) ─────────────────────────────────────
@@ -573,6 +575,13 @@ def apply_gain(signal, dt, type='power', alpha=1.0, window_std=None):
     Applies Time-Varying Gain (TVG) to compensate for geometric spreading and
     dielectric attenuation that reduce signal amplitude with depth.
 
+    WARNING: DISPLAY-ONLY. Never apply gain to data destined for feature
+    extraction or amplitude / sigma / envelope analysis — it multiplies the
+    trace by a time-varying curve and destroys the physical amplitude those
+    analyses rely on ('agc' additionally applies a nonlinear per-sample gain
+    that breaks coda coherence). Use preprocess_physical for the
+    amplitude-preserving chain.
+
     Three modes are provided:
       'power' — gain = (t+1)^alpha  (geometric spreading, α=2 for 3-D)
       'exp'   — gain = exp(alpha·t) (exponential dielectric loss)
@@ -684,6 +693,14 @@ def preprocess_signal(
         treated_signal (np.array)
         start_idx (int): First-break sample index (after direct wave removal).
     """
+    warnings.warn(
+        "preprocess_signal mixes physical steps with amplitude normalization "
+        "(step 6, peak-normalize). For sigma / envelope / amplitude work use "
+        "preprocess_physical (no gain, no normalization); for the ML feature "
+        "matrix use preprocess_physical + normalize_for_features. Kept only for "
+        "backward compatibility.",
+        DeprecationWarning, stacklevel=2,
+    )
     treated_signal = signal.copy()
 
     # 0. Direct wave removal (Wang & Liu 2017) — applied FIRST
@@ -749,6 +766,123 @@ def preprocess_signal(
         treated_signal = treated_signal / max_val
 
     return treated_signal, start_idx
+
+
+def preprocess_physical(signal, dt, target_dt=None, use_dewow=True,
+                        first_break_method="sta_lta"):
+    """
+    Amplitude-preserving physical preprocessing: dewow -> time-zero -> (optional) resample.
+
+    This is the chain for ANY analysis that depends on physical amplitude —
+    conductivity (sigma), envelope decay (alpha), spectral evolution. It applies
+    NO gain and NO normalization, so relative amplitudes are preserved: every
+    step (dewow, time-zero shift, Fourier resample) is LINEAR, so scaling the
+    input by k scales the output by exactly k. For the ML feature /
+    classification matrix, follow this with normalize_for_features(), which
+    peak-normalizes BOTH domains together.
+
+    Steps:
+      1. dewow (running-mean low-frequency / DC-drift removal), or plain DC
+         removal if use_dewow=False.
+      2. time-zero correction (first-break pick + left shift to sample 0).
+      3. resample to target_dt (scipy Fourier resample, which band-limits on
+         downsampling) — only if target_dt is given and differs from dt. Used to
+         bring synthetic traces (dt~0.031 ns) onto the real time base
+         (dt=0.1 ns) so both domains share a sample grid before feature
+         extraction.
+
+    Explicitly NOT done here: gain (apply_gain is display-only), peak/RMS
+    normalization, bandpass. Those either destroy absolute amplitude or are
+    downstream analysis choices.
+
+    Args:
+        signal:             1-D numpy array (raw A-scan).
+        dt:                 Input time step in seconds (REQUIRED).
+        target_dt:          If given, resample so the output time step is
+                            target_dt (total duration preserved). None -> no
+                            resample.
+        use_dewow:          Apply dewow (True) or plain DC removal (False).
+        first_break_method: First-break picker for time-zero ('sta_lta' default,
+                            a scale-invariant ratio picker).
+
+    Returns:
+        (treated_signal, start_idx, dt_out)
+          treated_signal: processed trace (amplitude-preserving).
+          start_idx:      first-break sample index in the INPUT sample grid.
+          dt_out:         output time step (target_dt if resampled, else dt).
+    """
+    if dt is None:
+        raise ValueError(
+            "preprocess_physical requires an explicit dt (in seconds); read it "
+            "from the HDF5 'dt' attribute (synthetic) or the DZT header (real)."
+        )
+
+    treated = np.asarray(signal, dtype=float).copy()
+
+    # 1. Dewow / DC removal — physical, amplitude-preserving (linear)
+    if use_dewow:
+        treated = dewow(treated, window_size=50)
+    else:
+        treated = treated - np.mean(treated)
+
+    # 2. Time-zero correction (first-break pick + shift)
+    fb_idx = detect_first_break(treated, method=first_break_method)
+    treated = time_zero_correction(treated, fb_idx)
+
+    # 3. Optional resample to a target dt (Fourier -> band-limits on downsample)
+    dt_out = dt
+    if target_dt is not None and not np.isclose(target_dt, dt, rtol=1e-9, atol=0.0):
+        n_out = int(round(len(treated) * dt / target_dt))
+        if n_out < 2:
+            raise ValueError(
+                f"target_dt={target_dt:.3e}s too coarse for a "
+                f"{len(treated) * dt:.3e}s trace (n_out={n_out})."
+            )
+        treated = resample(treated, n_out)
+        dt_out = target_dt
+
+    return treated, fb_idx, dt_out
+
+
+def normalize_for_features(signals_real, signals_sim, method="peak"):
+    """
+    Apply ONE amplitude normalization to BOTH domains in a single call.
+
+    Normalizing sim and real independently, in different places, is exactly how
+    the historic "1/33" collapse happened: one domain was rescaled and the other
+    was not, so the classifier met a scale it had never learned and fell back to
+    the majority class. This function takes BOTH sets and normalizes them with
+    the same operation, so applying it to only one side is impossible by
+    construction.
+
+    method="peak": divide every trace (in both sets) by its own max|.| -> every
+    output trace has unit peak, so the sim<->real relative scale factor is
+    exactly 1.0 by construction (documented and tested).
+
+    WARNING: peak normalization DESTROYS absolute amplitude. Use this ONLY for
+    the ML feature / classification matrix. NEVER for sigma, envelope decay
+    (alpha), or any amplitude analysis — use preprocess_physical for those.
+
+    Args:
+        signals_real: 1-D (single trace) or 2-D (n_traces x n_samples) array.
+        signals_sim:  same shape convention.
+        method:       only "peak" (per-trace max|.|) is supported.
+
+    Returns:
+        (real_norm, sim_norm) — same shapes as the inputs.
+    """
+    if method != "peak":
+        raise ValueError(
+            f"Unsupported normalization method '{method}'. Only 'peak' is supported."
+        )
+
+    def _peak_norm(a):
+        a = np.asarray(a, dtype=float)
+        peaks = np.max(np.abs(a), axis=-1, keepdims=True)
+        peaks = np.where(peaks > 0, peaks, 1.0)
+        return a / peaks
+
+    return _peak_norm(signals_real), _peak_norm(signals_sim)
 
 
 # ── Predictive Deconvolution (Xiong et al. 2024, GPRlab) ────────────────────

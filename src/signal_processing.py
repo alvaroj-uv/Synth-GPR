@@ -138,6 +138,8 @@ from .preprocessing import (  # noqa: F401
     time_zero_correction,
     apply_gain,
     preprocess_signal,
+    preprocess_physical,
+    normalize_for_features,
     predictive_deconvolution,
     bandpass_filter,
 )
