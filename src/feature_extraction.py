@@ -1,6 +1,5 @@
 # Standard library
 import logging
-import warnings
 
 # Third-party imports
 import numpy as np
@@ -11,7 +10,7 @@ from scipy.linalg import solve_toeplitz
 from scipy.stats import skew, kurtosis
 
 # Local imports
-from src.constants import PC, SC
+from src.constants import SC
 from src.signal_processing import (calculate_instantaneous_attributes,
                                    peak_relative_coda_gate, mpm_decompose)
 from .logging_config import get_logger
@@ -21,8 +20,7 @@ def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str =
                                  include_legacy_blocks: bool = False) -> pd.DataFrame:
     """Extract features directly from a 1D signal array."""
     if dt is None:
-        _warn_default_dt()
-        dt = PC.DEFAULT_DT
+        raise ValueError(_DT_REQUIRED_MSG)
     time = np.arange(len(signal), dtype=float) * dt
     df = pd.DataFrame({"Time": time, signal_name: signal})
     return extract_features(df, dt=dt, center_freq_hz=center_freq_hz,
@@ -30,14 +28,12 @@ def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str =
                             include_legacy_blocks=include_legacy_blocks)
 
 
-def _warn_default_dt():
-    warnings.warn(
-        f"extract_features called without dt — defaulting to {PC.DEFAULT_DT:.2e}s "
-        f"(0.1 ns, the REAL-data time base). This is WRONG for synthetic .out "
-        f"files (dt≈0.0311 ns) and mis-scales every frequency feature by ~3.2x. "
-        f"Always pass dt read from the HDF5 'dt' attribute.",
-        UserWarning, stacklevel=3,
-    )
+_DT_REQUIRED_MSG = (
+    "extract_features requires an explicit dt (in seconds). Read it from the "
+    "'dt' HDF5 attribute of the synthetic .out file (dt≈0.0311 ns) or from the "
+    "DZT header for real field traces. A silent default mis-scales every "
+    "frequency feature by ~3.2x, so dt is now mandatory."
+)
 
 
 def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = True,
@@ -53,9 +49,10 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
 
     Args:
         df: DataFrame with a 'Time' column and one column per trace.
-        dt: Time step in seconds. ALWAYS pass it explicitly (read from the .out
-            HDF5 'dt' attribute); the 0.1 ns fallback is only correct for the
-            real field CSVs and a loud warning is emitted when it is used.
+        dt: Time step in seconds. REQUIRED — pass it explicitly (read from the
+            .out HDF5 'dt' attribute for synthetic data, or the DZT header for
+            real field traces). Passing None raises ValueError; there is no
+            default, because a wrong dt mis-scales every frequency feature.
         center_freq_hz: Source centre frequency, used for the relative spectral
             band edges (SC.BAND_LOW_FRAC/BAND_HIGH_FRAC). If None it is
             estimated per-trace as the dominant spectral frequency.
@@ -79,8 +76,7 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
         return pd.DataFrame()
 
     if dt is None:
-        _warn_default_dt()
-        dt = PC.DEFAULT_DT
+        raise ValueError(_DT_REQUIRED_MSG)
 
     features_list = []
     

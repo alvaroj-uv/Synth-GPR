@@ -50,7 +50,12 @@ def extract_features_from_out_file(out_file_path: str) -> dict:
     # features aren't computed with the 0.1 ns default. See build_parquet.py.
     time = df["Time"].values
     dt = float(time[1] - time[0]) if len(time) > 1 else None
-    features_df = extract_features(df, dt=dt) if dt else extract_features(df)
+    if dt is None:
+        raise ValueError(
+            f"Could not read dt from the Time axis of {out_file_path}; "
+            f"cannot extract features without an explicit dt."
+        )
+    features_df = extract_features(df, dt=dt)
     
     # Return first row as dictionary (one signal per file)
     if len(features_df) == 0:

@@ -53,9 +53,9 @@ def _trace(dt, n_ns=20.0, fc=FC, peak_ns=3.0, coda=True, seed=0):
 # --------------------------------------------------------------------------- #
 # dt guardrail
 # --------------------------------------------------------------------------- #
-def test_missing_dt_warns():
+def test_missing_dt_raises():
     sig = _trace(DT_REAL)
-    with pytest.warns(UserWarning, match="without dt"):
+    with pytest.raises(ValueError, match="requires an explicit dt"):
         extract_features_from_signal(sig)
 
 
