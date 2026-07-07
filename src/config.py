@@ -1,11 +1,66 @@
 
 import configparser
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from .constants import MC, PHC  # single source of truth for material EM properties
 
+
+# ------------------------------------------------------------
+# gprMax interpreter resolution (machine-specific, never hardcoded)
+# ------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_gprmax_python() -> str:
+    """Resolve the Python interpreter of the gprMax conda env.
+
+    gprMax runs in its own conda env, so its interpreter is machine-specific and
+    must NOT be hardcoded. Resolution order (no silent, machine-specific default):
+
+      1. environment variable ``GPRMAX_PYTHON``
+      2. ``[gprmax] python = ...`` in ``gprmax.ini`` at the repo root
+      3. raise RuntimeError with setup instructions
+
+    Returns:
+        Absolute path (str) to the gprMax env python executable.
+
+    Raises:
+        RuntimeError: if unconfigured, or if the configured path does not exist.
+    """
+    env = os.environ.get("GPRMAX_PYTHON")
+    if env:
+        if not Path(env).exists():
+            raise RuntimeError(
+                f"GPRMAX_PYTHON='{env}' but that interpreter does not exist."
+            )
+        return env
+
+    ini = _REPO_ROOT / "gprmax.ini"
+    if ini.exists():
+        parser = configparser.ConfigParser()
+        parser.read(ini)
+        val = parser.get("gprmax", "python", fallback=None)
+        if val:
+            if not Path(val).exists():
+                raise RuntimeError(
+                    f"gprmax.ini [gprmax] python='{val}' does not exist."
+                )
+            return val
+
+    raise RuntimeError(
+        "gprMax interpreter not configured. It runs in its own conda env, so its "
+        "path is machine-specific. Configure it one of two ways:\n"
+        "  1. environment variable:\n"
+        "       GPRMAX_PYTHON=/path/to/.conda/envs/gprMax/python.exe\n"
+        "  2. a gprmax.ini at the repo root:\n"
+        "       [gprmax]\n"
+        "       python = C:\\Users\\<you>\\.conda\\envs\\gprMax\\python.exe\n"
+        "(see memory/gprmax_run_procedure for the conda env details)."
+    )
 
 
 # ------------------------------------------------------------

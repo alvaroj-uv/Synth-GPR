@@ -3,11 +3,14 @@
 Test different rock spacings (porosity levels) to find optimal coda match.
 """
 
+import sys
 from pathlib import Path
 from subprocess import run
 import numpy as np
 import h5py
 from scipy.interpolate import interp1d
+
+from src.config import resolve_gprmax_python
 
 # Test porosity values (higher = more spacing)
 porosities = [0.35, 0.50, 0.60, 0.70]
@@ -61,7 +64,7 @@ sigma = 0.0
     print(f"Testing porosity {porosity:.2f} (spacing: {(1-porosity)*100:.0f}% void)...")
 
     result = run([
-        'C:\\Users\\barba\\miniconda3\\python.exe',
+        sys.executable,
         'scripts/pipeline/generate_gprmax_scenes.py',
         toml_path,
         '-o', in_path
@@ -74,11 +77,10 @@ sigma = 0.0
     # Run gprMax
     print(f"  Running gprMax...")
     result = run(
-        ['python', '-m', 'gprMax', in_path],
+        [resolve_gprmax_python(), '-m', 'gprMax', in_path],
         capture_output=True,
         text=True,
         timeout=300,
-        env={**dict(Path.cwd().resolve().parent.parent.resolve().parts), 'CONDA_PREFIX': 'C:\\Users\\barba\\miniconda3\\envs\\gprMax'}
     )
 
     # Check if output exists

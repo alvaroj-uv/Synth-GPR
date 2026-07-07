@@ -26,11 +26,13 @@ from scipy.signal import hilbert
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.config import resolve_gprmax_python
+
 REPO      = Path(__file__).resolve().parents[2]
 STUDY_DIR = REPO / "experiments" / "calibration"
 EXP_DIR   = REPO / "experiments" / "calibration" / "verify_3d"
 
-GPRMAX_PY    = r"C:\Users\barba\.conda\envs\gprMax\python.exe"
+GPRMAX_PY    = resolve_gprmax_python()
 GENERATE_SCR = REPO / "scripts" / "pipeline" / "generate_3d_scene.py"
 
 # ── Load top-N trials from the optuna study ────────────────────────────────────

@@ -16,17 +16,19 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-# gprMax lives in its own conda env (see memory/gprmax_run_procedure);
-# machine-specific — ajmpc.
-GPRMAX_PYTHON = r"C:\Users\barba\.conda\envs\gprMax\python.exe"
+from .config import resolve_gprmax_python
 
 
 def run_gprmax(in_path: Path, timeout: int = 600, gpu: bool = False,
                geometry_only: bool = False) -> bool:
     """Run one gprMax deck headless; True iff it succeeded and wrote the .out
-    (.vti for geometry_only)."""
+    (.vti for geometry_only).
+
+    The gprMax interpreter is resolved per call via resolve_gprmax_python()
+    (env GPRMAX_PYTHON or gprmax.ini); it is machine-specific and never hardcoded.
+    """
     in_path = Path(in_path)
-    cmd = [GPRMAX_PYTHON, "-m", "gprMax", in_path.name]
+    cmd = [resolve_gprmax_python(), "-m", "gprMax", in_path.name]
     if gpu:
         cmd += ["-gpu", "0"]
     if geometry_only:

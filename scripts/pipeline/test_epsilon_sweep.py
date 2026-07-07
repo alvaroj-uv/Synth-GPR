@@ -5,6 +5,7 @@ Find optimal permittivity for clean and fouled ballast.
 Test range: 5.0 to 10.0
 """
 
+import sys
 from pathlib import Path
 import subprocess
 import numpy as np
@@ -77,7 +78,7 @@ sigma = 0.0001
 
     # Generate .in
     result = subprocess.run([
-        'C:\\Users\\barba\\miniconda3\\python.exe',
+        sys.executable,
         'scripts/pipeline/generate_gprmax_scenes.py',
         toml_path,
         '-o', in_path

@@ -22,9 +22,7 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from scripts.pipeline.generate_3d_scene import generate, SWEEP_STEPS, eps_eff
-
-GPRMAX_PYTHON = r"C:\Users\barba\miniconda3\condabin\conda.bat"
-GPRMAX_ENV    = "gprMax"
+from src.config import resolve_gprmax_python
 
 # (eps_void, sigma_void) pairs — defined in generate_3d_scene.py
 SWEEP = SWEEP_STEPS   # [(4.5,0.001), (5.5,0.011), ..., (9.5,0.050)]
@@ -52,8 +50,7 @@ def run_one(eps_v: float, sigma_v: float, skip_if_exists: bool = True) -> Path:
     # Run gprMax on GPU
     print(f"[run ] {in_path.name} ...", flush=True)
     env_cmd = [
-        GPRMAX_PYTHON, "run", "-n", GPRMAX_ENV,
-        "python", "-m", "gprMax", str(in_path), "-gpu", "0",
+        resolve_gprmax_python(), "-m", "gprMax", str(in_path), "-gpu", "0",
     ]
     result = subprocess.run(
         env_cmd,

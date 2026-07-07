@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate clean ballast model WITH rock scattering (.in file)."""
 
+import sys
 from subprocess import run
 from pathlib import Path
 
@@ -9,7 +10,7 @@ print("GENERATING CLEAN BALLAST WITH ROCKS (for coda spike generation)")
 print("="*80 + "\n")
 
 result = run([
-    'C:\\Users\\barba\\miniconda3\\python.exe',
+    sys.executable,
     'scripts/pipeline/generate_gprmax_scenes.py',
     'start_fresh_with_rocks.toml',
     '-o', 'start_fresh_with_rocks.in'

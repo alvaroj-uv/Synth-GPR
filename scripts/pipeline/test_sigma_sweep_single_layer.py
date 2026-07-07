@@ -4,6 +4,7 @@ Conductivity (sigma) sweep on single-layer model to find optimal value.
 Test range: 0.0 to 0.001 S/m
 """
 
+import sys
 from pathlib import Path
 import subprocess
 import numpy as np
@@ -76,7 +77,7 @@ sigma = {sigma}
     # Generate .in
     print(f"Testing sigma = {sigma:.5f} S/m...")
     result = subprocess.run([
-        'C:\\Users\\barba\\miniconda3\\python.exe',
+        sys.executable,
         'scripts/pipeline/generate_gprmax_scenes.py',
         toml_path,
         '-o', in_path

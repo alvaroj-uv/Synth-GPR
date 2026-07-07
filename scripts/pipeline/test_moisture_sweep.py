@@ -96,7 +96,7 @@ sigma = {sigma}
 
     # Generate .in file
     result = subprocess.run([
-        'C:\\Users\\barba\\miniconda3\\python.exe',
+        sys.executable,
         'scripts/pipeline/generate_gprmax_scenes.py',
         toml_path,
         '-o', in_path

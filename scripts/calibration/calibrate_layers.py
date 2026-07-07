@@ -36,13 +36,15 @@ from scipy.signal import hilbert
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.config import resolve_gprmax_python
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 REPO      = Path(__file__).resolve().parents[2]
 WORK_DIR  = REPO / "experiments" / "calibration" / "trials"
 STUDY_DIR = REPO / "experiments" / "calibration"
 
-GPRMAX_PY   = r"C:\Users\barba\.conda\envs\gprMax\python.exe"
-MINICONDA_PY = r"C:\Users\barba\miniconda3\python.exe"
+GPRMAX_PY   = resolve_gprmax_python()
+MINICONDA_PY = sys.executable
 
 # ── Fixed geometry ─────────────────────────────────────────────────────────────
 DX       = 0.002

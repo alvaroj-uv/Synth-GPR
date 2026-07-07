@@ -4,6 +4,7 @@ Test if sigma=0.0001 is optimal for different rock diameters.
 Test range: 15mm to 35mm
 """
 
+import sys
 from pathlib import Path
 import subprocess
 import numpy as np
@@ -76,7 +77,7 @@ sigma = 0.0001
 
     # Generate .in
     result = subprocess.run([
-        'C:\\Users\\barba\\miniconda3\\python.exe',
+        sys.executable,
         'scripts/pipeline/generate_gprmax_scenes.py',
         toml_path,
         '-o', in_path
