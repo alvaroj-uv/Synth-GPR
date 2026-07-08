@@ -1,12 +1,13 @@
 # Environment
 
-## Python (machine: ajmpc only)
-## Environment
+## Python
 - Python >= 3.10 (code uses modern type annotations). Install: `pip install -r requirements.txt`
-- gprMax is NOT in requirements and NOT pip-installable here. Tests requiring it
-  are marked `@pytest.mark.gprmax` and must skip gracefully when absent.
+- El intérprete/ejecutable de gprMax se resuelve vía variable de entorno
+  `GPRMAX_PYTHON` (o `gprmax.ini`, ver `src/config.py::resolve_gprmax_python`);
+  **nunca hardcodear rutas de máquina**.
+- gprMax is NOT in requirements and NOT pip-installable here. Tests que lo
+  requieren van marcados `@pytest.mark.gprmax` y skipean si no está instalado.
 - Run tests: `pytest` (must be green at the end of every session).
-- gprMax executable path comes from env var `GPRMAX_PYTHON` — never hardcode paths.
 
 ## Repo discipline
 - Constants ONLY in `src/constants.py`. Materials ONLY via `NAMED_MATERIALS`.
@@ -55,19 +56,23 @@
 - Fouling classes come from the physical cause (fines fraction / ground truth),
   never from the ε the model could read. See docs/specs/ALGORITHM_SPECS.md.
 
-Python is installed via Miniconda at `C:\Users\barba\miniconda3`.
-Use `C:\Users\barba\miniconda3\python.exe` as the interpreter on this machine.
 ## Documentos de trabajo
 - Backlog de tareas: TODO_claude_code.md (trabajar en orden P0 → P1 → P2)
 - Especificaciones de algoritmos: docs/specs/ALGORITHM_SPECS.md
   (leer OBLIGATORIAMENTE antes de implementar T6, T8 o T9)
+- Fixtures de verdad conocida: tests/fixtures/ (batch sintético `sim/` + trazas
+  reales `real/` con ground_truth.json; todo código nuevo del pipeline se prueba
+  contra él — sanity-check con `python tests/validate_fixtures.py`)
 - Contexto del proyecto: docs/NOTA_ESTADO_SynthGPR.md
 
 ## Reglas de validez (nunca violar)
 1. Nunca splits aleatorios por traza — siempre GroupKFold por `group`
-2. Nunca eps/sigma/pvc como features de ML
+2. Nunca eps/sigma/pvc como features de ML (solo metadatos con prefijo `meta_`)
 3. Nunca ganancia/normalización sobre datos de análisis de amplitud
-4. Nunca correlación de forma de onda cruda sobre la coda
+4. Nunca correlación de forma de onda cruda sobre la coda (es speckle);
+   métricas válidas: envolvente suavizada, timing, espectro
+5. Recortar la ventana de análisis ANTES de restar la media (el orden inverso
+   crea correlaciones fantasma por offset compartido)
 
 # Development Guidelines
 
