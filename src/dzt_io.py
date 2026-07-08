@@ -19,7 +19,6 @@ from typing import Dict, Tuple, List, Optional, Any
 import numpy as np
 import pandas as pd
 from readgssi.dzt import readdzt
-from readgssi.gps import readdzg
 from .logging_config import get_logger
 
 

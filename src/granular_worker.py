@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .worker import Worker, SceneCheckpoint
 from .gpr_commands import CylinderCommand, BoxCommand, SoilPeplinskiCommand, FractalBoxCommand
-from .constants import MC, PC
+from .constants import MC
 from .physics import classify_pvc
 from .rock_model import PackingBounds, Rock
 from .rock_loader import RockLoader

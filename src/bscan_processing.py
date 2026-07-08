@@ -4,7 +4,6 @@ B-scan (2-D) processing: FastICA + WTMM multifractal denoising (Li 2022), vector
 Split out of signal_processing.py (2026-07-02, debt D12); import via src.signal_processing.
 """
 import numpy as np
-from scipy.signal import hilbert
 
 
 # ── FastICA B-scan decomposition + Multifractal WTMM (Li et al. 2022) ──────────

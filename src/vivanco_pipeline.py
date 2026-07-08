@@ -6,9 +6,7 @@ Split out of signal_processing.py (2026-07-02, debt D12); import via src.signal_
 import numpy as np
 from scipy.signal import butter, filtfilt, hilbert
 
-from .preprocessing import (
-    bandpass_filter, dewow, detect_first_break, mean_trace,
-)
+from .preprocessing import dewow
 
 
 def predict_dzt_fouling(

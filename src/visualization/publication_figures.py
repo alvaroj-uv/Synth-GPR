@@ -22,12 +22,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Optional, List, Tuple
-import warnings
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.axes import Axes
-import numpy as np
 
 from .drawing import draw_geometry, render_geometry_figure
 from .model import SceneData

@@ -16,11 +16,10 @@ This makes generated files self-documenting for:
 """
 
 from datetime import date
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from .file_writer import GPRMaxFileWriter
-from .gpr_commands import GPRCommand
 from .scene_descriptor import SceneDefinition
 
 

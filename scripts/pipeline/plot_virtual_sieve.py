@@ -21,10 +21,9 @@ from scipy.interpolate import interp1d
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.sphere_packing_3d import pack_spheres, PackingBounds3D
 from src.virtual_sieve import (
-    sieve_rocks, pvc_to_fi, pvc_to_eps_void, make_fi_coda_curve,
-    EN13450_SIEVES, eps_void_to_fi, P4_FRAC, P200_FRAC,
+    sieve_rocks, make_fi_coda_curve,
+    EN13450_SIEVES, eps_void_to_fi, P4_FRAC,
 )
 from scripts.pipeline.generate_3d_scene import (
     inflation_spheres, SWEEP_STEPS,

@@ -218,7 +218,6 @@ def picks_to_layer_toml(
         Rojas-Vivanco et al. (2025), Transportation Geotechnics 55:101701.
     """
     from pathlib import Path as _Path
-    import textwrap
 
     out_toml = _Path(out_toml)
     n = len(interface_times_ns)

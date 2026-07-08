@@ -6,7 +6,7 @@ Split out of signal_processing.py (2026-07-02, debt D12); import via src.signal_
 import warnings
 
 import numpy as np
-from scipy.signal import butter, filtfilt, convolve, hilbert, resample
+from scipy.signal import butter, filtfilt, convolve, resample
 
 
 # ── Direct wave removal (Wang & Liu 2017) ─────────────────────────────────────

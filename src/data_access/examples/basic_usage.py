@@ -187,8 +187,7 @@ def example_5_protocol_based():
     print("="*70)
     
     from src.data_access import DataReader, DataWriter
-    from typing import Union
-    
+
     # Function that works with any reader/writer
     def process_config(reader: DataReader, writer: DataWriter, 
                       input_path: str, output_path: str) -> None:

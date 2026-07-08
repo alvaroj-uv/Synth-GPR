@@ -10,12 +10,11 @@ Rock packing strategy (PymunkBallastPacking) is in rock_packing.py.
 Physics engine: pymunk (2D rigid-body dynamics)
 """
 
-import json
 import pymunk
 import numpy as np
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from .constants import PHC
 from .rock_model import Layer, Rock, PackingBounds  # shared domain models

@@ -5,7 +5,7 @@ Decouples random sampling logic from the main dataset generation pipeline.
 """
 import random
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 
 from .config import GeneratorConfig
 from .physics import classify_fouling_index, convert_pvc_to_fi

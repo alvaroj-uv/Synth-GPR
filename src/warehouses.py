@@ -6,7 +6,7 @@ needed by workers, ensuring consistency and centralizing configuration.
 """
 from typing import Dict, Any, Optional
 from .gpr_commands import MaterialCommand
-from .constants import MC, PC
+from .constants import MC
 
 class MaterialWarehouse:
     """

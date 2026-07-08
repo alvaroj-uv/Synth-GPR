@@ -1,7 +1,7 @@
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple
 
 import numpy as np
 

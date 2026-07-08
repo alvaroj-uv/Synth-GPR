@@ -14,8 +14,8 @@ Polydisperse sizes (EN-13450 grading or custom range) are fully supported.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List
 
 import numpy as np
 from scipy.spatial import cKDTree
