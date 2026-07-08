@@ -63,8 +63,8 @@ Navigate by category to find the documentation you need.
 - [FI 2D Verification](FI_2D_VERIFICATION.md) — Literature-backed methods to map 2D virtual-sieve FI to lab FI thresholds
 
 ### Waveform Calibration & Validation (2026-06-16)
-- [Final Calibration Summary](FINAL_CALIBRATION_SUMMARY.md) — ✅ COMPLETE — Complete validation of 88.76% synthetic-real correlation
-- [Waveform Calibration Results](WAVEFORM_CALIBRATION_RESULTS.md) — Detailed 3-parameter optimization (Gaussian, 420 MHz, 30mm bistatic)
+- [Final Calibration Summary](FINAL_CALIBRATION_SUMMARY.md) — ⚠️ CORRECTED 2026-07-07 — timeline/polarity/resampling validated (88.76% **full-trace** correlation, direct-wave dominated); grid-search waveform/freq/spacing claims INVALIDATED (noise-floor comparisons)
+- [Waveform Calibration Results](WAVEFORM_CALIBRATION_RESULTS.md) — ⚠️ CORRECTED 2026-07-07 — grid search INVALIDATED (noise floor); vigente: polaridad + onda directa (Gaussian/420 MHz/30mm = placeholder provisional)
 - [gprMax Sampling Control](GPRMAX_SAMPLING_CONTROL.md) — dt fundamentals, CFL condition, post-processing resampling workflow
 - [Default Configuration Guide](DEFAULT_CONFIGURATION_GUIDE.md) — How to use optimized DEFAULT.toml (420 MHz + Gaussian + 30mm bistatic)
 

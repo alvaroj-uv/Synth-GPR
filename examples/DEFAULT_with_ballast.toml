@@ -33,7 +33,7 @@ title = "420 MHz Gaussian Bistatic 30mm + Clean Ballast Layer"
 
 [source]
 # OPTIMIZED WAVEFORM
-waveform = "gaussian"              # Gaussian (145.6% better than Ricker)
+waveform = "gaussian"              # PROVISIONAL — claim "145.6% better" INVALIDATED (suelo de ruido; ver FINAL_CALIBRATION_SUMMARY.md §1.1)
 amplitude = 1.0
 polarization = "z"
 

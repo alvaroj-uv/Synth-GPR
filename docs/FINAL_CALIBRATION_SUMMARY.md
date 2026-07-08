@@ -1,8 +1,8 @@
 # Final Waveform Calibration Summary: Synthetic-to-Real gprMax Validation
 
 **Date**: 2026-06-16  
-**Status**: ✅ COMPLETE & VALIDATED  
-**Final Correlation**: **88.76%** (matched timeline, polarity-flipped, peak-aligned)
+**Status**: ~~✅ COMPLETE & VALIDATED~~ **TIMELINE/POLARITY/RESAMPLING VALIDATED — coda matching pendiente por diseño (métricas de envolvente/espectro, ver `docs/specs/ALGORITHM_SPECS.md` SPEC-1)** *(corregido 2026-07-07)*  
+**Final Correlation**: ~~**88.76%** (matched timeline, polarity-flipped, peak-aligned)~~ **88.76% full-trace correlation (direct-wave dominated)** — valida timing, remuestreo y polaridad; NO valida el matching de la coda (ver nota en Part 3.2)
 
 ---
 
@@ -10,33 +10,37 @@
 
 This document consolidates all findings from a systematic 3-month calibration effort to optimize synthetic GPR waveforms (gprMax FDTD) for real-world field GPR hardware (GSSI SIR-3000 400 MHz). Through grid search optimization and post-processing analysis, we:
 
-1. ✅ Identified 3 orthogonal calibration parameters with measurable improvements
+1. ~~✅ Identified 3 orthogonal calibration parameters with measurable improvements~~ ❌ **INVALIDATED** — los tres "parámetros calibrados" (§1.1–1.3) se compararon con correlación de forma de onda sobre coda granular (speckle): todas las correlaciones del grid search (−0.028…+0.011) son suelo de ruido y no discriminan (ver nota de corrección en §1.1)
 2. ✅ Discovered and validated a polarity inversion fix
 3. ✅ Revealed that temporal resolution mismatch (dt) was the primary correlation blocker
-4. ✅ Achieved 88.76% correlation via post-processing resampling to matched timeline
+4. ✅ Achieved 88.76% **full-trace correlation (direct-wave dominated)** via post-processing resampling to matched timeline — valida timing/remuestreo/polaridad, no la coda
 5. ✅ Documented that gprMax dt cannot be directly set (emerges from CFL condition)
 
 ---
 
 ## Part 1: Three Validated Calibration Parameters
 
-### 1.1 Waveform Type: Gaussian > Ricker (+145.6%)
+### 1.1 Waveform Type: ~~Gaussian > Ricker (+145.6%)~~ ❌ INVALIDATED
+
+> **Nota de corrección (2026-07-07):** Las correlaciones comparadas (+0.011 Gaussian, −0.025 Ricker) son ambas estadísticamente cero: la métrica era correlación de forma de onda sobre coda granular, que es speckle (correlación esperada ~0 para CUALQUIER wavelet). La comparación se hizo en el suelo de ruido y no discrimina entre wavelets. La wavelet se determinará por deconvolución contra placa metálica o desde el modelo de antena gprMax (`antenna_like_GSSI_400`), no por grid search de correlación. Ver `docs/specs/ALGORITHM_SPECS.md`, SPEC-1.
 
 **Test**: 3 waveform types at 420 MHz, 30mm bistatic spacing
 
 | Waveform | Amplitude | Correlation | vs Ricker | Result |
 |---|---|---|---|---|
-| Ricker | +1.0 | −0.024908 | baseline | Oscillatory, poor |
-| **Gaussian** | **+1.0** | **+0.011352** | **+145.6%** | ✅ **BEST** |
-| Sinusoid | +1.0 | −0.028534 | −14.6% | Worst |
+| Ricker | +1.0 | −0.024908 | baseline | ~~Oscillatory, poor~~ suelo de ruido |
+| **Gaussian** | **+1.0** | **+0.011352** | ~~**+145.6%**~~ | ~~✅ **BEST**~~ suelo de ruido |
+| Sinusoid | +1.0 | −0.028534 | ~~−14.6%~~ | suelo de ruido |
 
-**Insight**: Gaussian envelope matches real antenna transient response far better than Ricker derivative. Real GSSI antenna is Gaussian-like, not Ricker-pulse.
+~~**Insight**: Gaussian envelope matches real antenna transient response far better than Ricker derivative. Real GSSI antenna is Gaussian-like, not Ricker-pulse.~~ *(Insight retirado: la métrica no soporta esta conclusión.)*
 
-**Implementation**: Set in TOML: `waveform = "gaussian"`
+**Implementation**: `waveform = "gaussian"` queda como **placeholder operativo provisional, sin evidencia de superioridad**.
 
 ---
 
-### 1.2 Center Frequency: 420 MHz > 400 MHz (+2.6%)
+### 1.2 Center Frequency: ~~420 MHz > 400 MHz (+2.6%)~~ ❌ INVALIDATED
+
+> **Nota de corrección (2026-07-07):** misma métrica de suelo de ruido que §1.1 — las cinco correlaciones (−0.0245…−0.0276) son estadísticamente cero; una diferencia de "+2.6%" entre ellas no discrimina. La frecuencia efectiva se determinará del espectro de la onda directa real (evento coherente), no por grid search de correlación de coda.
 
 **Test**: 5 frequencies [380, 390, 400, 410, 420] MHz at Gaussian, 30mm bistatic
 
@@ -57,7 +61,9 @@ This document consolidates all findings from a systematic 3-month calibration ef
 
 ---
 
-### 1.3 Antenna Geometry: Bistatic 30mm > Monostatic (10% better)
+### 1.3 Antenna Geometry: ~~Bistatic 30mm > Monostatic (10% better)~~ ❌ INVALIDATED
+
+> **Nota de corrección (2026-07-07):** misma métrica de suelo de ruido que §1.1 — todas las correlaciones del barrido de spacing (−0.019…−0.028) son estadísticamente cero y no discriminan. (El bistatismo 30 mm sigue siendo físicamente plausible para la antena GSSI real, pero no está *validado* por este barrido.)
 
 **Test**: 8 RX/TX spacings [0, 30, 40, 50, 60, 70, 80, 90, 100 mm] at 420 MHz Gaussian
 
@@ -142,9 +148,11 @@ Real hardware is fixed at coarse resolution (dt ≈ 0.098 ns from ADC).
 **Result**:
 ```
 Before resampling:   correlation = +0.0112
-After resampling:    correlation = +0.8876  ← 88.76%
+After resampling:    correlation = +0.8876  ← 88.76% full-trace (direct-wave dominated)
 Improvement:         +7872%
 ```
+
+> **Nota de corrección (2026-07-07):** el fix del timeline (remuestreo 0.007→0.098 ns + alineación de picos) es REAL y se conserva como validado — ese fue el verdadero avance. Pero la traza completa está dominada energéticamente por la onda directa; esta correlación valida timing, remuestreo y polaridad, NO el matching de la coda. La correlación de coda es ~0 y eso es el comportamiento físico esperado (speckle) — ver Part 8 (Known Limitations) y SPEC-1.
 
 ### 3.3 Implementation
 
@@ -223,7 +231,7 @@ receiver_spacing = 0.03            # 30 mm TX/RX separation (+10%)
 title = "420 MHz - Gaussian Bistatic 30mm [Optimized]"
 
 [source]
-waveform = "gaussian"              # Far superior to Ricker (+145.6%)
+waveform = "gaussian"              # PROVISIONAL placeholder — claim "+145.6%" INVALIDATED (suelo de ruido, ver §1.1); sin evidencia de superioridad
 amplitude = 1.0
 polarization = "z"
 
@@ -246,17 +254,17 @@ thickness = 0.5
 ### ✅ Parameter Validation
 
 - [x] **Waveform Test**: Gaussian vs Ricker vs Sinusoid (3 variants tested)
-  - Result: Gaussian +145.6% improvement
+  - Result: ~~Gaussian +145.6% improvement~~ ❌ INVALIDATED — comparación en el suelo de ruido (ver §1.1)
   - Script: `scripts/13_test_waveform_variants.py`
   - Visualization: `13b_compare_waveforms.py`
 
 - [x] **Frequency Sweep**: [380, 390, 400, 410, 420] MHz (5 variants tested)
-  - Result: 420 MHz +2.6% improvement over nominal
+  - Result: ~~420 MHz +2.6% improvement over nominal~~ ❌ INVALIDATED — suelo de ruido (ver §1.2)
   - Script: `scripts/12_test_frequency_variants.py`
   - Visualization: `12b_plot_frequency_sweep.py`
 
 - [x] **Spacing Grid Search**: [0–100 mm], 8 variants
-  - Result: 30 mm +10% improvement over monostatic
+  - Result: ~~30 mm +10% improvement over monostatic~~ ❌ INVALIDATED — suelo de ruido (ver §1.3)
   - Script: `scripts/10b_modify_antenna_spacing.py`
   - Visualization: `11_compare_all_spacings.py`
 
@@ -288,9 +296,9 @@ thickness = 0.5
   - Real peak: t=5.97 ns
   - Shift: 38 samples @ real dt
 
-- [x] **Final Correlation**: **88.76%**
+- [x] **Final Correlation**: **88.76% full-trace correlation (direct-wave dominated)**
   - Before resampling: +0.0112 (0.01% match)
-  - After resampling: +0.8876 (88.76% match)
+  - After resampling: +0.8876 (88.76% full-trace match; valida timing/remuestreo/polaridad, no la coda)
   - Improvement: +7872%
 
 ### ✅ gprMax dt Analysis
@@ -413,32 +421,29 @@ If obtaining new GPR hardware:
 
 | Metric | Value | Status |
 |---|---|---|
-| **Waveform improvement** | +145.6% (Gaussian vs Ricker) | ✅ Validated |
-| **Frequency shift** | +2.6% (420 vs 400 MHz) | ✅ Validated |
-| **Antenna geometry** | +10% (30mm bistatic vs monostatic) | ✅ Validated |
+| **Waveform improvement** | ~~+145.6% (Gaussian vs Ricker)~~ | ❌ INVALIDATED (suelo de ruido, §1.1) |
+| **Frequency shift** | ~~+2.6% (420 vs 400 MHz)~~ | ❌ INVALIDATED (suelo de ruido, §1.2) |
+| **Antenna geometry** | ~~+10% (30mm bistatic vs monostatic)~~ | ❌ INVALIDATED (suelo de ruido, §1.3) |
 | **Polarity fix** | ×(−1) in post-processing | ✅ Validated |
-| **Timeline matching** | +7872% (0.01% → 88.76%) | ✅ Validated |
-| **Configuration** | freespace_420mhz_gaussian_bistatic30mm.toml | ✅ Ready |
+| **Timeline matching** | +7872% (0.01% → 88.76% full-trace, direct-wave dominated) | ✅ Validated |
+| **Configuration** | freespace_420mhz_gaussian_bistatic30mm.toml | ⚠️ Provisional (waveform sin evidencia) |
 | **Production script** | scripts/15_match_timeline.py | ✅ Ready |
-| **Documentation** | 3 comprehensive guides | ✅ Complete |
+| **Documentation** | 3 comprehensive guides | ✅ Corrected 2026-07-07 |
 
 ---
 
 ## Conclusion
 
-This calibration effort successfully optimized synthetic gprMax waveforms to achieve **88.76% correlation** with real GSSI SIR-3000 field data after accounting for:
-1. Waveform shape (Gaussian)
-2. Center frequency (420 MHz)
-3. Antenna geometry (bistatic 30mm)
-4. Polarity inversion
-5. Temporal resolution mismatch (post-processing resampling)
+This calibration effort achieved **88.76% full-trace correlation (direct-wave dominated)** with real GSSI SIR-3000 field data, validating:
+1. Polarity inversion (×−1 in post-processing)
+2. Temporal resolution mismatch (post-processing resampling to matched timeline)
 
-All three calibration parameters are **orthogonal and validated independently**. The timeline matching breakthrough revealed that dt mismatch was the primary correlation blocker, solved via post-processing rather than parameter tuning.
+~~All three calibration parameters are **orthogonal and validated independently**.~~ **Corrección (2026-07-07):** los tres parámetros del grid search (waveform, frecuencia, spacing) quedaron INVALIDATED — se compararon con correlación de forma de onda sobre coda granular (speckle), en el suelo de ruido. La configuración Gaussian/420 MHz/30 mm queda como placeholder operativo provisional. The timeline matching breakthrough revealed that dt mismatch was the primary full-trace correlation blocker, solved via post-processing rather than parameter tuning.
 
-**Configuration is production-ready** for synthetic dataset generation and domain adaptation tasks.
+**Status real: TIMELINE/POLARITY/RESAMPLING VALIDATED — coda matching pendiente por diseño** (métricas de envolvente/espectro; la wavelet se determinará por deconvolución de placa o modelo de antena — ver SPEC-1).
 
 ---
 
 **Prepared by**: Claude Code  
-**Date**: 2026-06-16  
-**Validation Status**: ✅ COMPLETE
+**Date**: 2026-06-16 *(corregido 2026-07-07 — ver notas de corrección)*  
+**Validation Status**: ~~✅ COMPLETE~~ TIMELINE/POLARITY/RESAMPLING VALIDATED — coda matching pendiente por diseño (SPEC-1)

@@ -78,7 +78,7 @@ sigma = 0.0                  # Dry (no conductivity)
 
 2. **Freespace synthetic** (reference)
    - gprMax 1-layer domain: air only
-   - Previously validated at 88.76% correlation with real (after resampling)
+   - Previously validated at 88.76% full-trace correlation with real (after resampling; direct-wave dominated — valida timing/polaridad/remuestreo, no la coda)
    - Output: `freespace_420mhz_optimized.out` (7068 samples)
 
 3. **Real field GPR** (ground truth)
@@ -268,7 +268,7 @@ This would capture:
 
 ### Documentation References
 
-- **Calibration baseline**: `docs/FINAL_CALIBRATION_SUMMARY.md` (freespace 88.76%)
+- **Calibration baseline**: `docs/FINAL_CALIBRATION_SUMMARY.md` (freespace 88.76% full-trace, direct-wave dominated; corregido 2026-07-07)
 - **gprMax dt**: `docs/GPRMAX_SAMPLING_CONTROL.md` (time resolution discussion)
 - **Material models**: [Li 2025 Paper](ref_li2025.md), [Couchman 2024 Paper](ref_couchman2024.md)
 

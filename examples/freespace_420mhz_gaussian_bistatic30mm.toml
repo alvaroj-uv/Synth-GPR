@@ -1,8 +1,8 @@
-# Free space 420 MHz - Gaussian bistatic 30mm spacing [OPTIMIZED]
-# This configuration achieved best synthetic-to-real correlation
-# Waveform: Gaussian (145% better than Ricker)
-# Frequency: 420 MHz (2.6% better than nominal 400 MHz)
-# Spacing: 30mm bistatic TX/RX separation (10% improvement vs monostatic)
+# Free space 420 MHz - Gaussian bistatic 30mm spacing [PROVISIONAL]
+# corregido 2026-07-07: los claims de "mejor correlación" del grid search están
+# INVALIDATED — comparaban correlaciones de coda-speckle en el suelo de ruido
+# (ver docs/FINAL_CALIBRATION_SUMMARY.md §1.1-1.3 y SPEC-1). Config se conserva
+# como placeholder operativo sin evidencia de superioridad.
 [sim]
 freq_hz = 420e6
 domain_x = 0.5

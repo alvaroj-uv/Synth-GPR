@@ -1,8 +1,8 @@
 # Waveform Calibration Results: Synthetic-to-Real gprMax Optimization
 
 **Date**: 2026-06-16  
-**Status**: Three parameters validated; polarity issue identified  
-**Recommendation**: Adopt optimized configuration (Gaussian, 420 MHz, 30mm spacing)
+**Status**: ~~Three parameters validated; polarity issue identified~~ **❌ Grid search INVALIDATED (métrica en el suelo de ruido) — solo la identificación de polaridad y el análisis de onda directa (+0.7486) se conservan** *(corregido 2026-07-07)*  
+**Recommendation**: ~~Adopt optimized configuration (Gaussian, 420 MHz, 30mm spacing)~~ La configuración Gaussian/420 MHz/30 mm queda como **placeholder provisional sin evidencia de superioridad**; la wavelet se determinará por deconvolución contra placa metálica o modelo de antena gprMax (`antenna_like_GSSI_400`) — ver `docs/specs/ALGORITHM_SPECS.md`, SPEC-1
 
 ---
 
@@ -22,6 +22,9 @@ Through systematic multi-parameter optimization, we identified **three actionabl
 - **Result**: Direct wave (first 4.5 ns) correlates excellently at **+0.7486**, but full waveform **−0.0004** → problem is coda, not direct pulse
 
 ### Phase 2: Multi-Parameter Grid Search
+
+> **Nota de corrección (2026-07-07):** TODAS las correlaciones de esta fase (−0.028…+0.011) son estadísticamente cero. La métrica era correlación de forma de onda sobre coda granular, que es speckle (correlación esperada ~0 para CUALQUIER configuración); las comparaciones porcentuales entre valores del suelo de ruido ("+145.6%", "+2.6%", "~10%") no son resultados. Se conservan las tablas como registro histórico. Ver `docs/specs/ALGORITHM_SPECS.md`, SPEC-1.
+
 Tested three orthogonal factors:
 
 #### **A. Antenna Spacing (TX/RX Bistatic Separation)**
@@ -36,7 +39,7 @@ Tested three orthogonal factors:
 | 90 | | −0.025211 |
 | 100 | | −0.025467 |
 
-**Insight**: Switching from monostatic (0 mm) to 30 mm bistatic RX separation improves correlation by ~10%. Likely reflects real antenna coupling geometry.
+~~**Insight**: Switching from monostatic (0 mm) to 30 mm bistatic RX separation improves correlation by ~10%. Likely reflects real antenna coupling geometry.~~ *(Retirado: comparación en el suelo de ruido.)*
 
 #### **B. Center Frequency**
 | Frequency (MHz) | Configuration | Correlation |
@@ -47,16 +50,16 @@ Tested three orthogonal factors:
 | 410 | | −0.025678 |
 | 420 | **[BEST]** | −0.024908 |
 
-**Insight**: 420 MHz outperforms nominal 400 MHz by ~2.6%. Suggests real hardware may have effective center frequency offset from rated spec, or bandwidth rolloff effects.
+~~**Insight**: 420 MHz outperforms nominal 400 MHz by ~2.6%. Suggests real hardware may have effective center frequency offset from rated spec, or bandwidth rolloff effects.~~ *(Retirado: comparación en el suelo de ruido.)*
 
 #### **C. Waveform Type (at 420 MHz, 30 mm bistatic)**
 | Waveform | Amplitude | Correlation | vs Ricker |
 |---|---|---|---|
-| Ricker | +1.0 | −0.024908 | baseline |
-| **Gaussian** | **+1.0** | **+0.011352** | **+145.6%** ← **[BEST]** |
-| Sinusoid | +1.0 | −0.028534 | −14.6% |
+| Ricker | +1.0 | −0.024908 | baseline *(suelo de ruido)* |
+| **Gaussian** | **+1.0** | **+0.011352** | ~~**+145.6%** ← **[BEST]**~~ *(suelo de ruido)* |
+| Sinusoid | +1.0 | −0.028534 | ~~−14.6%~~ *(suelo de ruido)* |
 
-**Insight**: Gaussian pulse dramatically outperforms Ricker, achieving **first positive correlation** on normalized waveforms. Suggests real antenna excitation is closer to a Gaussian envelope than Ricker derivative.
+~~**Insight**: Gaussian pulse dramatically outperforms Ricker, achieving **first positive correlation** on normalized waveforms. Suggests real antenna excitation is closer to a Gaussian envelope than Ricker derivative.~~ *(Retirado: +0.011 vs −0.025 son ambas estadísticamente cero — el signo de una correlación del suelo de ruido no es evidencia. Ver nota de Phase 2.)*
 
 ---
 
@@ -99,7 +102,7 @@ receiver_spacing = 0.03          # 30 mm spacing
 title = "420 MHz - Gaussian Bistatic 30mm [Optimized]"
 
 [source]
-waveform = "gaussian"            # 145% better than Ricker
+waveform = "gaussian"            # PROVISIONAL — claim "145% better" INVALIDATED (suelo de ruido); sin evidencia de superioridad
 amplitude = 1.0
 polarization = "z"
 
@@ -153,12 +156,12 @@ python scripts/pipeline/generate_in_files.py examples/freespace_420mhz_gaussian_
 
 ## Validation Notes
 
-All three calibration parameters (frequency, spacing, waveform) are **independent and orthogonal** — each was tested in isolation and combined:
+~~All three calibration parameters (frequency, spacing, waveform) are **independent and orthogonal** — each was tested in isolation and combined.~~ **Corrección (2026-07-07):** el diseño del grid (aislar factores) era correcto, pero la función objetivo no: correlación de forma de onda sobre coda-speckle no discrimina, así que ninguno de los tres factores quedó validado.
 - ✓ Frequency sweep held spacing/waveform constant
 - ✓ Spacing grid held frequency/waveform constant  
 - ✓ Waveform variants tested at optimized frequency + spacing
 
-**Grid coverage**: 8 spacings × 5 frequencies × 3 waveforms = 120 synthetic runs; all completed successfully.
+**Grid coverage**: 8 spacings × 5 frequencies × 3 waveforms = 120 synthetic runs; all completed successfully *(los runs son válidos; la métrica de comparación no lo era)*.
 
 ---
 
@@ -200,7 +203,7 @@ All three calibration parameters (frequency, spacing, waveform) are **independen
 
 ## Author Notes
 
-This calibration exercise confirms that **waveform realism matters more than frequency accuracy** for synthetic-to-real generalization. The 145% improvement from Ricker → Gaussian is the single largest gain, driven by the fact that Gaussian better matches real antenna transient response. The frequency and spacing improvements are smaller but cumulative.
+~~This calibration exercise confirms that **waveform realism matters more than frequency accuracy** for synthetic-to-real generalization. The 145% improvement from Ricker → Gaussian is the single largest gain, driven by the fact that Gaussian better matches real antenna transient response. The frequency and spacing improvements are smaller but cumulative.~~ **Corrección (2026-07-07):** esta conclusión no está soportada — el "+145%" compara dos correlaciones del suelo de ruido. Lo que este ejercicio sí estableció: la onda directa correlaciona (+0.7486, evento coherente), la coda no (speckle, esperado), y existe una inversión de polaridad que se corrige en post-proceso.
 
 However, the underlying coda mismatch suggests that the real-world signal is shaped by material structure (rocks, moisture gradients, particle size distribution) rather than pure electromagnetic theory. This aligns with findings from Couchman 2024 (Mie scattering dominates ballast fouling discrimination) and Li 2025 (discrete fines below grid resolution drive coda).
 
@@ -210,4 +213,4 @@ For production waveform-only feature extraction, the optimized synthetic wavefor
 
 ---
 
-**Status**: Ready for production use. Polarity fix (−1× scaling) should be applied before model training on synthetic data.
+**Status**: ~~Ready for production use.~~ Grid search INVALIDATED; hallazgos vigentes = polaridad (fix ×−1 en post-proceso, aplicar antes de entrenar) y correlación de onda directa. La wavelet definitiva: deconvolución de placa o modelo de antena (SPEC-1).
