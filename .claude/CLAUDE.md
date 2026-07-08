@@ -1,9 +1,73 @@
 # Environment
 
 ## Python (machine: ajmpc only)
+## Environment
+- Python >= 3.10 (code uses modern type annotations). Install: `pip install -r requirements.txt`
+- gprMax is NOT in requirements and NOT pip-installable here. Tests requiring it
+  are marked `@pytest.mark.gprmax` and must skip gracefully when absent.
+- Run tests: `pytest` (must be green at the end of every session).
+- gprMax executable path comes from env var `GPRMAX_PYTHON` — never hardcode paths.
+
+## Repo discipline
+- Constants ONLY in `src/constants.py`. Materials ONLY via `NAMED_MATERIALS`.
+- Scene metadata ONLY as `## CONFIG_*` headers inside `.in` files.
+- New pipeline code → `scripts/pipeline/`. NEVER add scripts to the repo root.
+- Exploratory one-offs → don't commit, or move to `attic/` with a README note.
+
+## Do not modify without explicit user approval
+- `src/physics.py` (validated against literature)
+- `src/layer_scene_builder.py` (painter's-algorithm ordering is load-bearing)
+- `tests/fixtures/**` including `ground_truth.json` (validated physics; tests depend on it)
+- Any real DZT data.
+
+## Units & conventions (single source of truth)
+- Distances: meters. Frequencies: Hz. Time: seconds in storage/HDF5, ns in analysis
+  variables named `*_ns`.
+- `dt` is ALWAYS explicit and read from the source: HDF5 attr `dt` for sim,
+  DZT header for real. Never assume or default it.
+- Polarity: sim Ez × (−1) to match GSSI voltage convention (post-processing step).
+- Windowing/centering: slice the analysis window FIRST, subtract the mean AFTER.
+  (Full-trace mean is a shared offset that creates phantom correlations.)
+
+## Testing rules
+- New module ⇒ tests in the same change. Physics assertions compare against
+  `tests/fixtures/ground_truth.json`, not hardcoded numbers.
+- Golden test (`tests/test_golden_features.py`) must pass before ending any session.
+  Regenerating `golden_features.json` requires justification in the commit message.
+- Prefer raising `ValueError` over emitting warnings for anything that would
+  silently corrupt data (missing dt, asymmetric normalization, etc.).
+
+## Commits
+- One backlog task per commit/branch; message references the task: "T6: ...".
+- Never commit: real DZT files, bulk `.out` outputs, `__pycache__`.
+
+## Honesty
+- Never claim in docs/README that something works without a test proving it.
+- If a task can't be done as specified, stop and report — don't deliver a lookalike.
+
+## Domain context (read before "optimizing" anything)
+- An A-scan is a single GPR trace: amplitude vs. time. Setup: GSSI 400 MHz antenna,
+  air-launched at 0.50 m over railway ballast.
+- The ballast coda is SPECKLE (random realization of stone packing). Raw-waveform
+  correlation over the coda is physically meaningless — the stable observables are
+  smoothed envelope (→ attenuation/σ), coherent reflection timing (→ ε, thickness),
+  and spectral content (→ fouling signature: centroid downshifts with fouling).
+- Fouling classes come from the physical cause (fines fraction / ground truth),
+  never from the ε the model could read. See docs/specs/ALGORITHM_SPECS.md.
 
 Python is installed via Miniconda at `C:\Users\barba\miniconda3`.
 Use `C:\Users\barba\miniconda3\python.exe` as the interpreter on this machine.
+## Documentos de trabajo
+- Backlog de tareas: TODO_claude_code.md (trabajar en orden P0 → P1 → P2)
+- Especificaciones de algoritmos: docs/specs/ALGORITHM_SPECS.md
+  (leer OBLIGATORIAMENTE antes de implementar T6, T8 o T9)
+- Contexto del proyecto: docs/NOTA_ESTADO_SynthGPR.md
+
+## Reglas de validez (nunca violar)
+1. Nunca splits aleatorios por traza — siempre GroupKFold por `group`
+2. Nunca eps/sigma/pvc como features de ML
+3. Nunca ganancia/normalización sobre datos de análisis de amplitud
+4. Nunca correlación de forma de onda cruda sobre la coda
 
 # Development Guidelines
 
