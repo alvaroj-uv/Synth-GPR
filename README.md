@@ -15,7 +15,7 @@ The core innovation is **predicting fouling class from GPR Ez waveform features 
 - Waveform features (572-dimensional: time-domain, Hilbert, frequency, STFT, grid) are extracted directly from the received signal
 - The goal is a classifier that works on field data where only the A-scan waveform is available
 
-**Baseline performance**: 70.83% balanced accuracy on 30,000 samples using Random Forest with 572 waveform features.
+**Baseline status**: a prior pipeline reported 70.83% balanced accuracy (synthetic-only), but that training code is not in this repo and the figure does not transfer to field data — see [docs/reports/HISTORICAL_BASELINE.md](docs/reports/HISTORICAL_BASELINE.md). The repo currently rebuilds the dataset assembler and sim↔real comparison toward re-establishing a reportable baseline.
 
 ---
 
@@ -23,14 +23,14 @@ The core innovation is **predicting fouling class from GPR Ez waveform features 
 
 This project provides a **fully functional pipeline** for:
 
-1. **🟢 Generate synthetic GPR geometries** — `generate_in_files.py` (TOML-driven, configurable fouling levels & rock packing)
-2. **🟢 Extract waveform features** — `extract_features.py` (572-dimensional feature extraction from simulations)
+1. **🟢 Generate synthetic GPR geometries** — `scripts/pipeline/generate_gprmax_scenes.py` (TOML-driven, configurable fouling levels & rock packing)
+2. **🟢 Extract waveform features** — `scripts/pipeline/extract_features.py` (572-dimensional feature extraction from simulations)
 3. **🟢 Comprehensive visualization** — `unified_visualizer.py` + 8 specialized plotting tools
 4. **🟢 Antenna analysis** — Radiation patterns, mode diagrams, antenna signals visualization
 
 For the **gprMax electromagnetic simulation step**, you'll need gprMax installed separately. Once `.out` files are generated (via `gprmax` command directly or your own simulation runner), feature extraction and visualization work immediately.
 
-**ML training** (Random Forest, XGBoost) infrastructure is built into the codebase (`src/`) but production training scripts are customizable per your dataset. See `docs/` for examples.
+**ML status** — the repo does **not** ship a training pipeline. It ships the pieces upstream of training: the dataset assembler (`scripts/pipeline/assemble_dataset.py`), canonical sim↔real metrics (`src/sim_real_comparison.py`), and inference of a pre-trained Rojas-Vivanco XGBoost (`src/vivanco_pipeline.py`). A training/evaluation harness is in progress — see [docs/reports/HISTORICAL_BASELINE.md](docs/reports/HISTORICAL_BASELINE.md).
 
 ---
 
@@ -91,7 +91,7 @@ Synth-GPR/
 │
 ├── scripts/                       # Executable scripts
 │   ├── pipeline/                  # Core pipeline scripts
-│   │   ├── generate_in_files.py   # 🟢 Generate .in geometry files (TOML-driven)
+│   │   ├── generate_gprmax_scenes.py   # 🟢 Generate .in geometry files (TOML-driven)
 │   │   └── extract_features.py    # 🟢 Extract 572-dim features from .out files
 │   ├── visualization/             # 🟢 Plotting & rendering scripts
 │   │   ├── unified_visualizer.py              # Main multi-purpose visualizer
@@ -180,10 +180,10 @@ Synth-GPR/
 Generate `.in` geometry files using TOML configuration:
 ```bash
 # Generate a single sample
-python scripts/pipeline/generate_in_files.py config.toml -o output.in
+python scripts/pipeline/generate_gprmax_scenes.py config.toml -o output.in
 
 # Generate a batch dataset (50 samples per fouling class)
-python scripts/pipeline/generate_in_files.py batch_config.toml -o output_dir/
+python scripts/pipeline/generate_gprmax_scenes.py batch_config.toml -o output_dir/
 ```
 
 **Output:** `.in` files with embedded configuration metadata.
@@ -334,8 +334,8 @@ Five fouling classes defined by **Fouling Index (FI)** and **Percentage Void Con
          │
          ▼
 ┌──────────────────┐
-│ ML training      │  RF, XGBoost, SVM
-│ (sklearn)        │  → fouling class prediction model
+│ Assemble dataset │  features + meta (anti-circular)
+│ + sim↔real cmp   │  → training harness (in progress)
 └──────────────────┘
 ```
 
@@ -348,13 +348,13 @@ Five fouling classes defined by **Fouling Index (FI)** and **Percentage Void Con
 **Generate Synthetic Geometries (TOML-driven):**
 ```bash
 # Single file generation
-python scripts/pipeline/generate_in_files.py config.toml -o output.in
+python scripts/pipeline/generate_gprmax_scenes.py config.toml -o output.in
 
 # Batch dataset generation
-python scripts/pipeline/generate_in_files.py config.toml -o output_dir/
+python scripts/pipeline/generate_gprmax_scenes.py config.toml -o output_dir/
 
 # Get help and TOML format info
-python scripts/pipeline/generate_in_files.py --help
+python scripts/pipeline/generate_gprmax_scenes.py --help
 ```
 
 **Extract Features from Simulations:**
@@ -514,18 +514,16 @@ Existing ballast fouling assessment relies on:
 Synth-GPR solves this by:
 1. **Generating synthetic data at scale** — 10k+ samples with full geometric control
 2. **Extracting waveform-only features** — 572 features from A-scan alone
-3. **Training production models** — Baseline 70.83% balanced accuracy
+3. **Training production models** — in progress (the prior 70.83% synthetic-only figure is not reproduced here; see HISTORICAL_BASELINE.md)
 4. **Enabling field deployment** — Only Ez waveform needed (no metadata)
 
-### Current Baseline
+### Baseline status
 
-| Metric | Value |
-|--------|-------|
-| Dataset size | 50,000 samples |
-| Feature dimension | 572 (waveform only) |
-| Model type | Random Forest |
-| Balanced accuracy | 70.83% |
-| Training time | ~30 minutes |
+There is no live training pipeline in this repo, so **no current performance
+number is claimed here**. The historical (pre-refactor, synthetic-only) figure —
+70.83% balanced accuracy with a Random Forest on 572 waveform features — and why
+it is not advertised are documented in
+[docs/reports/HISTORICAL_BASELINE.md](docs/reports/HISTORICAL_BASELINE.md).
 
 ---
 
