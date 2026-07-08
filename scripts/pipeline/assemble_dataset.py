@@ -2,8 +2,9 @@
 
 Walks a directory of synthetic gprMax .out files (and optionally real DZTs),
 runs the CANONICAL chain on every trace — preprocess_physical (T2, explicit dt)
-then extract_features (T1) — reads scene metadata from the sibling .in
-``## CONFIG_*`` headers, and writes one Parquet table with the schema:
+then extract_features (T1) — reads scene metadata from the sibling .in file via
+the canonical ``## key: value`` header parser (src.file_reader), and writes one
+Parquet table with the schema:
 
     <waveform features...> | label | domain | group | fidelity_level | meta_*
 
@@ -15,11 +16,15 @@ guard (and tests/test_assemble_dataset.py) assert no feature column name
 contains eps|sigma|pvc|fi_.
 
   - domain: "sim" for .out, "real" for DZT traces.
-  - group:  CONFIG group/base/actual seed for sim (block-CV key so traces from
+  - group:  CONFIG_base_seed/actual_seed for sim (block-CV key so traces from
             one scene never split across train/test); a section id for real.
-  - label:  fouling class — from CONFIG fi_class, else derived from pvc via
-            physics.convert_pvc_to_fi -> classify_fouling_index; from the
-            --real-labels CSV for real.
+  - label:  fouling class. For sim — STRICT: Lab_Class only (LabWorker's Selig
+            P4+P200 measurement of the built geometry), else None. Deliberately
+            NOT FI_class (a pre-build sampling target, not ground truth) and NOT
+            a pvc-derived estimate — a weaker guess dressed as ground truth is
+            worse than a missing label. Scenes without a LabWorker pass are
+            excluded from training by the harness, not silently mislabeled.
+            For real — from the --real-labels CSV.
   - fidelity_level: CONFIG_fidelity_level if present (see T9), else "unknown".
 
 Note: preprocess_physical (dewow+time-zero, NO normalization) is applied for
@@ -42,10 +47,11 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from src.data_loader import read_ascan  # noqa: E402
+from src.dataset_io import save_dataset  # noqa: E402
 from src.dzt_io import read_dzt_traces  # noqa: E402
 from src.feature_extraction import extract_features_from_signal  # noqa: E402
 from src.preprocessing import preprocess_physical  # noqa: E402
-from src.physics import convert_pvc_to_fi, classify_fouling_index  # noqa: E402
+from src.file_reader import parse_metadata_file  # noqa: E402
 
 RESERVED = {"label", "domain", "group", "fidelity_level", "Signal"}
 _FORBIDDEN = ("eps", "sigma", "pvc", "fi_")
@@ -67,51 +73,33 @@ def assert_no_circular_features(columns):
 
 
 def _read_config(in_path: Path) -> dict:
-    """Robustly scan ALL '## CONFIG_key: value' lines, position-independent.
-
-    file_reader.extract_config_from_in_file stops at the first non-'##' line, so
-    it misses CONFIG headers written after a '#title'/'#domain' line (the common
-    layout). This scans the whole header. Values are type-inferred.
+    """Read the .in file's full ``## key: value`` metadata (position-independent,
+    reads both bare keys like Lab_Class/FI_class/pvc AND CONFIG_-prefixed keys
+    like CONFIG_base_seed/CONFIG_center_freq_hz — see src.file_reader for the
+    single canonical parser this reuses, also used by the geometry parser, the
+    A-scan visualizer, and the scene repository). Empty dict if the file is
+    missing (mirrors the previous behaviour of this function).
     """
-    cfg = {}
     if not in_path.exists():
-        return cfg
-    with open(in_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            s = line.strip()
-            if not s.startswith("## CONFIG_") or ":" not in s:
-                continue
-            key_part, value = s[2:].split(":", 1)          # drop leading '##'
-            key = key_part.strip()[len("CONFIG_"):].lower()
-            v = value.strip()
-            if v.lower() == "true":
-                cfg[key] = True
-            elif v.lower() == "false":
-                cfg[key] = False
-            elif v.lstrip("-").isdigit():
-                cfg[key] = int(v)
-            else:
-                try:
-                    cfg[key] = float(v)
-                except ValueError:
-                    cfg[key] = v
-    return cfg
+        return {}
+    return parse_metadata_file(in_path)
 
 
 def _label_from_config(cfg):
-    if "fi_class" in cfg:
-        return str(cfg["fi_class"])
-    pvc = cfg.get("pvc_sampled", cfg.get("pvc"))
-    if pvc is not None:
-        try:
-            return classify_fouling_index(convert_pvc_to_fi(float(pvc)))
-        except (TypeError, ValueError):
-            return None
-    return None
+    """Ground truth = Lab_Class only (LabWorker's measured Selig P4+P200
+    classification of the built geometry). Deliberately no fallback to
+    FI_class (a pre-build sampling TARGET, not ground truth) or a pvc-derived
+    estimate: a weaker guess dressed as ground truth is worse than a missing
+    label. Scenes without a LabWorker pass get label=None and are excluded
+    from training by the harness, not silently mislabeled.
+    """
+    lab_class = cfg.get("Lab_Class")
+    return str(lab_class) if lab_class is not None else None
 
 
 def _group_from_config(cfg, fallback):
-    for k in ("group_seed", "base_seed", "actual_seed", "seed"):
+    for k in ("CONFIG_base_seed", "CONFIG_actual_seed", "CONFIG_group_seed",
+             "group_seed", "base_seed", "actual_seed", "seed"):
         if k in cfg and cfg[k] not in (None, ""):
             return str(cfg[k])
     return fallback
@@ -125,7 +113,7 @@ def _row_from_out(out_path: Path, fidelity_default: str) -> dict:
 
     cfg = _read_config(out_path.with_suffix(".in"))
 
-    cf = cfg.get("center_freq_hz")
+    cf = cfg.get("CONFIG_center_freq_hz")
     feat = extract_features_from_signal(
         proc, dt=dt, center_freq_hz=(float(cf) if cf else None))
     row = {k: v for k, v in feat.iloc[0].to_dict().items() if k != "Signal"}
@@ -216,7 +204,7 @@ def main():
     df = df[feats + schema + metas]
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(args.out, index=False)
+    save_dataset(df, args.out)
     print(f"\nWrote {args.out}: {len(df)} rows x {df.shape[1]} cols "
           f"({len(feats)} features, {len(metas)} meta). "
           f"domains={df['domain'].value_counts().to_dict()}")
