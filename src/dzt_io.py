@@ -132,6 +132,59 @@ def read_dzt_traces(dzt_path: Path, channel: int = 0,
     return traces, metadata
 
 
+def read_gain_curve(dzt_path: Path) -> Optional[np.ndarray]:
+    """Read the GSSI range-gain breakpoints (dB) from a DZT header, or None.
+
+    Standard GSSI RFH layout (confirmed on the Puerto-Limache files: rh_tag=255
+    @0, rh_nsamp=512 @4, rh_bits=32 @6): the range gain is described by
+      rh_rgain  (ushort @ offset 40) = byte offset to the range-gain block,
+      rh_nrgain (ushort @ offset 42) = its size in BYTES.
+    The block stores the time-varying gain the operator applied during
+    acquisition. If that gain was baked into the stored samples, it biases every
+    envelope / sigma / attenuation observable, so :func:`remove_gain` can divide
+    it back out.
+
+    Returns:
+        1-D np.ndarray of gain breakpoints in dB (evenly spaced across the trace
+        window), or None if the header declares no range gain, or the block does
+        not decode to a plausible float dB curve.
+
+    NOTE — Puerto-Limache EFE DZTs expose rh_rgain=8192, rh_nrgain=5: a tiny,
+    non-float-aligned block that does NOT decode as a dB curve, so this returns
+    None for them. In that case the stored samples' gain state is UNKNOWN and
+    must not be assumed physical for sigma calibration (see memory
+    'AGC Breaks Matching' / project sigma work).
+    """
+    import struct
+
+    dzt_path = Path(dzt_path)
+    logger = get_logger(__name__)
+    with open(dzt_path, "rb") as f:
+        hdr = f.read(64)
+        if len(hdr) < 44:
+            return None
+        rh_rgain = struct.unpack("<H", hdr[40:42])[0]
+        rh_nrgain = struct.unpack("<H", hdr[42:44])[0]
+        if rh_rgain == 0 or rh_nrgain == 0:
+            logger.info("read_gain_curve: no range gain declared (rh_nrgain=0).")
+            return None
+        if rh_nrgain % 4 != 0 or not (4 <= rh_nrgain <= 256):
+            logger.info(
+                "read_gain_curve: range-gain block rh_rgain=%d rh_nrgain=%d is "
+                "not a decodable float32 dB curve -> treating gain as ABSENT/"
+                "unknown.", rh_rgain, rh_nrgain)
+            return None
+        f.seek(rh_rgain)
+        blob = f.read(rh_nrgain)
+
+    curve = np.frombuffer(blob, dtype="<f4").astype(float)
+    if (not np.all(np.isfinite(curve))) or curve.min() < -20.0 or curve.max() > 200.0:
+        logger.info("read_gain_curve: decoded values out of plausible dB range "
+                    "-> treating gain as ABSENT/unknown.")
+        return None
+    return curve
+
+
 def read_multiple_dzt_files(dzt_files: List[Path], channel: int = 0) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
     """
     Read traces from multiple DZT files.

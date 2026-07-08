@@ -137,6 +137,7 @@ from .preprocessing import (  # noqa: F401
     detect_first_break,
     time_zero_correction,
     apply_gain,
+    remove_gain,
     preprocess_signal,
     preprocess_physical,
     normalize_for_features,

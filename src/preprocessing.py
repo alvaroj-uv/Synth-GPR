@@ -653,6 +653,44 @@ def apply_gain(signal, dt, type='power', alpha=1.0, window_std=None):
         print(f"Warning: Unknown gain type '{type}'. Returning original signal.")
         return signal
 
+
+def remove_gain(trace: np.ndarray, gain_curve_db, dt: float) -> np.ndarray:
+    """Undo a time-varying ACQUISITION gain to restore physical amplitude.
+
+    GSSI systems apply a range-gain (dB, rising with time) during acquisition.
+    If it is baked into the stored samples, the trace envelope reflects the
+    operator's gain, not physics — which invalidates any sigma / attenuation /
+    envelope-decay work. This interpolates the dB gain breakpoints across the
+    trace (they are stored evenly spaced across the time window) and DIVIDES
+    them out in linear amplitude (20·log10 convention).
+
+    Inverse of the display-only :func:`apply_gain`; unlike it, this is a physical
+    correction that RESTORES amplitude, so it is safe upstream of feature/sigma
+    analysis (indeed required, if gain was baked in).
+
+    Args:
+        trace:         1-D array (raw samples).
+        gain_curve_db: 1-D array of gain breakpoints in dB, evenly spaced across
+                       the trace's time span; a scalar / length-1 = constant gain.
+        dt:            Time step (s). Accepted for signature symmetry; the curve
+                       is mapped by fractional position, not absolute dt.
+
+    Returns:
+        De-gained trace (same length).
+    """
+    g = np.asarray(gain_curve_db, dtype=float).ravel()
+    trace = np.asarray(trace, dtype=float)
+    if g.size == 0:
+        return trace.copy()
+    n = len(trace)
+    if g.size == 1:
+        gain_db_full = np.full(n, g[0])
+    else:
+        gain_db_full = np.interp(np.linspace(0.0, 1.0, n),
+                                 np.linspace(0.0, 1.0, g.size), g)
+    return trace / (10.0 ** (gain_db_full / 20.0))
+
+
 def preprocess_signal(
     signal,
     dt,
@@ -769,9 +807,9 @@ def preprocess_signal(
 
 
 def preprocess_physical(signal, dt, target_dt=None, use_dewow=True,
-                        first_break_method="sta_lta"):
+                        first_break_method="sta_lta", gain_curve_db=None):
     """
-    Amplitude-preserving physical preprocessing: dewow -> time-zero -> (optional) resample.
+    Amplitude-preserving physical preprocessing: (de-gain) -> dewow -> time-zero -> (optional) resample.
 
     This is the chain for ANY analysis that depends on physical amplitude —
     conductivity (sigma), envelope decay (alpha), spectral evolution. It applies
@@ -782,6 +820,8 @@ def preprocess_physical(signal, dt, target_dt=None, use_dewow=True,
     peak-normalizes BOTH domains together.
 
     Steps:
+      0. de-gain: divide out a supplied acquisition gain curve (gain_curve_db)
+         if it is non-flat — restores physical amplitude for real DZT traces.
       1. dewow (running-mean low-frequency / DC-drift removal), or plain DC
          removal if use_dewow=False.
       2. time-zero correction (first-break pick + left shift to sample 0).
@@ -804,6 +844,9 @@ def preprocess_physical(signal, dt, target_dt=None, use_dewow=True,
         use_dewow:          Apply dewow (True) or plain DC removal (False).
         first_break_method: First-break picker for time-zero ('sta_lta' default,
                             a scale-invariant ratio picker).
+        gain_curve_db:      Optional dB gain-breakpoint curve (e.g. from
+                            src.dzt_io.read_gain_curve) divided out first; None
+                            (default) or a flat curve = no-op.
 
     Returns:
         (treated_signal, start_idx, dt_out)
@@ -818,6 +861,13 @@ def preprocess_physical(signal, dt, target_dt=None, use_dewow=True,
         )
 
     treated = np.asarray(signal, dtype=float).copy()
+
+    # 0. Undo baked-in acquisition gain (physical amplitude restore). Only when a
+    #    non-flat dB curve is supplied (real DZT domain); default None -> skip.
+    if gain_curve_db is not None:
+        g = np.asarray(gain_curve_db, dtype=float).ravel()
+        if g.size and not np.allclose(g, g[0]):
+            treated = remove_gain(treated, g, dt)
 
     # 1. Dewow / DC removal — physical, amplitude-preserving (linear)
     if use_dewow:
