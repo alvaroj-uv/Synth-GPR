@@ -489,6 +489,10 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
     if params.seed is not None:
         lines.append(f"## CONFIG_base_seed: {params.seed}")
     lines.append(f"## CONFIG_domain_x: {params.domain_x:g}")
+    # Air gap = antenna height above the surface = antenna_clearance * 0.5
+    # (antenna_y = subsurface_top + antenna_clearance*0.5). Recorded for the
+    # assembler / acquisition-parameter metadata.
+    lines.append(f"## CONFIG_h_aire: {params.antenna_clearance * 0.5:g}")
     # Per-layer packing overrides (when any packed layer pins its own algorithm).
     per_layer_algos = {ly.name: ly.rock_packing_algorithm
                        for ly in layers if ly.packed and ly.rock_packing_algorithm}
