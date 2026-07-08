@@ -3,6 +3,7 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Code style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![CI](https://github.com/alvaroj-uv/Synth-GPR/actions/workflows/ci.yml/badge.svg)](https://github.com/alvaroj-uv/Synth-GPR/actions/workflows/ci.yml)
 
 ## Overview
 
