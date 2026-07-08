@@ -180,12 +180,6 @@ class ToolWarehouse:
             elif algo == "rsa":
                 from .rock_packing import RSAPacking
                 return RSAPacking()
-            elif algo == "rip":
-                from .rip_packing import RIPPacking
-                return RIPPacking()
-            elif algo == "rcp":
-                from .rcp_packing import RCPPacking
-                return RCPPacking()
             elif algo in ("rcpgen", "rcpgenerator"):
                 from .rcpgenerator_packing import RCPGeneratorPacking
                 return RCPGeneratorPacking()

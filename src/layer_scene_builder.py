@@ -154,12 +154,6 @@ def get_packer(algo: Optional[str], settle_time: Optional[float] = None):
         return get_default_packer(settle_time)
     try:
         from . import rock_packing as rp
-        if algo == "rip":
-            from .rip_packing import RIPPacking
-            return RIPPacking()
-        if algo == "rcp":
-            from .rcp_packing import RCPPacking
-            return RCPPacking()
         if algo in ("rcpgen", "rcpgenerator"):
             from .rcpgenerator_packing import RCPGeneratorPacking
             return RCPGeneratorPacking()
