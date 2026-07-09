@@ -48,8 +48,7 @@ class PhysicalConstants:
     
     # Domain Validation
     EPSILON: float = 1e-9  # Numerical tolerance
-    DEFAULT_DT: float = 1e-10 # Default time step if missing
-    
+
     # Simulation Heuristics
     FOULING_PARTICLE_COUNT_MULTIPLIER: int = 200 # particles per fractional PVC
     DEFAULT_ROCK_LAYERS: int = 10 # Default layers for packing

@@ -211,7 +211,14 @@ class ToolWarehouse:
                         "Install with: pip install pymunk"
                     )
             else:
-                from .rock_packing import RSAPacking
-                return RSAPacking()
+                raise ValueError(
+                    f"Unknown rock_packing_algorithm '{algo}'. A typo or "
+                    f"retired name here would otherwise silently pack with "
+                    f"RSA while the scene's own CONFIG header still claims "
+                    f"'{algo}' — a reproducibility-breaking mismatch. Valid "
+                    f"names: wang, poisson, front_chain, physics, triangle, "
+                    f"circlify, growth, shang_chu, hybris_shang, strip, rsa, "
+                    f"rcpgen/rcpgenerator, pymunk, pymunk_ballast/mbubia_ballast."
+                )
 
         raise ValueError(f"Unknown tool requested: {name}")

@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from scipy.signal import hilbert
 from src.signal_processing import preprocess_signal
-from .constants import PC
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -41,7 +40,15 @@ def read_gprmax_hdf5(filename, fields=None):
         logger.error(f"Could not open file {filename}. It might be corrupted or not an HDF5 file.")
         return pd.DataFrame()
 
-    dt = f.attrs.get('dt', PC.DEFAULT_DT)
+    if 'dt' not in f.attrs:
+        f.close()
+        raise ValueError(
+            f"{filename}: HDF5 file has no 'dt' attribute — cannot determine "
+            f"the time step. A silently-wrong default here previously mis-scaled "
+            f"every downstream frequency feature by ~3.2x (the historic dt bug); "
+            f"dt is now mandatory, read from the source, never assumed."
+        )
+    dt = float(f.attrs['dt'])
     iterations = f.attrs.get('Iterations', 0)
     time = np.arange(iterations) * dt
     data = {'Time': time}
@@ -181,7 +188,7 @@ def load_batch_dataset(input_dir, field='Ez'):
     analytical_signals = []
     fourier_spectra = []
     
-    dt = PC.DEFAULT_DT # Default
+    dt = None  # only ever used if every file in input_dir fails to load
     common_time = None
     common_freqs = None
     
