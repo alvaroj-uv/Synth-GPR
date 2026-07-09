@@ -1,0 +1,1 @@
+{"type": "linear_db_ramp", "db_start": 0.0, "db_end": 12.0, "n_samples": 512, "note": "applied multiplicatively; de-gain must divide"}

@@ -1,0 +1,11 @@
+# Chapter 11
+
+## Iterative Linear Solvers
+
+We have seen throughout the course that least squares problems are ubiquitous in inverse theory for two main reasons. First, least squares gives rise to linear problems, which are relatively easy to deal with. And secondly, finding the maximum of a Gaussian distribution is a least squares problem. That means that if the final *a posteriori* probability on the models is Gaussian, then finding the maximum *a posteriori* (MAP) model amounts to solving a weighted least squares problem. For both reasons, least squares is very important and a number of specialized numerical techniques have been developed. In this chapter we digress and discuss a very useful class of iterative algorithms for solving linear systems. These methods are at the core of most large-scale inverse calculations.
+
+### 11.1 Classical Iterative Methods for Large Systems of Linear Equations
+
+A direct method for solving linear systems involves a finite sequence of steps, the number of which is known in advance and does not depend on the matrix involved. Usually nothing can be gained by halting a direct method early; it's all or nothing. If the matrix is sparse, direct methods will almost always result in intermediate fill, the creation of new nonzero matrix elements during the solution. Fill can usually be mitigated by carefully ordering operations and/or the matrix elements. Even so, direct methods for sparse linear systems require a certain amount of sophistication and careful programming. On the other hand, iterative methods start with some approximation, perhaps random, to the solution of the linear system and refine it successively until some 'stopping criterion' is satisfied. Most iterative methods do not require the matrix to be explicitly defined; it often suffices to know the action of the matrix (and perhaps its transpose) on arbitrary vectors. As a result, fill does not occur and the data structures necessary to store and manipulate the matrix elements can be quite simple. The general
+
+1

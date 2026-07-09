@@ -78,7 +78,7 @@ sigma = 0.0                  # Dry (no conductivity)
 
 2. **Freespace synthetic** (reference)
    - gprMax 1-layer domain: air only
-   - Previously validated at 88.76% correlation with real (after resampling)
+   - Previously validated at 88.76% full-trace correlation with real (after resampling; direct-wave dominated — valida timing/polaridad/remuestreo, no la coda)
    - Output: `freespace_420mhz_optimized.out` (7068 samples)
 
 3. **Real field GPR** (ground truth)
@@ -211,9 +211,9 @@ Hypothesis: Transition zone should show different reflection pattern than single
 
 ### 3. Rock Geometry (Advanced)
 
-Use mbubia packing (rocks + voids) instead of homogeneous ballast:
+Use pymunk packing (rocks + voids) instead of homogeneous ballast:
 ```toml
-rock_packing_algorithm = "mbubia"
+rock_packing_algorithm = "pymunk_ballast"
 rock_diameter = 0.05  # 50mm rocks (typical)
 ```
 
@@ -268,7 +268,7 @@ This would capture:
 
 ### Documentation References
 
-- **Calibration baseline**: `docs/FINAL_CALIBRATION_SUMMARY.md` (freespace 88.76%)
+- **Calibration baseline**: `docs/FINAL_CALIBRATION_SUMMARY.md` (freespace 88.76% full-trace, direct-wave dominated; corregido 2026-07-07)
 - **gprMax dt**: `docs/GPRMAX_SAMPLING_CONTROL.md` (time resolution discussion)
 - **Material models**: [Li 2025 Paper](ref_li2025.md), [Couchman 2024 Paper](ref_couchman2024.md)
 
@@ -307,7 +307,7 @@ This proves:
 
 3. **For future research**:
    - Vary material parameters (eps, sigma) to match field surveys
-   - Add rock geometry (mbubia packing) for heterogeneity
+   - Add rock geometry (pymunk packing) for heterogeneity
    - Stratify layers (clean/fouled interface)
    - Validate against known fouling conditions (ground truth FI)
 

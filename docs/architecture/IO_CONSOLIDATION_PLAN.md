@@ -5,8 +5,29 @@
 `pd.read_parquet`, …). One module owns each file format; scripts call typed
 readers/writers that return domain objects.
 
-**Status:** plan only — no code changes yet. Phases are ordered by
-risk-adjusted value (cheap + safe first, structural + risky later).
+**Status:** Phases 0–4 were implemented and marked done (see history below).
+**Verified 2026-07-08 by actually running the Phase-4 enforcement test**
+(`pytest tests/test_io_boundary.py`) rather than trusting this doc: the
+boundary is **not currently self-enforcing**.
+- `test_no_raw_parquet_in_scripts` — was failing on 1 offender,
+  `scripts/pipeline/assemble_dataset.py` (added after this plan was marked
+  complete, missed `src.dataset_io.save_dataset`). **Fixed today** — now
+  passes.
+- `test_no_raw_h5py_in_scripts` — **still failing**, 21 real offenders
+  (mostly `scripts/calibration/*`, `scripts/pipeline/test_*_sweep.py`,
+  `scripts/visualization/{compare_scans,compare_vivanco_envelopes,
+  render_voxel_rocks_3d,unified_visualizer}.py`, plus a few one-offs).
+  **Not fixed** — this is scoped-out, tracked, open work; do not read the
+  phase table below as current truth without re-running the test. A
+  reconciliation pass is needed: for each offender, either migrate to
+  `data_loader.read_ascan`/`read_rx_traces`, or add it to the documented
+  whitelist (`H5PY_WHITELIST` in `tests/test_io_boundary.py`) if it's a
+  legitimate exception (raw structure introspection, frozen experiment
+  record, etc.) — do not assume migration is always correct.
+
+Lesson: this boundary drifts silently when new scripts are added without
+re-running `test_io_boundary.py` first. Treat that test, not this doc, as the
+source of truth for current compliance.
 
 ---
 
@@ -125,7 +146,7 @@ keep their own type-inference — `json.loads` decodes `true/false` but not
 Python-style `True/False`, so folding them onto generic `meta` would change
 config-replication behavior. Left as a distinct, documented reader.
 
-### Phase 3 — Dataset/parquet I/O · *higher risk, ML pipeline* — ✅ DONE
+### Phase 3 — Dataset/parquet I/O · *higher risk, ML pipeline* — ✅ DONE (2026-07 drift: see status note above)
 - `src/dataset_io.py`: `load_features(path, columns=None)` and
   `save_dataset(df, path)` — the single chokepoint for the parquet
   engine/compression options (pyarrow + snappy + no index), and where
@@ -133,15 +154,23 @@ config-replication behavior. Left as a distinct, documented reader.
 - All 16 parquet scripts migrated (3 writers, 13 readers incl. all `train_rf*`).
   The substitution is a faithful pass-through, so no behavior change.
 - Tests: `tests/test_dataset_io.py` (round-trip, projection, no-index, dtypes).
+- **2026-07-08**: `scripts/pipeline/assemble_dataset.py` (added later, not one
+  of the original 16) was found bypassing this with raw `df.to_parquet()` —
+  migrated to `save_dataset`, verified identical output (same row count, same
+  labels) before/after. 17/17 now.
 
-### Phase 4 — Enforcement · *optional* — ✅ DONE
+### Phase 4 — Enforcement · *optional* — ⚠️ test exists and runs, but is NOT currently green
 `tests/test_io_boundary.py` — architectural fitness functions:
 - **No raw `h5py` in `scripts/`** (whitelist: `analyze_dataset_structure.py`, the
   HDF5-structure introspection diagnostic). Locks Phase 1.
-- **`parse_3d_in_file` cannot be reintroduced.** Locks Phase 2.
+  **Currently FAILING — 21 real offenders as of 2026-07-08** (see status note
+  at top of doc). Un-reconciled.
+- **`parse_3d_in_file` cannot be reintroduced.** Locks Phase 2. Passing.
 - **No raw parquet in `scripts/`** — datasets go through `src.dataset_io`
   (`load_features`/`save_dataset`). Locks Phase 3 (tightened from the original
   ratchet once all 16 scripts were migrated).
+  **Was failing** (1 offender, `assemble_dataset.py`) — **fixed 2026-07-08**,
+  now passing.
 
 ---
 
@@ -149,14 +178,20 @@ config-replication behavior. Left as a distinct, documented reader.
 | Phase | Touches | Risk | Value | Status |
 |---|---|---|---|---|
 | 0 Guardrails | tests only | none | enables the rest | ✅ |
-| 1 `.out` sweep | 14 scripts | low | dedup + consistency | ✅ |
-| 2 `.in` unify | 5 parsers → 1 | medium | kills redundancy #2 | ✅ |
-| 3 dataset I/O | 16 scripts | higher | reproducibility | ✅ |
-| 4 enforcement | 1 test (3 checks) | none | prevents regression | ✅ |
+| 1 `.out` sweep | 14 scripts | low | dedup + consistency | ✅ (unverified since; not re-run) |
+| 2 `.in` unify | 5 parsers → 1 | medium | kills redundancy #2 | ✅ (`parse_3d_in_file` check still green) |
+| 3 dataset I/O | 16 scripts | higher | reproducibility | ✅ 17/17 (1 drift caught+fixed 2026-07-08) |
+| 4 enforcement | 1 test (3 checks) | none | prevents regression | ⚠️ 2/3 checks green, 1 red (h5py, 21 offenders) |
 
-**All phases complete.** The boundary is self-enforcing via
-`tests/test_io_boundary.py` (no raw `h5py`, no `parse_3d_in_file`, no raw parquet
-in `scripts/`).
+**Not all phases are currently enforced-clean.** The boundary is *designed* to
+be self-enforcing via `tests/test_io_boundary.py`, but enforcement only holds
+if the test is run before new scripts land — `assemble_dataset.py` proved it
+can drift silently. **Run `pytest tests/test_io_boundary.py` to get the live
+answer; do not trust a static "done" claim in this doc**, including the
+Phase-1 row above (last actually re-verified 2026-07-08 only for the
+parquet/3D-parser checks, not the full h5py sweep count of 21 — that number
+includes files from all of scripts/, not just the original Phase-1 cohort, so
+some may be new scripts added after Phase 1 rather than regressions of it).
 
 **Out of scope / already done:** `.in` **writing** is already centralized in
 `GPRMaxFileWriter`; `.out` reading has a canonical home (`data_loader`) — Phase 1

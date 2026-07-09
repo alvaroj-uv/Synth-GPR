@@ -1,6 +1,6 @@
 # gprMax Sampling Control & dt Resolution
 
-**Status**: 88.76% synthetic-real correlation achieved via post-processing resampling  
+**Status**: 88.76% **full-trace correlation (direct-wave dominated)** achieved via post-processing resampling — valida timing/remuestreo/polaridad, no la coda *(corregido 2026-07-07)*  
 **Key Finding**: dt cannot be directly set in gprMax; it is determined by the CFL condition
 
 ---
@@ -60,7 +60,7 @@ Since dt cannot be set directly in gprMax, the validated approach is:
 4. **Align peaks** on matched timeline
 5. **Compare** on iso-sampled grid
 
-**Result**: 88.76% correlation after resampling (vs 0.01% before)
+**Result**: 88.76% full-trace correlation (direct-wave dominated) after resampling (vs 0.01% before)
 
 ---
 
@@ -175,4 +175,4 @@ assert len(trace_syn_resampled) == len(trace_real)
 
 ## Summary
 
-**gprMax dt is not user-settable** — it emerges from the CFL stability condition and grid spacing. The validated approach to match real hardware sampling is post-processing resampling, which achieves **88.76% correlation** on optimized synthetic (420 MHz Gaussian bistatic 30mm).
+**gprMax dt is not user-settable** — it emerges from the CFL stability condition and grid spacing. The validated approach to match real hardware sampling is post-processing resampling, which achieves **88.76% full-trace correlation (direct-wave dominated)** on the provisional synthetic config (420 MHz Gaussian bistatic 30mm).

@@ -12,6 +12,7 @@ import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.config import resolve_gprmax_python
 from src.data_loader import read_ascan
 
 
@@ -90,7 +91,7 @@ def main():
     real_dw_norm = normalize_peak(real_dw)
     print(f"[OK] Real direct wave: {len(real_dw)} samples\n")
 
-    gprmax_python = str(Path("C:\\Users\\barba\\.conda\\envs\\gprMax\\python.exe"))
+    gprmax_python = resolve_gprmax_python()
 
     results = []
 

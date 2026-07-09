@@ -1,0 +1,45 @@
+============================================================ 
+EFE picks model - geometry-only run 
+Started: 29-06-2026 17:24:44,53 
+File: D:\Codigo\Synth-GPR\experiments\2026-06-29\from_picks_pk20000m.in 
+============================================================ 
+
+=== Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method 
+
+    www.gprmax.com   __  __
+     __ _ _ __  _ __|  \/  | __ ___  __
+    / _` | '_ \| '__| |\/| |/ _` \ \/ /
+   | (_| | |_) | |  | |  | | (_| |>  <
+    \__, | .__/|_|  |_|  |_|\__,_/_/\_\\
+    |___/|_|
+                     v3.1.7 (Big Smoke)
+
+ Copyright (C) 2015-2023: The University of Edinburgh
+ Authors: Craig Warren and Antonis Giannopoulos
+
+ gprMax is free software: you can redistribute it and/or modify it under the
+  terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or (at your option) any later
+  version.
+ gprMax is distributed in the hope that it will be useful, but WITHOUT ANY
+  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+  A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+ You should have received a copy of the GNU General Public License along with
+  gprMax.  If not, see www.gnu.org/licenses.
+
+Host: ajmwin | unknown unknown | unknown x unknown (8 cores, 16 cores with Hyper-Threading) | 31.4GiB RAM | Windows 11 (64-bit)
+
+--- Model 1/1, input file: D:\Codigo\Synth-GPR\experiments\2026-06-29\from_picks_pk20000m.in 
+
+Constants/variables used/available for Python scripting: {c: 299792458.0, current_model_run: 1, e0: 8.8541878188e-12, inputfile: D:\Codigo\Synth-GPR\experiments\2026-06-29\from_picks_pk20000m.in, m0: 1.25663706127e-06, number_model_runs: 1, z0: 376.7303134118051}
+
+Processing geometry related cmds:   0%|             | 0/2859 [00:00<?, ?cmds/s]Processing geometry related cmds:  39%|3| 1109/2859 [00:00<00:00, 11088.69cmds/Processing geometry related cmds:  84%|8| 2407/2859 [00:00<00:00, 12200.22cmds/Processing geometry related cmds: 100%|#| 2859/2859 [00:00<00:00, 12172.27cmds/
+Building PML boundaries:   0%|                           | 0/4 [00:00<?, ?it/s]Building PML boundaries: 100%|#################| 4/4 [00:00<00:00, 1172.82it/s]
+Building main grid:   0%|                                | 0/2 [00:00<?, ?it/s]Building main grid: 100%|########################| 2/2 [00:00<00:00,  9.72it/s]Building main grid: 100%|########################| 2/2 [00:00<00:00,  9.71it/s]
+Writing geometry view file 1/1, from_picks_pk20000m.vti:   0%| | 0.00/1.68M [00Writing geometry view file 1/1, from_picks_pk20000m.vti: 100%|#| 1.68M/1.68M [0
+
+=== Simulation completed in [HH:MM:SS]: 0:00:00.714189 ========================
+
+============================================================ 
+Finished: 29-06-2026 17:24:48,06 
+============================================================ 

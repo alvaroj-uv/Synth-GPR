@@ -6,16 +6,31 @@ import numpy as np
 import pandas as pd
 from scipy.signal import hilbert
 from src.signal_processing import preprocess_signal
-from .constants import PC
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
 
-def read_gprmax_hdf5(filename, fields=['E', 'H']):
+def read_gprmax_hdf5(filename, fields=None):
     """
-    Reads gprMax HDF5 output file.
-    Returns a DataFrame with time and field components.
+    Read a gprMax HDF5 .out file into a DataFrame.
+
+    Args:
+        filename: Path to .out file.
+        fields: List of component name prefixes to include. Matching is by
+            *prefix*, so 'E' returns Ex+Ey+Ez, while 'Ez' returns only Ez.
+            Examples:
+              fields=['Ez']        → only Ez (recommended for z-dipole source)
+              fields=['Ez', 'Hz']  → Ez and Hz
+              fields=['E', 'H']    → all six components (default)
+            Default: ['E', 'H'] (all components).
+
+    Returns:
+        DataFrame with columns ['Time', 'rx1_Ez', ...]. Time is in seconds.
+        Returns empty DataFrame on file error.
     """
+    if fields is None:
+        fields = ['E', 'H']
+
     try:
         f = h5py.File(filename, 'r')
     except FileNotFoundError:
@@ -25,39 +40,29 @@ def read_gprmax_hdf5(filename, fields=['E', 'H']):
         logger.error(f"Could not open file {filename}. It might be corrupted or not an HDF5 file.")
         return pd.DataFrame()
 
-    # Extract Time
-    # Usually 'rxs/rx1/Ez' has attributes 'dt'
-    # Or root attributes
-    dt = f.attrs.get('dt', PC.DEFAULT_DT)
+    if 'dt' not in f.attrs:
+        f.close()
+        raise ValueError(
+            f"{filename}: HDF5 file has no 'dt' attribute — cannot determine "
+            f"the time step. A silently-wrong default here previously mis-scaled "
+            f"every downstream frequency feature by ~3.2x (the historic dt bug); "
+            f"dt is now mandatory, read from the source, never assumed."
+        )
+    dt = float(f.attrs['dt'])
     iterations = f.attrs.get('Iterations', 0)
-    
-    # Create Time Array
     time = np.arange(iterations) * dt
-    
     data = {'Time': time}
-    
-    # Iterate through receivers and fields
-    # Structure: rxs -> rx1 -> Ez
+
     if 'rxs' in f:
         rxs_group = f['rxs']
         for rx_name in rxs_group:
             rx_group = rxs_group[rx_name]
             for dataset_name in rx_group:
-                # Check if dataset name starts with any of the requested fields
-                # e.g. 'Ez' starts with 'E'
                 if any(dataset_name.startswith(field) for field in fields):
-                    # Read dataset
-                    dataset = rx_group[dataset_name]
-                    signal = np.array(dataset)
-                    
-                    # Store in dictionary
-                    col_name = f"{rx_name}_{dataset_name}"
-                    data[col_name] = signal
-                    
+                    data[f"{rx_name}_{dataset_name}"] = np.array(rx_group[dataset_name])
+
     f.close()
-    
-    df = pd.DataFrame(data)
-    return df
+    return pd.DataFrame(data)
 
 def read_ascan(filename, component='Ez'):
     """
@@ -183,7 +188,7 @@ def load_batch_dataset(input_dir, field='Ez'):
     analytical_signals = []
     fourier_spectra = []
     
-    dt = PC.DEFAULT_DT # Default
+    dt = None  # only ever used if every file in input_dir fails to load
     common_time = None
     common_freqs = None
     

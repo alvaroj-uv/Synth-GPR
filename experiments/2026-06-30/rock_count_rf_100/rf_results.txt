@@ -1,0 +1,24 @@
+N samples: 100
+N features: 820
+Target range: 33-241 rocks
+R^2 (5-fold CV): 0.264 +/- 0.188
+Per-fold R^2: [np.float64(0.125), np.float64(0.288), np.float64(0.047), np.float64(0.267), np.float64(0.594)]
+MAE (5-fold CV): 21.4 +/- 3.5 rocks
+Per-fold MAE: [np.float64(21.7), np.float64(17.0), np.float64(27.2), np.float64(22.7), np.float64(18.6)]
+
+Top 15 features:
+coda_stft_energy_mid_mean         0.060059
+coda_grid_hilbert_imag_0_0        0.041217
+coda_grid_hilbert_imag_0_1        0.037729
+coda_fb_energy_3                  0.033193
+coda_grid_hilbert_envelope_6_6    0.024048
+coda_stft_centroid_std            0.019902
+coda_grid_hilbert_envelope_6_7    0.017931
+coda_grid_signal_time_2_6         0.014151
+fb_energy_5                       0.012823
+coda_stft_centroid_mean           0.011516
+fb_energy_2                       0.011301
+coda_standard_deviation           0.010723
+coda_mid_low_energy_ratio         0.010576
+coda_fourier_peak_max             0.010402
+coda_hilbert_decile_40            0.010242

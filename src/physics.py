@@ -10,7 +10,7 @@ import math
 from typing import Literal
 
 # Local imports
-from .constants import PHC
+from .constants import MC, PHC
 
 
 def classify_pvc(pvc_value: float, porosity: float = PHC.DEFAULT_POROSITY) -> str:
@@ -389,6 +389,48 @@ def crim_fouling_eps(
 
     # Surface conduction on grains + electrolytic transport through pore water
     sigma = max(0.005 * v_mineral + 0.1 * v_water, 0.001)
+    return eps_r, sigma
+
+
+def ballast_crim(
+    f_fill: float,
+    sw: float,
+    phi_void: float = MC.CRIM_VOID_FRACTION,
+    phi_pack: float = MC.CRIM_PACK_POROSITY,
+    eps_rock: float = MC.CRIM_ROCK_EPS,
+    eps_fines: float = MC.CRIM_FINES_EPS,
+    eps_water: float = MC.CRIM_WATER_EPS,
+) -> tuple:
+    """(f_fill, sw) -> (eps, sigma) for a bulk ballast layer via CRIM.
+
+    The physical parameterization used by the CRIM layer inversion
+    (scripts/calibration/invert_pk20000m_envelope.py, experiments/2026-07-01/
+    crim_inversion_poc): f_fill is the fraction of the ballast void space
+    occupied by a fines pack (the fouling axis, ~PVC/FI), sw the pack's
+    pore-water saturation (the moisture axis). Water exists only inside the
+    fines pack (fines retain water; clean voids drain).
+
+    Layer volume fractions: rock (1-phi_void); the void phi_void splits into
+    fines pack (f_fill) and air. Within the pack: mineral (1-phi_pack), pore
+    water sw*phi_pack, pore air (1-sw)*phi_pack.
+
+    Hull anchors with the MC defaults (no tuning): (0,0) -> 3.43 (pit-ID11
+    clean 3.45), (1,0) -> 4.80 (Benedetto dry cap), (1,1) -> 12.5 (field
+    fouled 11.3-12).
+
+    Returns:
+        (eps_r, sigma) — sigma via the same surface-conduction + electrolytic
+        rule as crim_fouling_eps, on layer-volume fractions, so eps and sigma
+        are COUPLED through (f_fill, sw).
+    """
+    v_fines_min = f_fill * phi_void * (1.0 - phi_pack)
+    v_water     = f_fill * phi_void * phi_pack * sw
+    v_air       = phi_void - v_fines_min - v_water
+    eps_r = crim_bulk_eps(v_rock=1.0 - phi_void, eps_rock=eps_rock,
+                          v_fines=v_fines_min,   eps_fines=eps_fines,
+                          v_water=v_water,       eps_water=eps_water,
+                          v_air=v_air)
+    sigma = max(0.005 * v_fines_min + 0.1 * v_water, 0.001)
     return eps_r, sigma
 
 

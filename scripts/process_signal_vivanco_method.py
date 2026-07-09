@@ -237,7 +237,9 @@ class VivancoPipeline:
                             eliminate_dw: bool = True,
                             apply_bandpass: bool = True,
                             compute_envelope: bool = True,
-                            window_length_ns: float = 50) -> dict:
+                            window_length_ns: float = 50,
+                            bandpass_low_hz: float = 150e6,
+                            bandpass_high_hz: float = 800e6) -> dict:
         """
         Process a single A-scan trace through complete pipeline.
 
@@ -279,9 +281,11 @@ class VivancoPipeline:
         # Step 4: Bandpass filter
         if apply_bandpass:
             current_signal = self.apply_bandpass_filter(
-                current_signal, freq_low=150e6, freq_high=800e6
+                current_signal, freq_low=bandpass_low_hz, freq_high=bandpass_high_hz
             )
             results['signal_filtered'] = current_signal.copy()
+            results['bandpass_low_hz']  = bandpass_low_hz
+            results['bandpass_high_hz'] = bandpass_high_hz
 
         # Step 5: Truncation
         current_signal = self.truncate_signal(current_signal, window_length_ns)
@@ -426,9 +430,24 @@ Examples:
     ap.add_argument("--no-bgr", action="store_true", help="Skip BGR filter")
     ap.add_argument("--bgr-window", type=int, default=1000, help="BGR window size")
     ap.add_argument("--window-length", type=float, default=50, help="Truncation window (ns)")
+    ap.add_argument("--plot", action="store_true",
+                    help="Plot pipeline stages for one sample trace")
+    ap.add_argument("--plot-trace", type=int, default=None,
+                    help="Which trace index to use for --plot (default: middle of loaded set)")
+    ap.add_argument("--align-shift", type=float, default=0.0,
+                    help="Pre-shift synthetic by N ns before pipeline (e.g. 4.0 to match DZT "
+                         "hardware timing). Also flips polarity for gprMax Ez convention.")
+    ap.add_argument("--freq-band", default="150:800",
+                    metavar="LOW_MHZ:HIGH_MHZ",
+                    help="Bandpass filter cutoffs in MHz (default: 150:800)")
     ap.add_argument("-o", "--output", type=Path, default=None, help="Output NPZ file")
 
     args = ap.parse_args()
+
+    # Parse freq-band
+    _band_parts = args.freq_band.split(":")
+    freq_low_hz  = float(_band_parts[0]) * 1e6
+    freq_high_hz = float(_band_parts[1]) * 1e6
 
     # Read input file
     if args.input_file.suffix.lower() == '.dzt':
@@ -436,13 +455,18 @@ Examples:
         is_multiple = True
     elif args.input_file.suffix.lower() == '.out':
         signal, dt_ns = read_synthetic_file(args.input_file)
-        signals = signal.reshape(1, -1)  # Single trace as [1, n_samples]
+        # Apply hardware alignment: flip polarity + prepend zeros for cable delay
+        if args.align_shift > 0.0:
+            signal = -signal  # gprMax Ez polarity convention
+            pad = int(round(args.align_shift / dt_ns))
+            signal = np.concatenate([np.zeros(pad), signal])
+            print(f"  [align] flipped polarity + prepended {pad} zeros ({args.align_shift} ns)")
+        signals = signal.reshape(1, -1)
         is_multiple = False
     else:
         print(f"[ERR] Unknown file type: {args.input_file.suffix}")
         return 1
 
-    # Create pipeline
     pipeline = VivancoPipeline(dt_ns=dt_ns)
 
     print(f"\n{'='*70}")
@@ -460,7 +484,9 @@ Examples:
     else:
         result = pipeline.process_single_trace(
             signals[0, :],
-            window_length_ns=args.window_length
+            window_length_ns=args.window_length,
+            bandpass_low_hz=freq_low_hz,
+            bandpass_high_hz=freq_high_hz,
         )
         processed = result['processed'].reshape(1, -1)
 
@@ -475,6 +501,81 @@ Examples:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(output_path, processed=processed, dt_ns=dt_ns)
         print(f"[SAVE] {output_path}\n")
+
+    # Plot pipeline stages for one sample trace
+    if args.plot:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        plot_idx = args.plot_trace if args.plot_trace is not None else len(signals) // 2
+        plot_idx = min(plot_idx, len(signals) - 1)
+        print(f"[PLOT] Generating pipeline stages for trace #{plot_idx}")
+
+        stages = pipeline.process_single_trace(
+            signals[plot_idx, :],
+            window_length_ns=args.window_length,
+            bandpass_low_hz=freq_low_hz,
+            bandpass_high_hz=freq_high_hz,
+        )
+
+        # Build time axes
+        t_raw  = np.arange(len(stages['original']))   * dt_ns
+        t_nodw = np.arange(len(stages['signal_no_dw'])) * dt_ns
+        t_filt = np.arange(len(stages.get('signal_filtered',
+                                           stages['signal_no_dw']))) * dt_ns
+        t_proc = np.arange(len(processed[plot_idx])) * dt_ns
+
+        fig, axes = plt.subplots(4, 1, figsize=(12, 11), sharex=False)
+
+        # Panel 1 — raw trace
+        ax = axes[0]
+        ax.plot(t_raw, stages['original'], lw=0.7, color="steelblue")
+        dw_t = stages['direct_wave_peak_idx'] * dt_ns
+        ax.axvline(dw_t, color="red", ls="--", lw=0.8,
+                   label=f"DW peak @ {dw_t:.1f} ns")
+        ax.set_title("Step 0 — Raw A-scan (A/D counts)")
+        ax.legend(fontsize=8); ax.set_ylabel("Counts")
+
+        # Panel 2 — after norm + DC removal + DW elimination
+        ax = axes[1]
+        ax.plot(t_nodw, stages['signal_no_dw'], lw=0.7, color="darkorange")
+        ax.set_title("Steps 1-3 — Normalised, DC-removed, direct wave cut "
+                     f"(start index {stages['dw_eliminated_idx']})")
+        ax.set_ylabel("Normalised amplitude")
+
+        # Panel 3 — after bandpass
+        ax = axes[2]
+        sig_filt = stages.get('signal_filtered', stages['signal_no_dw'])
+        ax.plot(t_filt, sig_filt, lw=0.7, color="seagreen")
+        ax.set_title(f"Step 4 — Bandpass {freq_low_hz/1e6:.0f}–{freq_high_hz/1e6:.0f} MHz")
+        ax.set_ylabel("Normalised amplitude")
+
+        # Panel 4 — final output (after BGR if applied, then envelope)
+        ax = axes[3]
+        ax.plot(t_proc, processed[plot_idx], lw=0.8, color="crimson")
+        bgr_tag = f" + BGR(w={args.bgr_window})" if not args.no_bgr and is_multiple else " (no BGR)"
+        ax.set_title(f"Steps 5-7 — Truncated{bgr_tag} + Hilbert envelope (final)")
+        ax.set_xlabel("Time (ns)"); ax.set_ylabel("Envelope amplitude")
+
+        for ax in axes:
+            ax.grid(alpha=0.3)
+
+        n_loaded = len(signals)
+        bgr_status = f"BGR w={args.bgr_window}" if not args.no_bgr and is_multiple else "BGR skipped"
+        fig.suptitle(
+            f"Vivanco pipeline — {args.input_file.name}\n"
+            f"trace #{plot_idx} of {n_loaded}  |  dt={dt_ns:.4f} ns  |  {bgr_status}",
+            fontsize=11
+        )
+        fig.tight_layout()
+
+        out_dir = Path("output_test")
+        out_dir.mkdir(exist_ok=True)
+        plot_path = out_dir / f"vivanco_pipeline_{args.input_file.stem}_t{plot_idx}.png"
+        fig.savefig(plot_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[PLOT] Saved: {plot_path}")
 
     return 0
 

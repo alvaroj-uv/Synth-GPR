@@ -82,6 +82,32 @@ class Layer:
     # Per-layer rock packing algorithm (packed layers only). None -> fall back to
     # the scene-level [sim].rock_packing_algorithm / builder default.
     rock_packing_algorithm: Optional[str] = None
+    # Per-layer rock size (packed layers only). None -> fall back to the
+    # scene-level [sim].rock_radius_min / rock_radius_max / builder default.
+    rock_radius_min: Optional[float] = None
+    rock_radius_max: Optional[float] = None
+    # Per-layer target area-fill fraction (packed layers only). None -> fall
+    # back to [sim].rock_packing_target_fill / builder default (0.85).
+    rock_packing_target_fill: Optional[float] = None
+    # Per-layer pymunk gravity-settle duration in s (packed layers only, only
+    # affects pymunk/pymunk_ballast packers). None -> fall back to
+    # [sim].pymunk_settle_time / packer default (2.0s, phi~0.12).
+    pymunk_settle_time: Optional[float] = None
+    # Fraction of packed rocks (0-1) to emit as EM-invisible: geometrically
+    # present (still counted by LabWorker's porosity/virtual-sieve analysis)
+    # but stamped with the MATRIX material instead of the rock material, so
+    # they contribute zero dielectric contrast. None/0 -> all rocks visible.
+    rock_invisible_fraction: Optional[float] = None
+    # Rock cross-section shape (packed layers only): "polygon" (default —
+    # angular triangulated stones, the pymunk_ballast packer's normal output),
+    # "circle" (round pebbles — strips the packer's polygon vertices so each
+    # rock emits as a single #cylinder instead of N #triangle facets),
+    # "square" (4-vertex square inscribed in the packer's original bounding
+    # circle, same centre/radius), or "rip" (Random Irregular Polygon, Li et
+    # al. 2023 — 8-12 vertex jagged polygon with +-25% radial roughness,
+    # applied to ANY packer's circles, not just rip_packing.RIPPacking's own
+    # RSA placement). None -> "polygon".
+    rock_shape: Optional[str] = None
 
     def validate(self) -> None:
         if self.thickness <= 0:
@@ -188,6 +214,26 @@ def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
       matrix                                  — named matrix material (packed)
       matrix_eps, matrix_sigma               — explicit matrix material (packed)
       rock_packing_algorithm                  — per-layer packer (packed)
+      rock_radius_min, rock_radius_max        — per-layer rock size in m (packed);
+                                                None -> scene-level [sim] default
+      rock_packing_target_fill                — per-layer target area-fill fraction
+                                                (packed); None -> [sim] default
+      pymunk_settle_time                      — per-layer gravity-settle duration in
+                                                s, pymunk packer only (packed);
+                                                None -> [sim] default
+      rock_invisible_fraction                 — fraction (0-1) of packed rocks stamped
+                                                with the matrix material instead of the
+                                                rock material (EM-invisible but
+                                                geometrically present); None/0 -> all
+                                                rocks visible (packed)
+      rock_shape                              — "polygon" (default, angular), "circle"
+                                                (round pebbles, emits #cylinder instead
+                                                of triangulated facets), "square"
+                                                (4-vertex square inscribed in the
+                                                original bounding circle), or "rip"
+                                                (Random Irregular Polygon, Li et al.
+                                                2023 — 8-12 vertex jagged polygon)
+                                                (packed)
 
     Named materials (NAMED_MATERIALS) are used as fallbacks when a value is
     omitted, so terse specs keep working.
@@ -197,11 +243,37 @@ def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
     packed = bool(obj.get("packed", False))
     algo = obj.get("rock_packing_algorithm")
     algo = str(algo).lower() if algo else None
+    radius_min = obj.get("rock_radius_min")
+    radius_max = obj.get("rock_radius_max")
+    target_fill = obj.get("rock_packing_target_fill")
+    settle_time = obj.get("pymunk_settle_time")
+    invisible_fraction = obj.get("rock_invisible_fraction")
+    shape = obj.get("rock_shape")
 
     if not packed:
         if algo is not None:
             raise ValueError(
                 f"[[layer]] #{idx} '{name}': rock_packing_algorithm given on a "
+                f"non-packed layer (add packed = true)."
+            )
+        if radius_min is not None or radius_max is not None:
+            raise ValueError(
+                f"[[layer]] #{idx} '{name}': rock_radius_min/rock_radius_max given on a "
+                f"non-packed layer (add packed = true)."
+            )
+        if target_fill is not None or settle_time is not None:
+            raise ValueError(
+                f"[[layer]] #{idx} '{name}': rock_packing_target_fill/pymunk_settle_time given "
+                f"on a non-packed layer (add packed = true)."
+            )
+        if invisible_fraction is not None:
+            raise ValueError(
+                f"[[layer]] #{idx} '{name}': rock_invisible_fraction given on a "
+                f"non-packed layer (add packed = true)."
+            )
+        if shape is not None:
+            raise ValueError(
+                f"[[layer]] #{idx} '{name}': rock_shape given on a "
                 f"non-packed layer (add packed = true)."
             )
         eps, sigma = obj.get("eps"), obj.get("sigma")
@@ -227,6 +299,17 @@ def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
         matrix_name = str(obj.get("matrix", DEFAULT_PACKED_MATRIX)).strip().lower()
         meps, msig = _resolve_named(matrix_name)
 
+    if invisible_fraction is not None and not (0.0 <= float(invisible_fraction) <= 1.0):
+        raise ValueError(
+            f"[[layer]] #{idx} '{name}': rock_invisible_fraction must be in [0, 1], "
+            f"got {invisible_fraction}."
+        )
+    if shape is not None and str(shape).lower() not in ("polygon", "circle", "square", "rip"):
+        raise ValueError(
+            f"[[layer]] #{idx} '{name}': rock_shape must be 'polygon', 'circle', 'square', or 'rip', "
+            f"got {shape!r}."
+        )
+
     return Layer(
         name=name, thickness=thickness,
         eps=float(meps), sigma=float(msig),               # matrix/voids
@@ -235,6 +318,12 @@ def _layer_from_table_obj(obj: dict, idx: int) -> Layer:
         rock_name=f"{name}_rock" if name not in ("ballast", "bal_rock") else "bal_rock",
         matrix_name=matrix_name,
         rock_packing_algorithm=algo,
+        rock_radius_min=float(radius_min) if radius_min is not None else None,
+        rock_radius_max=float(radius_max) if radius_max is not None else None,
+        rock_packing_target_fill=float(target_fill) if target_fill is not None else None,
+        pymunk_settle_time=float(settle_time) if settle_time is not None else None,
+        rock_invisible_fraction=float(invisible_fraction) if invisible_fraction is not None else None,
+        rock_shape=str(shape).lower() if shape is not None else None,
     )
 
 
@@ -280,6 +369,49 @@ class SceneConfig:
     lab: dict = field(default_factory=dict)
     raw_commands: List[str] = field(default_factory=list)
     toml_text: str = ""
+
+    def to_scene_params(self) -> Tuple["object", dict]:
+        """Build ``(SceneParams, provenance)`` from the ``[sim]``/``[source]`` tables.
+
+        Centralises the TOML -> SceneParams schema mapping so callers never reach
+        into the raw ``sim``/``source`` dicts. ``provenance`` marks TOML-sourced
+        fields for the .in ``SOURCE_*`` headers. ``SceneParams`` is imported
+        lazily to avoid a ``layer_spec`` <-> ``layer_scene_builder`` import cycle.
+        """
+        from .layer_scene_builder import SceneParams  # lazy: breaks import cycle
+
+        sim, src = self.sim, self.source
+        freq = float(sim.get("freq_hz", 400e6))
+        params = SceneParams(
+            freq_hz=freq,
+            domain_x=float(sim.get("domain_x", 1.0)),
+            dx=float(sim["dx"]) if "dx" in sim else None,
+            antenna_clearance=float(sim.get("antenna_clearance", 0.5)),
+            air_buffer=float(sim.get("air_buffer", 0.1)),
+            rx_spacing=float(sim.get("rx_spacing", 0.0)),  # DEPRECATED: use antenna_mode + receiver_spacing
+            antenna_mode=str(sim.get("antenna_mode", "monostatic")),
+            num_receivers=int(sim.get("num_receivers", 1)),
+            receiver_spacing=float(sim.get("receiver_spacing", 0.05)),
+            title=str(sim.get("title", f"N-layer ({len(self.layers)} layers) {freq/1e6:.0f} MHz")),
+            time_window=float(sim["time_window"]) if "time_window" in sim else None,
+            seed=int(sim["seed"]) if "seed" in sim else None,
+            source_waveform=str(src.get("waveform", "ricker")),
+            source_amplitude=float(src.get("amplitude", 1.0)),
+            source_polarization=str(src.get("polarization", "z")),
+            rock_packing_algorithm=str(sim.get("rock_packing_algorithm", "pymunk_ballast")),
+            pymunk_settle_time=float(sim["pymunk_settle_time"]) if "pymunk_settle_time" in sim else (
+                float(sim["mbubia_settle_time"]) if "mbubia_settle_time" in sim else None),
+            rock_radius_min=float(sim["rock_radius_min"]) if "rock_radius_min" in sim else None,
+            rock_radius_max=float(sim["rock_radius_max"]) if "rock_radius_max" in sim else None,
+            rock_packing_target_fill=float(sim["rock_packing_target_fill"]) if "rock_packing_target_fill" in sim else None,
+            excitation_file=str(sim["excitation_file"]) if "excitation_file" in sim else None,
+            excitation_waveform_id=str(sim.get("excitation_waveform_id", "gssi_420mhz")),
+        )
+        provenance = {k: "TOML" for k in (
+            "center_freq_hz", "domain_x", "dx", "rx_spacing", "antenna_mode",
+            "num_receivers", "receiver_spacing", "antenna_clearance",
+            "air_buffer", "rock_packing_algorithm")}
+        return params, provenance
 
 
 def parse_config_file(path: Union[str, Path]) -> SceneConfig:

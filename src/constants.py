@@ -48,8 +48,7 @@ class PhysicalConstants:
     
     # Domain Validation
     EPSILON: float = 1e-9  # Numerical tolerance
-    DEFAULT_DT: float = 1e-10 # Default time step if missing
-    
+
     # Simulation Heuristics
     FOULING_PARTICLE_COUNT_MULTIPLIER: int = 200 # particles per fractional PVC
     DEFAULT_ROCK_LAYERS: int = 10 # Default layers for packing
@@ -90,6 +89,20 @@ class MaterialConstants:
     FOULED_BALLAST_PROPS: tuple   = (5.0,  0.005)  # Benedetto et al. (2017)
     HF_BALLAST_PROPS: tuple       = (6.5,  0.012)  # Shang et al. (2021) fully fouled
     SUBGRADE_SOIL_PROPS: tuple    = (8.0,  0.020)  # PMC9003199 dry railway subgrade
+
+    # ── CRIM ballast mixing model (packed-rock scenes + CRIM inversion) ─────
+    # Used by physics.ballast_crim to map (fines fill, saturation) → (eps, σ).
+    # NOTE: rock eps here is 6.1 (Brancadoro aggregate grains, matched-pair
+    # validated 2026-06-30) while BALLAST_ROCK_PROPS above keeps 4.0 (Tosti
+    # bulk value used by the 2D dataset pipeline). These describe different
+    # things (grain vs homogenised bulk) — do not "unify" them blindly.
+    # Hull anchors (zero tuning): (f=0,Sw=0)→eps 3.43 ≈ pit-ID11 clean 3.45;
+    # (1,0)→4.80 ≈ Benedetto dry cap; (1,1)→12.5 ≈ field fouled 11.3–12.
+    CRIM_ROCK_EPS: float = 6.1        # granite grains (Brancadoro)
+    CRIM_FINES_EPS: float = 5.5       # mineral fines (Santamarina 2002)
+    CRIM_WATER_EPS: float = 81.0      # free water
+    CRIM_VOID_FRACTION: float = 0.42  # ballast void fraction (Brancadoro volumetric)
+    CRIM_PACK_POROSITY: float = 0.40  # fines-pack internal porosity ('granular' zone)
 
 @dataclass(frozen=True)
 class SignalConstants:
@@ -239,6 +252,37 @@ class PhysicsConstants:
     FH_FI_LOOSE:   tuple = (-0.0013, 0.5570, 0.4170)   # loose ballast (phi high)
     FH_FI_MEDIUM:  tuple = (-0.0017, 0.6311, 0.4933)   # medium — used to label real data
     FH_FI_COMPACT: tuple = (-0.0022, 0.7248, 0.6753)   # compacted ballast (phi low)
+
+def archie_sigma(
+    porosity: float,
+    saturation: float,
+    rho_w: float = 40.0,
+    a: float = 0.88,
+    m: float = 1.37,
+    n: float = 2.0,
+) -> float:
+    """Compute electrical conductivity (S/m) via Archie's law.
+
+    σ = (σ_w × Φ^m × S_w^n) / a
+
+    Args:
+        porosity:   volumetric void fraction Φ (0–1)
+        saturation: water saturation S_w (0–1)
+        rho_w:      pore-water resistivity (Ωm); default 40 Ωm (fresh groundwater)
+        a:          tortuosity factor (Koyan 2020 / Schön 1998: 0.88)
+        m:          cementation exponent (0.88 / 1.37 for unconsolidated sand)
+        n:          saturation exponent (standard: 2.0)
+
+    Returns:
+        σ in S/m
+
+    Reference: Archie (1942); Koyan & Tronicke (2020) used ρ_w=25 Ωm, a=0.88, m=1.37.
+    For clay-rich layers Archie underestimates σ (no surface conductance term);
+    use explicit sigma override in those cases.
+    """
+    sigma_w = 1.0 / rho_w
+    return sigma_w * (porosity ** m) * (saturation ** n) / a
+
 
 # Singleton instances
 PC = PhysicalConstants()

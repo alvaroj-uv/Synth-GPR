@@ -102,6 +102,11 @@ def _parse_polygon(scene: SceneData, tokens: list[str]) -> None:
     scene.polygons.append(PolygonGeom(vertices=verts, material=material))
 
 
+def _parse_material(scene: SceneData, tokens: list[str]) -> None:
+    # #material: eps sigma mu sigma_m name
+    scene.materials[tokens[5]] = (float(tokens[1]), float(tokens[2]))
+
+
 def _parse_hertzian_dipole(scene: SceneData, tokens: list[str]) -> None:
     # #hertzian_dipole: polarisation x y z waveform_id
     scene.tx = AntennaPos(x=float(tokens[2]), y=float(tokens[3]),
@@ -118,6 +123,7 @@ def _parse_rx(scene: SceneData, tokens: list[str]) -> None:
 _HANDLERS = {
     "#title:":           _parse_title,
     "#domain:":          _parse_domain,
+    "#material:":        _parse_material,
     "#box:":             _parse_box,
     "#fractal_box:":     _parse_fractal_box,
     "#triangle:":        _parse_triangle,

@@ -8,16 +8,16 @@
 
 ## Overview
 
-`examples/DEFAULT.toml` is the **recommended standard configuration** for all synthetic GPR generation using gprMax FDTD. It incorporates three validated calibration improvements that achieve **88.76% correlation** with real GSSI field GPR data.
+`examples/DEFAULT.toml` is the **recommended standard configuration** for all synthetic GPR generation using gprMax FDTD. ~~It incorporates three validated calibration improvements that achieve **88.76% correlation** with real GSSI field GPR data.~~ **Corrección (2026-07-07):** incorpora tres ajustes hoy **PROVISIONALES** — el grid search que los respaldaba comparó correlaciones de coda-speckle en el suelo de ruido y está INVALIDATED. El 88.76% es **full-trace correlation (direct-wave dominated)**: valida timing/remuestreo/polaridad, no el matching de coda. Ver `docs/FINAL_CALIBRATION_SUMMARY.md`.
 
 ### Why Use the Default?
 
-- ✅ Optimized for synthetic-to-real match
-- ✅ Validated against real Puerto-Limache GPR survey (n=101 traces)
-- ✅ 145.6% better waveform than legacy Ricker
-- ✅ 420 MHz better frequency response than 400 MHz nominal
-- ✅ Bistatic 30mm geometry matches real antenna coupling
-- ✅ Production-ready, thoroughly documented
+- ✅ Configuración operativa estándar y documentada (reproducible)
+- ~~✅ Validated against real Puerto-Limache GPR survey (n=101 traces)~~ ⚠️ comparado contra Puerto-Limache con métrica inválida (coda-speckle)
+- ~~✅ 145.6% better waveform than legacy Ricker~~ ❌ claim INVALIDATED (suelo de ruido); gaussian = placeholder provisional
+- ~~✅ 420 MHz better frequency response than 400 MHz nominal~~ ❌ claim INVALIDATED (suelo de ruido)
+- ✅ Bistatic 30mm geometry: físicamente plausible (no validado por el barrido)
+- ✅ Production-ready as a *workflow*; parámetros de fuente pendientes de calibración real (SPEC-1)
 
 ---
 
@@ -140,7 +140,7 @@ waveform = "ricker"              # Changed from "gaussian"
 # ...
 ```
 
-**Note**: Gaussian is 145.6% better; only use Ricker for legacy comparisons.
+**Note**: ~~Gaussian is 145.6% better; only use Ricker for legacy comparisons.~~ El "+145.6%" está INVALIDATED (suelo de ruido); gaussian es el default operativo provisional, sin evidencia de superioridad sobre Ricker.
 
 ### Scenario 4: Multi-Layer Scenario
 
@@ -278,15 +278,15 @@ features = extract_features(syn_processed, real_dt)
 
 ### Q: Can I use 400 MHz instead of 420 MHz?
 
-**A**: Yes, but performance drops ~2.6%. Use 420 MHz unless required by experiment.
+**A**: Yes. ~~but performance drops ~2.6%.~~ *(El "−2.6%" era una comparación en el suelo de ruido — INVALIDATED.)* 420 MHz es el valor operativo provisional.
 
 ### Q: When should I use Ricker instead of Gaussian?
 
-**A**: Only for legacy comparisons. Gaussian is 145.6% better—use it by default.
+**A**: ~~Only for legacy comparisons. Gaussian is 145.6% better—use it by default.~~ El "+145.6%" está INVALIDATED (suelo de ruido). Gaussian sigue como default operativo provisional; la wavelet definitiva vendrá de deconvolución de placa o modelo de antena (SPEC-1).
 
 ### Q: What if my antenna is monostatic?
 
-**A**: Change to `antenna_mode = "monostatic"`, but know it performs ~10% worse than bistatic 30mm.
+**A**: Change to `antenna_mode = "monostatic"`. ~~but know it performs ~10% worse than bistatic 30mm.~~ *(El "−10%" era una comparación en el suelo de ruido — INVALIDATED.)*
 
 ---
 

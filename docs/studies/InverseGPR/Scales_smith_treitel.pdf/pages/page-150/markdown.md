@@ -1,0 +1,11 @@
+# Chapter 10
+
+## Bayesian versus Frequentist Methods of Inference
+
+If we are Bayesians, then all prior information about models must be cast in the form of probabilities. However, in some cases, prior information is purely deterministic. For example, we know based on definition, that mass density and wavespeed are positive. There is nothing uncertain about this information. On the other hand, we know from observation that the average mass density of the Earth is less than $7\text{g/cm}^2$. In principle we can convert these pieces of deterministic information into probabilities. In this chapter we will compare and contrast the Bayesian and *frequentist* views of inference. This chapter is adapted from [SS97b] and [ST01].
+
+There are two fundamentally different meanings of the term 'probability' in common usage [SS97a]. If we toss a coin $N$ times, where $N$ is large, and see roughly $N/2$ heads, then we say the probability of getting a head in a given toss is about 50%. This interpretation of probability, based on the frequency of outcomes of random trails, is therefore called 'frequentist'. On the other hand it is common to hear statements such as: 'the probability of rain tomorrow is 50%'. Since this statement does not refer to the repeated outcome of a random trial, it is not a frequentist use of the term probability. Rather, it conveys a statement of information (or lack thereof). This is the Bayesian use of 'probability'. Both ideas seem natural to some degree, so it is perhaps unfortunate that the same term is used to describe them.
+
+Bayesian inversion has gained considerable popularity in its application to geophysical inverse problems. The philosophy of this procedure is as follows. Suppose one knows something about a model before observing the data. This knowledge is cast in a probabilistic form and is called the prior probability model (prior means before the data have been observed.) Bayesian inversion then provides a framework for combining the probabilistic prior information with the information contained in the observed data in order to update the prior information. The updated distribution is the posterior conditional model distribution given the data; it is what we know about the model after
+
+1

@@ -8,7 +8,15 @@
 		},
 		{
 			"path": "../../Doctorado/Presentacion_candidatura/Articulos_SLR"
+		},
+		{
+			"path": "../Data_Labled"
+		},
+		{
+			"path": "../Data_profesor"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"editor.fontSize": 16
+	}
 }

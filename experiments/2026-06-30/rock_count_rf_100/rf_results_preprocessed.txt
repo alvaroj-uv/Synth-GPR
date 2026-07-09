@@ -1,0 +1,25 @@
+N samples: 100
+N features: 820
+Target range: 33-241 rocks
+R^2 (5-fold CV, preprocessed): -0.235 +/- 0.244
+Per-fold R^2: [np.float64(-0.139), np.float64(-0.039), np.float64(-0.682), np.float64(-0.02), np.float64(-0.295)]
+MAE (5-fold CV): 28.2 +/- 5.1 rocks
+
+(compare: RAW signal, no preprocessing -> R^2 = 0.264 +/- 0.188, MAE=21.4)
+
+Top 15 features:
+coda_gpr_mfcc_6                  0.046900
+coda_wavelet_energy_kurtosis     0.039346
+coda_gpr_mfcc_8                  0.035662
+win_area_signal                  0.025648
+coda_stat_slice_6_std            0.023431
+lpc_residual_kurtosis            0.019524
+percentile_75                    0.017691
+coda_gpr_mfcc_11                 0.017379
+early_late_energy_ratio          0.014121
+gpr_mfcc_5                       0.013385
+coda_grid_hilbert_imag_0_6       0.012989
+coda_gpr_mfcc_12                 0.012819
+coda_grid_hilbert_imag_15_6      0.012797
+coda_stft_energy_mid_kurtosis    0.012736
+coda_fb_energy_11                0.012337

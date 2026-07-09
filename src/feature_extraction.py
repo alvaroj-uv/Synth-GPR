@@ -1,16 +1,18 @@
 # Standard library
 import logging
-import warnings
 
 # Third-party imports
 import numpy as np
 import pandas as pd
 from scipy import signal as sp_signal
+from scipy.fft import dct as _scipy_dct
+from scipy.linalg import solve_toeplitz
 from scipy.stats import skew, kurtosis
 
 # Local imports
-from src.constants import PC, SC
-from src.signal_processing import calculate_instantaneous_attributes, peak_relative_coda_gate
+from src.constants import SC
+from src.signal_processing import (calculate_instantaneous_attributes,
+                                   peak_relative_coda_gate, mpm_decompose)
 from .logging_config import get_logger
 
 def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str = "sig",
@@ -18,8 +20,7 @@ def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str =
                                  include_legacy_blocks: bool = False) -> pd.DataFrame:
     """Extract features directly from a 1D signal array."""
     if dt is None:
-        _warn_default_dt()
-        dt = PC.DEFAULT_DT
+        raise ValueError(_DT_REQUIRED_MSG)
     time = np.arange(len(signal), dtype=float) * dt
     df = pd.DataFrame({"Time": time, signal_name: signal})
     return extract_features(df, dt=dt, center_freq_hz=center_freq_hz,
@@ -27,14 +28,12 @@ def extract_features_from_signal(signal: np.ndarray, dt=None, signal_name: str =
                             include_legacy_blocks=include_legacy_blocks)
 
 
-def _warn_default_dt():
-    warnings.warn(
-        f"extract_features called without dt — defaulting to {PC.DEFAULT_DT:.2e}s "
-        f"(0.1 ns, the REAL-data time base). This is WRONG for synthetic .out "
-        f"files (dt≈0.0311 ns) and mis-scales every frequency feature by ~3.2x. "
-        f"Always pass dt read from the HDF5 'dt' attribute.",
-        UserWarning, stacklevel=3,
-    )
+_DT_REQUIRED_MSG = (
+    "extract_features requires an explicit dt (in seconds). Read it from the "
+    "'dt' HDF5 attribute of the synthetic .out file (dt≈0.0311 ns) or from the "
+    "DZT header for real field traces. A silent default mis-scales every "
+    "frequency feature by ~3.2x, so dt is now mandatory."
+)
 
 
 def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = True,
@@ -50,9 +49,10 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
 
     Args:
         df: DataFrame with a 'Time' column and one column per trace.
-        dt: Time step in seconds. ALWAYS pass it explicitly (read from the .out
-            HDF5 'dt' attribute); the 0.1 ns fallback is only correct for the
-            real field CSVs and a loud warning is emitted when it is used.
+        dt: Time step in seconds. REQUIRED — pass it explicitly (read from the
+            .out HDF5 'dt' attribute for synthetic data, or the DZT header for
+            real field traces). Passing None raises ValueError; there is no
+            default, because a wrong dt mis-scales every frequency feature.
         center_freq_hz: Source centre frequency, used for the relative spectral
             band edges (SC.BAND_LOW_FRAC/BAND_HIGH_FRAC). If None it is
             estimated per-trace as the dominant spectral frequency.
@@ -76,8 +76,7 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
         return pd.DataFrame()
 
     if dt is None:
-        _warn_default_dt()
-        dt = PC.DEFAULT_DT
+        raise ValueError(_DT_REQUIRED_MSG)
 
     features_list = []
     
@@ -124,6 +123,12 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
         #    decay, Mbubia (2024) damping direction.
         coda_feats = _extract_coda_suite(signal, dt, fc_used, seek_peak=coda_seek_peak)
 
+        # 10. Real cepstrum + quefrency — Bogert et al. (1963); Oppenheim & Schafer (2010)
+        cepstral_feats = _extract_cepstral_features(signal, dt)
+
+        # 11. GPR filterbank / GPR-MFCC — Davis & Mermelstein (1980)
+        filterbank_feats = _extract_filterbank_features(signal, dt, fc_used)
+
         # Combine
         features = {
             'Signal': col,
@@ -136,7 +141,9 @@ def extract_features(df, dt=None, center_freq_hz=None, coda_seek_peak: bool = Tr
             **grid_feats,
             **window_feats,
             **energy_curve_feats,
-            **coda_feats
+            **coda_feats,
+            **cepstral_feats,
+            **filterbank_feats,
         }
 
         # Provenance (meta_* = NOT features; exclude from training matrices)
@@ -599,6 +606,77 @@ def _finite_or_zero(d: dict) -> dict:
     return out
 
 
+def _extract_mpm_features(segment: np.ndarray, dt: float,
+                          n_poles: int = 6,
+                          freq_lo_hz: float = 50e6,
+                          freq_hi_hz: float = 900e6) -> dict:
+    """MPM pole features for the coda segment (Mbubia et al. 2024).
+
+    Extracts the top-n_poles modes sorted by residue magnitude (most energetic
+    first). Each mode contributes three features:
+      mpm_pole_{k}_alpha_ns  : damping rate 1/ns (negative = decaying;
+                               more negative = faster decay = higher sigma)
+      mpm_pole_{k}_freq_mhz  : oscillation frequency MHz
+      mpm_pole_{k}_residue   : normalized residue (energy weight, 0-1)
+
+    Plus summary features:
+      mpm_mean_alpha_ns      : residue-weighted mean alpha across all valid poles
+      mpm_dominant_freq_mhz  : frequency of the highest-residue mode
+      mpm_n_valid            : count of physically valid poles found
+
+    Zero-padding is applied when fewer than n_poles valid poles are found so
+    the feature vector length is always 3*n_poles + 3 = 21 (default n_poles=6).
+    """
+    keys_per_pole = [f'mpm_pole_{k}_{s}'
+                     for k in range(n_poles)
+                     for s in ('alpha_ns', 'freq_mhz', 'residue')]
+    summary_keys  = ['mpm_mean_alpha_ns', 'mpm_dominant_freq_mhz', 'mpm_n_valid']
+    zero_result   = {k: 0.0 for k in keys_per_pole + summary_keys}
+
+    if len(segment) < 10:
+        return zero_result
+
+    # Taper to reduce edge leakage
+    seg = segment * np.hanning(len(segment))
+    dec = mpm_decompose(seg, dt, freq_lo_hz=freq_lo_hz, freq_hi_hz=freq_hi_hz)
+
+    valid    = dec['valid_mask']
+    n_valid  = int(np.sum(valid))
+    if n_valid == 0:
+        return {**zero_result, 'mpm_n_valid': 0.0}
+
+    alphas   = dec['alphas_ns'][valid]       # 1/ns, negative
+    freqs    = dec['freqs_hz'][valid] / 1e6  # MHz
+    residues = dec['residues'][valid]
+
+    # Normalise residues to [0, 1]
+    res_sum  = float(np.sum(residues))
+    res_norm = residues / res_sum if res_sum > 0 else residues
+
+    # Sort by residue descending (most energetic mode first)
+    order = np.argsort(res_norm)[::-1]
+    alphas, freqs, res_norm = alphas[order], freqs[order], res_norm[order]
+
+    # Summary
+    feats = {}
+    feats['mpm_n_valid']           = float(n_valid)
+    feats['mpm_mean_alpha_ns']     = float(np.average(alphas, weights=res_norm))
+    feats['mpm_dominant_freq_mhz'] = float(freqs[0])
+
+    # Per-pole (zero-padded to n_poles)
+    for k in range(n_poles):
+        if k < n_valid:
+            feats[f'mpm_pole_{k}_alpha_ns'] = float(alphas[k])
+            feats[f'mpm_pole_{k}_freq_mhz'] = float(freqs[k])
+            feats[f'mpm_pole_{k}_residue']  = float(res_norm[k])
+        else:
+            feats[f'mpm_pole_{k}_alpha_ns'] = 0.0
+            feats[f'mpm_pole_{k}_freq_mhz'] = 0.0
+            feats[f'mpm_pole_{k}_residue']  = 0.0
+
+    return feats
+
+
 def _extract_coda_suite(signal: np.ndarray, dt: float, center_freq_hz: float,
                         seek_peak: bool = True) -> dict:
     """Full feature suite on the peak-normalized, peak-relative-gated coda.
@@ -633,12 +711,18 @@ def _extract_coda_suite(signal: np.ndarray, dt: float, center_freq_hz: float,
 
     attrs = calculate_instantaneous_attributes(segment, dt, use_mirroring=True)
     att_feats = _extract_attenuation_features(segment, dt, center_freq_hz, attrs)
+    mpm_feats = _extract_mpm_features(segment, dt)
+    cep_feats = _extract_cepstral_features(segment, dt)
+    fb_feats  = _extract_filterbank_features(segment, dt, center_freq_hz)
+    lpc_feats = _extract_lpc_features(segment, dt)
 
     out = {}
     for d in (time_feats, hil_feats, freq_feats, wav_feats, stft_feats,
-              slice_feats, grid_feats, energy_feats):
+              slice_feats, grid_feats, energy_feats, cep_feats, fb_feats):
         out.update({f'coda_{k}': v for k, v in d.items()})
-    out.update(att_feats)  # att_* already namespaced
+    out.update(att_feats)   # att_* already namespaced
+    out.update(mpm_feats)   # mpm_* already namespaced
+    out.update(lpc_feats)   # lpc_* already namespaced
     return _finite_or_zero(out)
 
 
@@ -717,3 +801,182 @@ def _extract_attenuation_features(segment: np.ndarray, dt: float,
         feats['att_centroid_slope_mhz_ns'] = float(np.polyfit(tt_ns, cent_mhz, 1)[0])
 
     return _finite_or_zero(feats)
+
+
+def _extract_cepstral_features(signal: np.ndarray, dt: float,
+                                n_coef: int = 12) -> dict:
+    """Real cepstrum + quefrency features.
+
+    The real cepstrum c[q] = Re{IFFT(log|FFT(x)|)} lifts periodicity in the
+    log-spectrum to the quefrency domain.  For a GPR trace the dominant
+    quefrency peak in 1–10 ns encodes the two-way travel time to the first
+    reflector (= layer spacing at the propagation velocity). This gives a
+    physics-interpretable, amplitude-scale-invariant depth proxy.
+
+    Reference:
+        Bogert, Healy & Tukey (1963) Proc. Symp. Time Series Analysis.
+        Oppenheim & Schafer (2010) Discrete-Time Signal Processing, §12.
+        Claerbout (1985) Fundamentals of Geophysical Data Processing.
+    """
+    n = len(signal)
+    keys = ([f'cep_{k}' for k in range(1, n_coef + 1)] +
+            ['cep_quefrency_peak_ns', 'cep_quefrency_energy_fraction',
+             'cep_rahmonic_ratio'])
+    zeros = {k: 0.0 for k in keys}
+    if n < 16:
+        return zeros
+
+    fft_mag = np.abs(np.fft.rfft(signal, n=n))
+    log_spec = np.log(fft_mag + SC.LOG_EPSILON)
+    # irfft of a real log-spectrum yields the real cepstrum; n= ensures exact length
+    cepstrum = np.fft.irfft(log_spec, n=n)
+
+    feats = {}
+    for k in range(1, n_coef + 1):
+        feats[f'cep_{k}'] = float(cepstrum[k]) if k < len(cepstrum) else 0.0
+
+    quefrency_ns = np.arange(n) * dt * SC.NS_PER_SEC
+
+    # Subsurface window: 1–10 ns = reflector depths ~0.15–1.5 m at ε=3.45
+    sub_mask = (quefrency_ns >= 1.0) & (quefrency_ns <= 10.0)
+    direct_mask = quefrency_ns < 1.0
+    total_cep_energy = float(np.sum(cepstrum ** 2)) + SC.LOG_EPSILON
+    if np.any(sub_mask):
+        sub_abs = np.abs(cepstrum[sub_mask])
+        sub_energy = float(np.sum(sub_abs ** 2))
+        direct_energy = float(np.sum(cepstrum[direct_mask] ** 2)) if np.any(direct_mask) else 0.0
+        feats['cep_quefrency_peak_ns'] = float(quefrency_ns[sub_mask][np.argmax(sub_abs)])
+        feats['cep_quefrency_energy_fraction'] = sub_energy / total_cep_energy
+        feats['cep_rahmonic_ratio'] = sub_energy / (direct_energy + SC.LOG_EPSILON)
+    else:
+        feats['cep_quefrency_peak_ns'] = 0.0
+        feats['cep_quefrency_energy_fraction'] = 0.0
+        feats['cep_rahmonic_ratio'] = 0.0
+
+    return feats
+
+
+def _extract_lpc_features(segment: np.ndarray, dt: float,
+                           order: int = 8, n_par: int = 4) -> dict:
+    """LPC residual features on the gated coda.
+
+    Fits an order-p all-pole AR model (linear predictive coding) via the
+    Yule-Walker equations and filters the signal through the predictor
+    error filter A(z) = 1 + a1*z⁻¹ + … + ap*z⁻ᵖ.  The residual encodes
+    the part of the coda that cannot be explained by linear autoregression —
+    in GPR this is incoherent scatter from fines and voids. Heavy fouling
+    adds unpredictable fine-scale heterogeneity → higher residual energy and
+    kurtosis.
+
+    Reference:
+        Makhoul, J. (1975) Proc. IEEE 63(4), 561–580.
+        Atal & Schroeder (1967) J. Acoust. Soc. Am. 42, 1373.
+    """
+    keys = ([f'lpc_par_{k}' for k in range(1, n_par + 1)] +
+            ['lpc_residual_rms', 'lpc_residual_kurtosis',
+             'lpc_residual_energy_frac', 'lpc_pred_error'])
+    zeros = {k: 0.0 for k in keys}
+
+    n = len(segment)
+    if n < order + 4:
+        return zeros
+
+    peak = float(np.max(np.abs(segment)))
+    if peak == 0.0:
+        return zeros
+    seg = segment / peak
+
+    # Autocorrelation lags 0 … order
+    corr = np.array([float(np.dot(seg[:n - k], seg[k:])) / n
+                     for k in range(order + 1)])
+    if corr[0] <= 0:
+        return zeros
+
+    # Solve Yule-Walker: Toeplitz(corr[0:p]) * a = -corr[1:p+1]
+    try:
+        a = solve_toeplitz(corr[:order], -corr[1:order + 1])
+    except Exception:
+        return zeros
+
+    # Prediction error filter A(z) applied via causal IIR (all-zeros part only)
+    A = np.concatenate([[1.0], a])
+    residual = sp_signal.lfilter(A, [1.0], seg)
+
+    total_energy = float(np.sum(seg ** 2))
+    res_energy = float(np.sum(residual ** 2))
+
+    feats = {
+        'lpc_residual_rms': float(np.sqrt(np.mean(residual ** 2))),
+        'lpc_residual_kurtosis': float(kurtosis(residual)),
+        'lpc_residual_energy_frac': res_energy / (total_energy + SC.LOG_EPSILON),
+        'lpc_pred_error': res_energy / (corr[0] * n + SC.LOG_EPSILON),
+    }
+    for k in range(n_par):
+        feats[f'lpc_par_{k + 1}'] = float(a[k]) if k < len(a) else 0.0
+
+    return feats
+
+
+def _extract_filterbank_features(signal: np.ndarray, dt: float,
+                                  center_freq_hz: float,
+                                  n_filters: int = 12) -> dict:
+    """Linear triangular filterbank + DCT (GPR-MFCC).
+
+    Applies n_filters triangular bandpass filters uniformly spaced in
+    frequency across the occupied GPR band (½·BAND_LOW_FRAC·fc to
+    2·BAND_HIGH_FRAC·fc), log-compresses the filter energies, then applies
+    a type-II DCT to yield compact cepstral coefficients (GPR-MFCC).
+    Unlike speech MFCCs the frequency axis is LINEAR (not Mel) because GPR
+    has no perceptual weighting requirement and propagation physics are
+    linear in frequency.
+
+    Returns:
+        fb_energy_0 … fb_energy_{n-1}  : log filterbank energies
+        gpr_mfcc_1  … gpr_mfcc_n       : DCT of log-filterbank (skip coef 0 = mean)
+
+    Reference:
+        Davis & Mermelstein (1980) IEEE Trans. ASSP 28(4), 357–366 (MFCCs).
+        Adapted for GPR: linear frequency scale, no pre-emphasis.
+    """
+    keys = ([f'fb_energy_{k}' for k in range(n_filters)] +
+            [f'gpr_mfcc_{k}' for k in range(1, n_filters + 1)])
+    zeros = {k: 0.0 for k in keys}
+
+    n = len(signal)
+    if n < 16:
+        return zeros
+
+    fft_mag = np.abs(np.fft.rfft(signal, n=n))
+    freqs = np.fft.rfftfreq(n, d=dt)
+
+    fc = float(center_freq_hz) if center_freq_hz and center_freq_hz > 0 else 400e6
+    f_min = max(SC.BAND_LOW_FRAC * 0.5 * fc, freqs[1] if len(freqs) > 1 else 1.0)
+    f_max = min(SC.BAND_HIGH_FRAC * 2.0 * fc, freqs[-1])
+    if f_min >= f_max:
+        return zeros
+
+    # n_filters+2 equally-spaced breakpoints → n_filters triangular filters
+    centers = np.linspace(f_min, f_max, n_filters + 2)
+    fb_energies = np.zeros(n_filters)
+    for m in range(n_filters):
+        f_lo, f_cen, f_hi = centers[m], centers[m + 1], centers[m + 2]
+        H = np.zeros(len(freqs))
+        rising = (freqs >= f_lo) & (freqs <= f_cen)
+        falling = (freqs > f_cen) & (freqs <= f_hi)
+        if f_cen > f_lo:
+            H[rising] = (freqs[rising] - f_lo) / (f_cen - f_lo)
+        if f_hi > f_cen:
+            H[falling] = (f_hi - freqs[falling]) / (f_hi - f_cen)
+        fb_energies[m] = float(np.sum((fft_mag * H) ** 2))
+
+    log_fb = np.log(fb_energies + SC.LOG_EPSILON)
+    mfcc_all = _scipy_dct(log_fb, type=2, norm='ortho')  # length n_filters
+
+    feats = {}
+    for k in range(n_filters):
+        feats[f'fb_energy_{k}'] = float(log_fb[k])
+    for k in range(n_filters):
+        # Skip coefficient 0 (DC = mean log-energy, not discriminative)
+        feats[f'gpr_mfcc_{k + 1}'] = float(mfcc_all[k])
+
+    return feats

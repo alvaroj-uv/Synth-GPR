@@ -12,7 +12,7 @@ Key Ideas:
 """
 
 import numpy as np
-from typing import List, Tuple
+from typing import List
 from dataclasses import dataclass
 
 

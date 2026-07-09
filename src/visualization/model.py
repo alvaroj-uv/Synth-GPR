@@ -139,6 +139,7 @@ class SceneData:
     tx: Optional[AntennaPos] = None
     receivers: list[AntennaPos] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
+    materials: dict = field(default_factory=dict)  # name -> (eps, sigma)
 
     @property
     def geometries(self) -> list[AbstractGeom]:

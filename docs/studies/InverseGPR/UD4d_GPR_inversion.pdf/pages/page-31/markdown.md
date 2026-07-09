@@ -1,0 +1,17 @@
+UNIVERSITAS
+DEGLI STUDI
+DI TRIESTE
+
+UNIVERSITÀ
+DEGLI STUDI
+DI TRIESTE
+
+UD4d
+
+# A Borehole GPR Tomography example
+
+![img-67.jpeg](img-67.jpeg)
+
+MEMAG A.A. 2021-2022
+
+31

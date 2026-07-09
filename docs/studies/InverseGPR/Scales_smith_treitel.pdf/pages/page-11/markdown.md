@@ -1,0 +1,12 @@
+viii
+
+LIST OF FIGURES
+
+2.3 A scale may or may not measure mass directly. In this case, it actually measures the force of gravity on the mass. This is then used to infer mass via Hooke's law. . . . . 12
+2.4 Pay careful attention to the content of this figure: It tells us the distribution of *measurement outcomes* for a particular *true* value. . . . . 14
+2.5 Two apparently different experiments. . . . . 17
+2.6 $P_{T|O}$, the probability that the true density is $x$ given some observed value. 18
+2.7 A priori we know that the density of kryptonite cannot be less than 5.1 or greater than 5.6. If we're sure of this than we can reject any observed density outside of this region. . . . . 20
+3.1 Simple model of a vertical seismic profile (VSP). An acoustic source is at the surface of the Earth near a vertical bore-hole (left side). A receiver is lowered into the bore-hole, recording the pulses of down-going sound at various depths below the surface. From these recorded pulses (right) we can extract the travel time of the first-arriving energy. These travel times are used to construct a best-fitting model of the subsurface wavespeed (velocity). Here $v_i$ refers to the velocity in discrete layers, assumed to be constant. How we discretize a continuous velocity function into a finite number of discrete values is tricky. But for now we will ignore this issue and just assume that it can be done. . . . . 26
+3.2 Noise is just that portion of the data we have no interest in explaining. The $x$'s indicate hypothetical measurements. If the measurements are very noisy, then a model whose response is a straight line might fit the data (curve 1). The more precisely the data are known, the more structure is required to fit them. . . . . 27
+3.3 Observed data (solid curve) and predicted data for two different assumed levels of noise. In the optimistic case (dashed curve) we assume the data are accurate to 0.3 ms. In the more pessimistic case (dotted curve), we assume the data are accurate to only 1.0 ms. In both cases the predicted travel times are computed for a model that just fits the data. In other words we perturb the model until the RMS misfit between the observed and predicted data is about $N$ times 0.3 or 1.0, where $N$ is the number of observations. Here $N = 78$. I.e., $N\chi^2 = 78 \times 1.0$ for the pessimistic case, and $N\chi^2 = 78 \times .3$ for the optimistic case. . . . . 30

@@ -1,0 +1,9 @@
+188
+
+BIBLIOGRAPHY
+
+## Bibliography
+
+[AR80] K. Aki and P. Richards. *Quantitative Seismology: Theory and Practice*. Freeman, 1980.[Bac88] G. Backus. Hard and soft prior bounds in geophysical inverse problems. *Geophysical Journal*, 94:249–261, 1988.[Bar76] R.G. Bartle. *The Elements of Real Analysis*. Wiley, 1976.[Bec67] Richard Becker. *Theory of Heat*. Springer-Verlag, 1967.[Ber85] L. O. Berger. *Statistical Decision Theory and Bayesian Analysis*. Springer-Verlag, 1985.[Bjö75] A. Björk. Methods for sparse linear least-squares problems. In J. Bunch and D. Rose, editors, *Sparse Matrix Computations*. Academic, New York, 1975.[Bra90] R. Branham. *Scientific Data Analysis*. Springer-Verlag, 1990.[Bru65] H.D. Brunk. *An Introduction to Mathematical Statistics*. Blaisdell, 1965.[Cas85] G. Casella. An introduction to empirical Bayes data analysis. *The American Statistician*, 39:83–87, 1985.[Cha78] R. Chandra. *Conjugate gradient methods for partial differential equations*. PhD thesis, Yale University, New Haven, CT, 1978.[CL96] B. P. Carlin and T. A. Louis. *Bayes and Empirical Bayes Methods for Data Analysis*. Chapman & Hall, 1996.[CM79] S. Campbell and C. Meyer. *Generalized inverses of linear transformations*. Pitman, London, 1979.[CW80] J. Cullum and R. Willoughby. The Lanczos phenomenon—an interpretation based upon conjugate gradient optimization. *Linear Algebra and Applications*, 29:63–90, 1980.[CW85] J. Cullum and R. Willoughby. *Lanczos Algorithms for Large Symmetric Eigenvalue Computations*. Birkhäuser, Boston, 1985.[DLM90] D. L. Donoho, R. C. Liu, and K. B. MacGibbon. Minimax risk over hyper-rectangles, and implications. *Annals of Statistics*, 18:1416–1437, 1990.[Dwi61] H.B. Dwight. *Tables of Integrals and Other Mathematical Data*. Macmillan Publishers, 1961.[Efr86] B. Efron. Why isn't everyone a Bayesian. *American Statistician*, 40(1):1–11, 1986.
+
+1

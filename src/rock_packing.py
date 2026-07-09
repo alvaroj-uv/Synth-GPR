@@ -307,6 +307,34 @@ class RockPackingStrategy(ABC):
             return grading_curve.sample(clamp_min=radius_min, clamp_max=radius_max)
         return random.uniform(radius_min, radius_max)
 
+    def pack(
+        self,
+        bounds: PackingBounds,
+        radius_min: float,
+        radius_max: float,
+        target_fill_ratio: float = PAC.DEFAULT_FILL_RATIO,
+        *,
+        seed: Optional[int] = None,
+    ) -> List[Rock]:
+        """Unified packing entry point — ONE signature for every packer.
+
+        Subclasses keep their own ``generate_rocks`` placement logic untouched;
+        this concrete template (1) seeds the RNGs for reproducibility, (2)
+        delegates to ``generate_rocks``, and (3) polygonises bare circles into
+        angular #triangle-ready stones. Packers whose ``generate_rocks`` already
+        returns polygons (RIP, pymunk) just skip step 3. The orchestration layer
+        calls ``pack(bounds, r_min, r_max, fill, seed=…)`` and never has to
+        inspect a packer's signature.
+        """
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        rocks = self.generate_rocks(bounds, radius_min, radius_max, target_fill_ratio)
+        # Polygonisation is a 2-D operation (angular #triangle stones); 3-D packs
+        # stay as spheres (Rock with a z centre).
+        if bounds.ndim == 2 and rocks and not rocks[0].is_polygon:
+            self.polygonize(rocks, rng=np.random.default_rng(seed))
+        return rocks
 
     def _create_rock(self, x: float, y: float, radius: float) -> Rock:
         """Helper method to create a Rock object."""
@@ -1004,17 +1032,21 @@ class GridPacking(RockPackingStrategy):
 class FrontChainPacking(RockPackingStrategy):
     """
     Front-Chain Packing (Advancing Front) for high-density aggregates.
-    
+
+    QUARANTINED (2026-07-02, debt D12): known to HANG (>90 s) in the
+    all-strategies comparison with RIP shapes — do not use in pipelines.
+    Kept only for reference; emits a RuntimeWarning when invoked.
+
     Inspired by d3-hierarchy's packSiblings (Wang et al.).
-    Maintains a chain of "front" circles and places new circles in the 
+    Maintains a chain of "front" circles and places new circles in the
     interstices (pockets) between neighbors.
-    
+
     Characteristics:
         - Density: High (70-80%+) because it maximizes tangency.
         - Structure: Clustered, organic "growth" look.
         - Complexity: O(N log N) roughly.
     """
-    
+
     def generate_rocks(
         self,
         bounds: PackingBounds,
@@ -1025,8 +1057,14 @@ class FrontChainPacking(RockPackingStrategy):
         min_gap: float = 0.0,
         grading_curve: Any = None
     ) -> List[Rock]:
+        import warnings
+        warnings.warn(
+            "FrontChainPacking is QUARANTINED: known to hang (>90 s) on "
+            "realistic inputs. Prefer 'circlify' or 'rsa'.",
+            RuntimeWarning, stacklevel=2,
+        )
         rocks = []
-        
+
         # 1. Pre-generate a queue of rocks to place (sorted by size usually helps density)
         # We start with a large batch to ensure we have enough to fill
         estimated_count = int((bounds.area * target_fill_ratio) / (np.pi * radius_min**2)) * 2
@@ -1128,7 +1166,11 @@ class FrontChainPacking(RockPackingStrategy):
 class PhysicsPacking(RockPackingStrategy):
     """
     Force-Directed Relaxation Packing (Physics Simulation).
-    
+
+    QUARANTINED (2026-07-02, debt D12): known to HANG (>90 s) in the
+    all-strategies comparison with RIP shapes — do not use in pipelines.
+    Kept only for reference; emits a RuntimeWarning when invoked.
+
     References / Inspirations:
     - User provided 'packin_idea.py' (Force-Directed Graph style).
     - https://github.com/mbedward/packcircles (R package, 'circleRepelLayout').
@@ -1167,6 +1209,12 @@ class PhysicsPacking(RockPackingStrategy):
         Args:
             max_attempts: HERE, used as MAX_ITERATIONS for the physics loop.
         """
+        import warnings
+        warnings.warn(
+            "PhysicsPacking is QUARANTINED: known to hang (>90 s) on "
+            "realistic inputs. Prefer 'circlify' or 'rsa'.",
+            RuntimeWarning, stacklevel=2,
+        )
         # 1. Initialize Rocks
         estimated_count = int((bounds.area * target_fill_ratio) / (np.pi * radius_min**2))
         
@@ -2564,6 +2612,13 @@ class PymunkBallastPacking(RockPackingStrategy):
     """
     Rock packing using pymunk physics simulation (RSA + gravity compaction).
 
+    KNOWN BUG (2026-07-02, debt D12; see memory reference_packing_architecture):
+    this strategy IGNORES the ``target_fill_ratio``, ``radius_min`` and
+    ``radius_max`` arguments — the underlying BallastSimulation uses its own
+    grading/size configuration. Callers that need those parameters honoured
+    should use 'circlify'. Emits a RuntimeWarning when invoked so silent
+    parameter-dropping cannot go unnoticed.
+
     Produces physically realistic ballast configurations by:
     1. Randomly placing rocks (RSA algorithm)
     2. Simulating gravity to compact and settle them
@@ -2610,6 +2665,14 @@ class PymunkBallastPacking(RockPackingStrategy):
         """
         if not HAS_PYMUNK:
             raise ImportError("pymunk required for PymunkBallastPacking. Install: pip install pymunk")
+
+        import warnings
+        warnings.warn(
+            "PymunkBallastPacking IGNORES target_fill_ratio/radius_min/"
+            "radius_max (BallastSimulation samples its own Gleisschotter "
+            "sieve). Use 'circlify' if those parameters must be honoured.",
+            RuntimeWarning, stacklevel=2,
+        )
 
         # Import here to avoid hard dependency
         from .pymunk_packing import BallastSimulation

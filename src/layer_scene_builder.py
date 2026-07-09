@@ -24,12 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol
 
+import numpy as np
+
 from .gpr_commands import (
     DomainCommand, DxDyDzCommand, TimeWindowCommand, MaterialCommand,
     BoxCommand, CylinderCommand, WaveformCommand, HertzianDipoleCommand, RxCommand,
 )
 from .layer_spec import Layer
-from .rock_model import PackingBounds
+from .rock_model import PackingBounds, rip_polygon_vertices
 from src.scene_model import SceneModel, LayerSpec
 
 C_LIGHT = 299_792_458.0
@@ -56,8 +58,13 @@ class SceneParams:
     source_waveform: str = "ricker"
     source_amplitude: float = 1.0
     source_polarization: str = "z"
-    rock_packing_algorithm: str = "mbubia_ballast"  # packer for packed layers; "mbubia"/"mbubia_ballast" -> pymunk gravity settle
-    mbubia_settle_time: Optional[float] = None  # mbubia gravity-settle seconds; None -> packer default (2.0, phi~0.12). ~0.1 -> phi~0.40
+    rock_packing_algorithm: str = "pymunk_ballast"  # packer for packed layers; "pymunk"/"pymunk_ballast" -> pymunk gravity settle
+    pymunk_settle_time: Optional[float] = None  # pymunk gravity-settle seconds; None -> packer default (2.0, phi~0.12). ~0.1 -> phi~0.40
+    rock_radius_min: Optional[float] = None  # min rock radius (m) for strategy-family packers; None -> 0.004 m (8 mm dia)
+    rock_radius_max: Optional[float] = None  # max rock radius (m) for strategy-family packers; None -> 0.025 m (50 mm dia)
+    rock_packing_target_fill: Optional[float] = None  # target area fraction covered by rocks (None -> 0.85 hardcoded default); 0.60 -> phi~0.40 per Brancadoro 2D rule
+    excitation_file: Optional[str] = None  # path to gprMax #excitation_file; if set, skips #waveform command
+    excitation_waveform_id: str = "gssi_420mhz"  # waveform column ID in excitation_file
 
 
 def _git_sha() -> str:
@@ -108,8 +115,11 @@ def _unique_materials(layers: List[Layer]) -> tuple[list[MaterialCommand], dict]
 class PackerProtocol(Protocol):
     """Minimal packer protocol expected by the builder.
 
-    Implementations must provide generate_rocks(bounds, random_seed=None) -> iterable
-    of rock-like objects with attributes: x, y, radius, is_polygon, vertices.
+    Implementations expose the UNIFIED entry point
+    ``pack(bounds, radius_min, radius_max, target_fill_ratio, *, seed=None)
+    -> List[Rock]`` (provided by RockPackingStrategy.pack for every strategy;
+    overridden by the pymunk generator). Rocks have x, y, radius, is_polygon,
+    vertices. Per-strategy placement still lives in each ``generate_rocks``.
     """
 
 
@@ -134,15 +144,19 @@ def get_packer(algo: Optional[str], settle_time: Optional[float] = None):
 
     Mirrors the dispatch in warehouses.ToolWarehouse so the ``--layers-file``
     pipeline honours ``[sim] rock_packing_algorithm`` exactly like the batch
-    pipeline. ``None``/``"mbubia"``/``"mbubia_ballast"`` -> pymunk gravity
-    settle (the historical default). Unknown names fall back to the default.
-    ``settle_time`` only affects the mbubia (pymunk) packer.
+    pipeline. ``None``/``"pymunk"``/``"pymunk_ballast"`` -> pymunk gravity
+    settle (the default). ``"mbubia"``/``"mbubia_ballast"`` are kept as
+    backward-compatible aliases. Unknown names fall back to the default.
+    ``settle_time`` only affects the pymunk packer.
     """
-    algo = (algo or "mbubia_ballast").lower()
-    if algo in ("mbubia", "mbubia_ballast", "pymunk", "default"):
+    algo = (algo or "pymunk_ballast").lower()
+    if algo in ("pymunk", "pymunk_ballast", "mbubia", "mbubia_ballast", "default"):
         return get_default_packer(settle_time)
     try:
         from . import rock_packing as rp
+        if algo in ("rcpgen", "rcpgenerator"):
+            from .rcpgenerator_packing import RCPGeneratorPacking
+            return RCPGeneratorPacking()
         _registry = {
             "rsa": rp.RSAPacking,
             "shang_chu": rp.ShangChuPacking,
@@ -167,63 +181,86 @@ def get_packer(algo: Optional[str], settle_time: Optional[float] = None):
         return get_default_packer(settle_time)
 
 
-def _call_generate_rocks(packer, bounds, seed):
-    """Call a packer's generate_rocks, adapting to the two interface families.
+def _call_generate_rocks(packer, bounds, seed,
+                         radius_min: Optional[float] = None,
+                         radius_max: Optional[float] = None,
+                         target_fill_ratio: Optional[float] = None):
+    """Pack rocks via the unified ``pack()`` entry point shared by every packer.
 
-    The pymunk packer accepts ``random_seed=`` and self-seeds deterministically.
-    The RockPackingStrategy family seeds via the global RNG and requires
-    radius_min/radius_max; we seed it explicitly and polygonise the circles so
-    the builder draws angular #triangle stones (comparable to the pymunk path).
+    Every packer (RockPackingStrategy subclasses, RIP, pymunk) exposes the same
+    ``pack(bounds, radius_min, radius_max, target_fill_ratio, *, seed)`` — it
+    seeds the RNGs, delegates to that packer's ``generate_rocks``, and
+    polygonises bare circles. No more signature sniffing.
+    Defaults: 8 mm min / 50 mm max stone diameter, 0.85 area fill.
     """
-    import inspect
-    sig = inspect.signature(packer.generate_rocks)
-    if "random_seed" in sig.parameters:
-        return packer.generate_rocks(bounds, random_seed=seed)
-    # Strategy family: seed global RNG so the packing is reproducible.
-    import random as _random
-    if seed is not None:
-        _random.seed(seed)
-        try:
-            import numpy as _np
-            _np.random.seed(seed)
-        except Exception:
-            pass
-    rocks = packer.generate_rocks(
+    return packer.pack(
         bounds,
-        radius_min=0.004,        # 8 mm min stone diameter
-        radius_max=0.025,        # 50 mm max stone diameter
-        target_fill_ratio=0.85,
+        radius_min if radius_min is not None else 0.004,
+        radius_max if radius_max is not None else 0.025,
+        target_fill_ratio if target_fill_ratio is not None else 0.85,
+        seed=seed,
     )
-    # Give them angular shapes so they read like ballast (not bare circles).
-    try:
-        import numpy as _np
-        rng = _np.random.default_rng(seed)
-        packer.polygonize(rocks, rng=rng)
-    except Exception:
-        pass
-    return rocks
 
 
 def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
-                      rock_id: str, seed: Optional[int] = None, packer: Optional[PackerProtocol] = None) -> tuple[int, list[str]]:
+                      rock_id: str, seed: Optional[int] = None, packer: Optional[PackerProtocol] = None,
+                      radius_min: Optional[float] = None, radius_max: Optional[float] = None,
+                      target_fill_ratio: Optional[float] = None,
+                      matrix_id: Optional[str] = None,
+                      invisible_fraction: float = 0.0,
+                      rock_shape: str = "polygon") -> tuple[int, list[str]]:
     """Fill [y0, y1] x [0, domain_x] with gravity-settled rocks using an injected packer.
 
     If no packer provided, a default packer will be lazily created. This avoids
     importing heavy dependencies at module import time and enables test stubs to be
     injected.
+
+    ``invisible_fraction`` (0-1): each rock independently has this probability
+    of being stamped with ``matrix_id`` instead of ``rock_id`` -- geometrically
+    present (still counted in the physical/porosity packing) but EM-inert
+    (zero dielectric contrast with its surrounding matrix). Deterministic for
+    a given ``seed`` (uses a RNG stream separate from the packer's own).
+
+    ``rock_shape``: "polygon" (default -- packer's angular triangulated
+    output, kept as-is), "circle" (strips the packer's polygon vertices so
+    each rock emits as a single #cylinder -- same centre/radius, round
+    cross-section instead of angular facets), or "square" (replaces the
+    vertices with a 4-corner square inscribed in the packer's original
+    bounding circle -- same centre/radius as the other two shapes).
     """
     from .gpr_commands import TriangleCommand
     if packer is None:
         packer = get_default_packer()
     if packer is None:
         # No packer available → no rocks
-        return {"n": 0, "r_min": 0.0, "r_max": 0.0, "r_mean": 0.0}, []
+        return {"n": 0, "r_min": 0.0, "r_max": 0.0, "r_mean": 0.0, "n_invisible": 0}, []
     bounds = PackingBounds(x_min=0.0, x_max=domain_x, y_min=y0, y_max=y1)
     cmds: list[str] = []
     radii: list[float] = []
-    for r in _call_generate_rocks(packer, bounds, seed):
+    n_invisible = 0
+    vis_rng = np.random.default_rng(seed if seed is not None else 0)
+    # Separate RNG stream (decorrelated from vis_rng) for RIP polygon shape
+    # generation, so toggling rock_invisible_fraction doesn't change rock shapes.
+    shape_rng = np.random.default_rng((seed if seed is not None else 0) + 1_000_003)
+    for r in _call_generate_rocks(packer, bounds, seed, radius_min=radius_min, radius_max=radius_max,
+                                   target_fill_ratio=target_fill_ratio):
         if r.radius <= 0:
             continue
+        if rock_shape == "circle" and r.vertices is not None:
+            r.vertices = None
+        elif rock_shape == "square":
+            r.vertices = [
+                (r.x + r.radius * math.cos(math.pi / 4 + k * math.pi / 2),
+                 r.y + r.radius * math.sin(math.pi / 4 + k * math.pi / 2))
+                for k in range(4)
+            ]
+        elif rock_shape == "rip":
+            r.vertices = rip_polygon_vertices(r.x, r.y, r.radius, shape_rng)
+        is_invisible = (invisible_fraction > 0.0 and matrix_id is not None
+                        and vis_rng.random() < invisible_fraction)
+        mat_id = matrix_id if is_invisible else rock_id
+        if is_invisible:
+            n_invisible += 1
         if r.is_polygon and len(r.vertices) >= 3:
             verts = [(min(max(vx, 0.0), domain_x), min(max(vy, y0), y1)) for vx, vy in r.vertices]
             n = len(verts)
@@ -232,12 +269,12 @@ def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
             for i in range(n):
                 v1, v2 = verts[i], verts[(i + 1) % n]
                 cmds.append(TriangleCommand(cx, cy, 0.0, v1[0], v1[1], 0.0,
-                                            v2[0], v2[1], 0.0, dz, rock_id).get_cmd_string())
+                                            v2[0], v2[1], 0.0, dz, mat_id).get_cmd_string())
             radii.append(r.radius)
         else:
             if r.y - r.radius < y0 - 1e-6 or r.y + r.radius > y1 + 1e-6:
                 continue
-            cmds.append(CylinderCommand(r.x, r.y, 0.0, r.x, r.y, dz, r.radius, rock_id).get_cmd_string())
+            cmds.append(CylinderCommand(r.x, r.y, 0.0, r.x, r.y, dz, r.radius, mat_id).get_cmd_string())
             radii.append(r.radius)
 
     stats = {
@@ -245,6 +282,7 @@ def _pack_layer_rocks(y0: float, y1: float, domain_x: float, dz: float,
         "r_min": min(radii) if radii else 0.0,
         "r_max": max(radii) if radii else 0.0,
         "r_mean": (sum(radii) / len(radii)) if radii else 0.0,
+        "n_invisible": n_invisible,
     }
     return stats, cmds
 
@@ -445,6 +483,10 @@ def _build_header(layers, params, dx, domain_y, subsurface_top, antenna_y,
     if params.seed is not None:
         lines.append(f"## CONFIG_base_seed: {params.seed}")
     lines.append(f"## CONFIG_domain_x: {params.domain_x:g}")
+    # Air gap = antenna height above the surface = antenna_clearance * 0.5
+    # (antenna_y = subsurface_top + antenna_clearance*0.5). Recorded for the
+    # assembler / acquisition-parameter metadata.
+    lines.append(f"## CONFIG_h_aire: {params.antenna_clearance * 0.5:g}")
     # Per-layer packing overrides (when any packed layer pins its own algorithm).
     per_layer_algos = {ly.name: ly.rock_packing_algorithm
                        for ly in layers if ly.packed and ly.rock_packing_algorithm}
@@ -515,34 +557,56 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     raw_commands = raw_commands or []
     param_sources = param_sources or {}
 
-    # Per-layer packer selection. The scene-level [sim] rock_packing_algorithm is
-    # the DEFAULT; a packed layer's own rock_packing_algorithm overrides it. An
+    # Per-layer packer selection. The scene-level [sim] rock_packing_algorithm /
+    # pymunk_settle_time are the DEFAULTs; a packed layer's own
+    # rock_packing_algorithm / pymunk_settle_time override them independently. An
     # injected packer (tests) wins for every layer to keep stubs deterministic.
+    # Cache key includes BOTH algo and settle so two layers sharing an algo but
+    # different settle times don't collide on the same packer instance.
     _injected = packer is not None
-    _scene_algo = getattr(params, "rock_packing_algorithm", None)
-    _settle = getattr(params, "mbubia_settle_time", None)
-    _default_packer = packer
+    _scene_algo = getattr(params, "rock_packing_algorithm", None) or "pymunk_ballast"
+    _scene_settle = getattr(params, "pymunk_settle_time", None) or getattr(params, "mbubia_settle_time", None)
     if not _injected and any(ly.packed for ly in layers):
-        _default_packer = get_packer(_scene_algo, _settle)
-        print(f"[PACKER] scene default rock_packing_algorithm = "
-              f"{_scene_algo or 'mbubia_ballast'} "
-              f"-> {type(_default_packer).__name__ if _default_packer else 'None'}")
+        print(f"[PACKER] scene default rock_packing_algorithm = {_scene_algo}, "
+              f"pymunk_settle_time = {_scene_settle}")
 
-    _packer_cache: dict[str, object] = {}
+    _packer_cache: dict[tuple, object] = {}
 
     def _layer_packer(ly: Layer):
-        """Packer for one layer: injected > per-layer algo > scene default."""
+        """Packer for one layer: injected (tests) > per-layer algo/settle > scene default."""
         if _injected:
-            return _default_packer
-        algo = ly.rock_packing_algorithm
-        if algo:
-            if algo not in _packer_cache:
-                p = get_packer(algo, _settle)
-                _packer_cache[algo] = p
-                print(f"[PACKER] layer '{ly.name}' rock_packing_algorithm = "
-                      f"{algo} -> {type(p).__name__ if p else 'None'}")
-            return _packer_cache[algo]
-        return _default_packer
+            return packer
+        algo = ly.rock_packing_algorithm or _scene_algo
+        settle = ly.pymunk_settle_time if ly.pymunk_settle_time is not None else _scene_settle
+        key = (algo, settle)
+        if key not in _packer_cache:
+            p = get_packer(algo, settle)
+            _packer_cache[key] = p
+            overridden = []
+            if ly.rock_packing_algorithm:
+                overridden.append(f"algo={algo}")
+            if ly.pymunk_settle_time is not None:
+                overridden.append(f"settle={settle}")
+            if overridden:
+                print(f"[PACKER] layer '{ly.name}' override ({', '.join(overridden)}) "
+                      f"-> {type(p).__name__ if p else 'None'}")
+        return _packer_cache[key]
+
+    def _layer_radius(ly: Layer) -> tuple[Optional[float], Optional[float]]:
+        """Rock radius bounds for one layer: per-layer override > scene default."""
+        rmin = ly.rock_radius_min if ly.rock_radius_min is not None else params.rock_radius_min
+        rmax = ly.rock_radius_max if ly.rock_radius_max is not None else params.rock_radius_max
+        if ly.rock_radius_min is not None or ly.rock_radius_max is not None:
+            print(f"[PACKER] layer '{ly.name}' rock_radius = [{rmin}, {rmax}] m (per-layer)")
+        return rmin, rmax
+
+    def _layer_target_fill(ly: Layer) -> Optional[float]:
+        """Target area-fill fraction for one layer: per-layer override > scene default."""
+        tf = (ly.rock_packing_target_fill if ly.rock_packing_target_fill is not None
+              else getattr(params, "rock_packing_target_fill", None))
+        if ly.rock_packing_target_fill is not None:
+            print(f"[PACKER] layer '{ly.name}' rock_packing_target_fill = {tf} (per-layer)")
+        return tf
 
     er_max = max(max(ly.eps, ly.rock_eps or 0.0) for ly in layers)
     any_packed = any(ly.packed for ly in layers)
@@ -597,7 +661,19 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
                 box_lines.append(BoxCommand(0.0, y0, 0.0, params.domain_x, y1, dz, matrix_id).get_cmd_string())
                 box_info.append((matrix_id, y0, y1, f"matrix for packed '{ly.name}'"))
             rock_id = id_map[(i, "rock")]
-            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed, packer=_layer_packer(ly))
+            r_min, r_max = _layer_radius(ly)
+            inv_frac = ly.rock_invisible_fraction or 0.0
+            shape = ly.rock_shape or "polygon"
+            stats, cmds = _pack_layer_rocks(y0, y1, params.domain_x, dz, rock_id, params.seed, packer=_layer_packer(ly),
+                                             radius_min=r_min, radius_max=r_max,
+                                             target_fill_ratio=_layer_target_fill(ly),
+                                             matrix_id=matrix_id, invisible_fraction=inv_frac,
+                                             rock_shape=shape)
+            if inv_frac > 0.0:
+                print(f"[PACKER] layer '{ly.name}' rock_invisible_fraction={inv_frac:.2f} "
+                      f"-> {stats['n_invisible']}/{stats['n']} rocks stamped with matrix material")
+            if shape == "circle":
+                print(f"[PACKER] layer '{ly.name}' rock_shape=circle -> {stats['n']} rocks emitted as cylinders")
             rock_count += stats["n"]
             rock_sections.append((ly.name, y0, y1, stats, rock_id, ly.rock_eps, matrix_id, cmds))
         else:
@@ -622,7 +698,10 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
                 ly0 = sum(layers[j].thickness for j in range(i))
                 ly1 = ly0 + ly.thickness
                 bounds = PackingBounds(x_min=0.0, x_max=params.domain_x, y_min=ly0, y_max=ly1)
-                rock_positions += _call_generate_rocks(packer_to_use, bounds, params.seed)
+                r_min, r_max = _layer_radius(ly)
+                rock_positions += _call_generate_rocks(packer_to_use, bounds, params.seed,
+                                                        radius_min=r_min, radius_max=r_max,
+                                                        target_fill_ratio=_layer_target_fill(ly))
 
         if rock_positions:
             geom_cmds = box_lines  # Background boxes
@@ -665,11 +744,18 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     out += [m.get_cmd_string() for m in mat_cmds]
 
     # --- SOURCE section ---
-    wave_id = "the_wave"
     antenna_type = "bistatic" if params.antenna_mode == "bistatic" else "monostatic"
-    out += ["", f"## === SOURCE (single {antenna_type} Hertzian dipole) ===",
-            WaveformCommand(params.source_waveform, params.source_amplitude, params.freq_hz, wave_id).get_cmd_string(),
-            HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wave_id).get_cmd_string()]
+    excit_file = getattr(params, "excitation_file", None)
+    if excit_file:
+        wf_id = getattr(params, "excitation_waveform_id", "gssi_420mhz")
+        out += ["", f"## === SOURCE (single {antenna_type} Hertzian dipole, excitation file) ===",
+                f"#excitation_file: {excit_file}",
+                HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wf_id).get_cmd_string()]
+    else:
+        wave_id = "the_wave"
+        out += ["", f"## === SOURCE (single {antenna_type} Hertzian dipole) ===",
+                WaveformCommand(params.source_waveform, params.source_amplitude, params.freq_hz, wave_id).get_cmd_string(),
+                HertzianDipoleCommand(params.source_polarization, tx_x, antenna_y, dz / 2.0, wave_id).get_cmd_string()]
 
     # Add receivers (single or array)
     for i in range(params.num_receivers):
@@ -685,7 +771,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     # --- one section per packed ROCK LAYER (drawn last → rocks contrast over matrix) ---
     for name, ly0, ly1, stats, rock_id, rock_eps, matrix_id, cmds in rock_sections:
         out += ["",
-                f"## === ROCK LAYER: {name} (mbubia gravity-settled, #triangle) ===",
+                f"## === ROCK LAYER: {name} (pymunk gravity-settled, #triangle) ===",
                 f"##   height: {ly1-ly0:.3f} m    y=[{ly0:.3f}, {ly1:.3f}] m",
                 f"##   rocks: {stats['n']}    radius approx: "
                 f"min={stats['r_min']*1e3:.1f} mm  max={stats['r_max']*1e3:.1f} mm  mean={stats['r_mean']*1e3:.1f} mm",
@@ -702,7 +788,7 @@ def build_scene_commands(layers: List[Layer], params: SceneParams,
     # Add default #geometry_view (commented by default for visualization) if not in raw_commands
     has_geometry_view = any("geometry_view" in (c or "") for c in (raw_commands or []))
     if not has_geometry_view:
-        out.append(f"##geometry_view: 0 0 0 {params.domain_x:g} {domain_y:.3f} {dz:g} {dx*1e3:.0f} {dx*1e3:.0f} {dz*1e3:.0f} y n")
+        out.append(f"##geometry_view: 0 0 0 {params.domain_x:g} {domain_y:.3f} {dz:g} {dx:.4f} {dx:.4f} {dz:.4f} geom n")
 
     if raw_commands:
         out += ["", "## === PASSTHROUGH COMMANDS ([[command]]) ==="]

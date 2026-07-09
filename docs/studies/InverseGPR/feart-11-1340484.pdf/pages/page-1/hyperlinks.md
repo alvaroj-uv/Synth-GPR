@@ -1,0 +1,15 @@
+https://www.frontiersin.org/journals/earth-science#editorial-board
+https://www.frontiersin.org/journals/earth-science#editorial-board
+https://www.frontiersin.org/journals/earth-science
+https://doi.org/10.3389/feart.2023.1340484
+https://www.frontiersin.org/articles/10.3389/feart.2023.1340484/full
+https://crossmark.crossref.org/dialog/?doi=10.3389/feart.2023.1340484&domain=pdf&date_stamp=2024-01-22
+https://www.frontiersin.org/articles/10.3389/feart.2023.1340484/full
+https://www.frontiersin.org/articles/10.3389/feart.2023.1340484/full
+mailto:22S033067%40stu.hit.edu.cn
+mailto:22S033067%40stu.hit.edu.cn
+https://doi.org/10.3389/feart.2023.1340484
+https://creativecommons.org/licenses/by/4.0/
+https://creativecommons.org/licenses/by/4.0/
+https://www.frontiersin.org/journals/earth-science
+https://www.frontiersin.org

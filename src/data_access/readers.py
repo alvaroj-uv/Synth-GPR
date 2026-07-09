@@ -260,16 +260,25 @@ class DZTReader(DataReader):
         Returns:
             Dictionary containing trace data and metadata
         """
-        from src.dzt_io import read_dzt_trace, get_dzt_metadata
-        
+        from src.dzt_io import read_dzt_traces
+
         trace_idx = kwargs.get('trace_idx', 50)
         channel = kwargs.get('channel', 0)
-        
+
         path = Path(source)
         logger.info(f"Reading DZT file: {path} (trace_idx={trace_idx}, channel={channel})")
-        
-        signal, dt_ns, metadata = read_dzt_trace(path, trace_idx)
-        
+
+        # NOTE: metadata comes from read_dzt_traces' own header parse, not
+        # get_dzt_metadata() (readgssi.readdzt) — the latter cannot parse this
+        # project's 128 KiB-header/int32 DZT format (raises ValueError: cannot
+        # reshape array); read_dzt_traces' manual parser is the one that works
+        # on this project's real DZT files (see src.dzt_io module docstring).
+        traces, traces_meta = read_dzt_traces(path, channel=channel,
+                                              start_trace=trace_idx, num_traces=1)
+        signal = traces[0]
+        dt_ns = traces_meta['sample_interval_ns']
+        metadata = traces_meta
+
         logger.debug(f"DZT trace loaded: signal length={len(signal)}, dt_ns={dt_ns}")
         
         return {

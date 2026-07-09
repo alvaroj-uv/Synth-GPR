@@ -39,7 +39,7 @@ receiver_spacing = 0.03
 title = "420 MHz Trackbed: Clean Ballast vs Fouled (CRIM)"
 
 [source]
-# Gaussian waveform is 145.6% better than Ricker (per DEFAULT.toml calibration)
+# Gaussian waveform: PROVISIONAL — el "+145.6% vs Ricker" está INVALIDATED (suelo de ruido; ver FINAL_CALIBRATION_SUMMARY.md §1.1)
 waveform = "gaussian"
 amplitude = 1.0
 polarization = "z"

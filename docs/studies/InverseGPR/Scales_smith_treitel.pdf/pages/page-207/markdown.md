@@ -1,0 +1,69 @@
+# Index
+
+- autocorrelation, 93
+- autocorrelation, statistical vs time, 98
+- Backus-Gilbert theory, 183
+- Bayes estimator, 139
+- Bayes risk, 139
+- Bayes theorem, 22
+- Bayes' theorem, 78
+- Bayesian philosophy, 135
+- bias, 90
+- bias-variance tradeoff, 91, 185
+- bounded normal mean, 141
+- buried treasure, 1
+- cartesian product, 34
+- central limit theorem, 87
+- central limit theorem, relevance to real data, 89
+- CG, 163
+- CGLS, 166
+- Chebyshev's inequality, 86
+- column space, 47
+- condition number, 157
+- conditional probabilities, 15
+- conditioning on the truth, 20
+- conjugate direction method, 160
+- conjugate direction theorem, 161
+- conjugate gradient, 154
+- conjugate gradient least-squares, 166
+- conjugate gradient method, 162
+- consistency, 91
+- correlation coefficient, 84
+- correlation length, 93
+- correlation, defined, 83
+- covariance, 85
+- covariance, defined, 83
+- creeping, 171
+- curse of dimensionality, 144
+- De Moivre, 87
+- diagonalization, 51
+- dispersion, 42
+- eigenvalues, 49
+- eigenvectors, 49
+- empirical Bayes methods, 137
+- entropy, 145
+- ergodic processes, 98
+- existence of solutions, 48
+- expectation, 82, 89
+- finite precision arithmetic, 164
+- flat prior, 142
+- four fundamental subspaces, 46
+- frequentist interpretation of probability, 135
+- Frobenius norm, 40
+- fundamental theorem of linear algebra, 47
+- Gauss-Seidel method, 153
+- Gaussian/Bayesian posterior, 131
+- generalized gaussian, 42
+- generalized Gaussian family of distributions, 102
+- gravimetry, 2
+- iid: independent, identically distributed, 101
+- implausible models, 5
+- information content of a distribution, 42
+- invariant priors, 137
+- iterative eigenvalue calculation, 174
+- iterative pseudo-inverse calculation, 179
+- iterative solution of linear systems, 151
+- Jacobi's method, 153
+- jumping, 171
+
+1

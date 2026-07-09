@@ -1,0 +1,9 @@
+## 5. Conclusion
+
+In Chapter 2, This paper introduces a new method for FWI of common-offset GPR data, particularly targeting the dimensions and infilling material of buried pipes. The method is designed to be used where clear isolated diffraction hyperbolas indicate the presence of a pipe, but pipe dimensions and filling may be unknown. The method consists of five main steps: GPR data processing, ray-based analysis to set a good initial model, 3D to 2D transformation of data, effective SW estimation, and full-waveform inversion. The method combines two freely available software packages: PEST, for the inversion, and gprMax for forward modeling of the GPR data.
+
+This method is applied on a synthetic 3D dataset and two 800 MHz GPR profiles collected over a PVC pipe buried in clean sands. In the synthetic and water-filled and air-filled pipe field cases, good initial estimates of the depth and diameter of the pipe from the ray-based analysis are improved after FWI. The tests show that while the initial estimate of pipe diameter is within 30-50% of the true value, the inversion yields estimates with <8% error. For the field data, the requirement of a good starting model can in practice confirm or deny a starting assumption about the pipe-filling material.
+
+Ray-based analysis is essential to set up the starting model, particularly to estimate the pipe location and average soil permittivity and conductivity. Although ray-based conductivity estimates are possible, improvement in the conductivity would require the SW to be updated after each iteration in the FWI procedure. Iterations on the SW during the FWI process, as in Busch et al. (2012; 2014), are beyond the scope of this study. The method in its present form is only effective for isolated hyperbolas, and assumes that GPR surveys
+
+29

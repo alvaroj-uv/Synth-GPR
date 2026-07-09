@@ -1,11 +1,66 @@
 
 import configparser
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from .constants import MC, PHC  # single source of truth for material EM properties
 
+
+# ------------------------------------------------------------
+# gprMax interpreter resolution (machine-specific, never hardcoded)
+# ------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_gprmax_python() -> str:
+    """Resolve the Python interpreter of the gprMax conda env.
+
+    gprMax runs in its own conda env, so its interpreter is machine-specific and
+    must NOT be hardcoded. Resolution order (no silent, machine-specific default):
+
+      1. environment variable ``GPRMAX_PYTHON``
+      2. ``[gprmax] python = ...`` in ``gprmax.ini`` at the repo root
+      3. raise RuntimeError with setup instructions
+
+    Returns:
+        Absolute path (str) to the gprMax env python executable.
+
+    Raises:
+        RuntimeError: if unconfigured, or if the configured path does not exist.
+    """
+    env = os.environ.get("GPRMAX_PYTHON")
+    if env:
+        if not Path(env).exists():
+            raise RuntimeError(
+                f"GPRMAX_PYTHON='{env}' but that interpreter does not exist."
+            )
+        return env
+
+    ini = _REPO_ROOT / "gprmax.ini"
+    if ini.exists():
+        parser = configparser.ConfigParser()
+        parser.read(ini)
+        val = parser.get("gprmax", "python", fallback=None)
+        if val:
+            if not Path(val).exists():
+                raise RuntimeError(
+                    f"gprmax.ini [gprmax] python='{val}' does not exist."
+                )
+            return val
+
+    raise RuntimeError(
+        "gprMax interpreter not configured. It runs in its own conda env, so its "
+        "path is machine-specific. Configure it one of two ways:\n"
+        "  1. environment variable:\n"
+        "       GPRMAX_PYTHON=/path/to/.conda/envs/gprMax/python.exe\n"
+        "  2. a gprmax.ini at the repo root:\n"
+        "       [gprmax]\n"
+        "       python = C:\\Users\\<you>\\.conda\\envs\\gprMax\\python.exe\n"
+        "(see memory/gprmax_run_procedure for the conda env details)."
+    )
 
 
 # ------------------------------------------------------------
@@ -342,12 +397,14 @@ class GeneratorConfig:
         # validation with descriptive error messages.
         # Spatial discretization validation
 
-        # The standalone "mbubia" two-layer scene generator has been removed.
-        # Alias it to "mbubia_ballast": dense mbubia physics packing inside the
-        # STANDARD subgrade/formation/ballast layer stack (the contrasted path,
-        # with no fixed-geometry generator).
-        if self.rock_packing_algorithm == "mbubia":
-            object.__setattr__(self, "rock_packing_algorithm", "mbubia_ballast")
+        # Normalise packing algorithm aliases.
+        # "pymunk"/"pymunk_ballast" are the canonical names.
+        # "mbubia"/"mbubia_ballast" are kept as backward-compatible aliases.
+        _algo = self.rock_packing_algorithm
+        if _algo in ("mbubia", "mbubia_ballast"):
+            object.__setattr__(self, "rock_packing_algorithm", "pymunk_ballast")
+        elif _algo == "pymunk":
+            object.__setattr__(self, "rock_packing_algorithm", "pymunk_ballast")
 
         if self.dx <= 0:
             raise ValueError("#dx_dy_dz: x-direction spatial step (dx) must be greater than zero")
@@ -372,14 +429,11 @@ class GeneratorConfig:
             object.__setattr__(self, "rock_z_start", 0.0)
             object.__setattr__(self, "rock_z_end", self.domain_z)
 
-        # pymunk / mbubia_ballast packing: polygon rocks + 4m scan width.
-        # mbubia_ballast = dense mbubia physics packing inside the STANDARD layer
-        # stack; it shares pymunk's wide-scan geometry (and keeps the standard,
-        # frequency-appropriate dx).
-        if self.rock_packing_algorithm in ("pymunk", "mbubia_ballast"):
-            if self.rock_packing_algorithm == "pymunk" and not self.angular_rocks:
-                # mbubia_ballast stamps its TRUE settled polygons, so it does not
-                # need the synthetic-angular path that pymunk's circles do.
+        # pymunk_ballast / rip: both produce polygon rocks stamped via _stamp_polygon,
+        # so angular_rocks must be True to activate the polygon stamping path in
+        # granular_worker. pymunk_ballast also enforces a minimum domain width.
+        if self.rock_packing_algorithm in ("pymunk_ballast", "rip"):
+            if not self.angular_rocks:
                 object.__setattr__(self, "angular_rocks", True)
             if self.domain_x < self.scan_width:
                 rx_offset = self.rx_x - self.tx_x

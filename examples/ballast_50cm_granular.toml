@@ -1,0 +1,69 @@
+# 50 cm air-gap granular ballast — corrected matching scenario (T8)
+# ================================================================
+# Fixes the 3 root errors of examples/DEFAULT_with_ballast.toml:
+#   1. Air gap: the real EFE acquisition is air-launched at ~0.50 m, not 0.05 m.
+#      The antenna height above the surface = antenna_clearance * 0.5, so
+#      antenna_clearance = 1.0 gives a 0.50 m gap (CONFIG_h_aire: 0.5 in the .in).
+#      NOTE: the current best-matching validated model uses antenna_clearance=0.10
+#      (5 cm gap, r=0.984). This deck exists to test the air-launched-at-0.5-m
+#      hypothesis at proper granular geometry — compare its coda against the real
+#      trace before trusting either height.
+#   2. Granular ballast: a homogeneous #box cannot generate coda scattering. The
+#      ballast layer is packed=true (stamped stones), so rocks actually scatter.
+#   3. Source: the calibrated GSSI wavelet (calibration/gssi_excitation.txt) via
+#      #excitation_file, not a grid-search gaussian/ricker.
+#
+# Post-processing of the .out (NOT done by gprMax) before comparing to real:
+#   - multiply Ez by -1 (GSSI stores the opposite polarity convention);
+#   - resample sim dt -> real DZT dt (0.0978 ns) via
+#     src.preprocessing.preprocess_physical(sig, dt, target_dt=0.0978e-9).
+#
+# Generate:
+#   python scripts/pipeline/generate_gprmax_scenes.py examples/ballast_50cm_granular.toml
+# Run (copy calibration/gssi_excitation.txt next to the .in first — gprMax splits
+# ':' in paths, so the deck references it by bare name):
+#   conda run -n gprMax python -m gprMax ballast_50cm_granular.in
+
+[job]
+mode   = "layers"
+render = true
+output = "ballast_50cm_granular.in"
+
+[sim]
+freq_hz           = 420e6
+domain_x          = 0.5
+dx                = 0.002          # 2 mm grid (T8)
+antenna_clearance = 1.0            # -> 0.50 m air gap (antenna height = clearance*0.5)
+air_buffer        = 0.10
+time_window       = 5.0e-8         # 50 ns (match the real window)
+antenna_mode      = "bistatic"
+num_receivers     = 1
+receiver_spacing  = 0.03
+excitation_file        = "calibration/gssi_excitation.txt"
+excitation_waveform_id = "gssi_420mhz"
+# clearance_jitter_m = 0.04        # (corpus, OPTIONAL) jitter antenna height +/- 4
+#                                    cm per scene — documented target, NOT yet
+#                                    wired into the sampler.
+title             = "420 MHz GSSI excitation - granular ballast - 0.50 m air gap"
+
+[source]
+amplitude    = 1.0
+polarization = "z"
+
+# Granular (packed) ballast — stamped stones scatter the coda.
+[[layer]]
+name      = "ballast"
+thickness = 0.35                   # 35 cm ballast (T8)
+packed    = true
+rock_packing_algorithm = "mbubia_ballast"
+rock_radius_min = 0.020            # ~40-50 mm stones
+rock_radius_max = 0.025
+eps       = 6.1                    # rock permittivity (Brancadoro igneous)
+sigma     = 0.001
+
+# Homogeneous subgrade extended below the ballast toward the PML.
+[[layer]]
+name      = "subgrade"
+thickness = 0.50
+eps       = 6.0
+sigma     = 0.01

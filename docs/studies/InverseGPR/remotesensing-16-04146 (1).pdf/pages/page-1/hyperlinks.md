@@ -1,0 +1,12 @@
+https://www.mdpi.com/journal/remotesensing
+https://www.mdpi.com
+https://orcid.org/0000-0002-9761-3457
+https://orcid.org/0000-0003-2975-0991
+https://www.mdpi.com/article/10.3390/rs16224146?type=check_update&version=1
+https://doi.org/10.3390/rs16224146
+https://doi.org/10.3390/rs16224146
+https://creativecommons.org/
+https://creativecommons.org/licenses/by/4.0/
+https://creativecommons.org/licenses/by/4.0/
+https://doi.org/10.3390/rs16224146
+https://www.mdpi.com/journal/remotesensing

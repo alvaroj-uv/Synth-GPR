@@ -144,3 +144,68 @@ class DatasetGenerator:
                 self.logger.error(f"Traceback: {traceback.format_exc()}")
         
         return generated_files
+
+    def generate_one(
+        self,
+        output_path: Path | str,
+        *,
+        pvc: float | None = None,
+        moisture: float | None = None,
+        param_sources: dict | None = None,
+        sample_id: int = 1,
+        scenario_type: str = "Sim",
+    ) -> str:
+        """Generate a single .in file, optionally with exact (non-sampled) params.
+
+        Single-file counterpart to :meth:`generate_samples`. When BOTH ``pvc``
+        and ``moisture`` are given they are used verbatim (no sampling);
+        otherwise the parameters are sampled from the config. This keeps the
+        full production-line orchestration (WorkOrder -> pipeline -> validate ->
+        write) inside the generator instead of in CLI callers.
+
+        Seeding is the caller's responsibility (so behaviour matches the prior
+        CLI, which seeds via the config's ``base_seed`` before calling).
+
+        Args:
+            output_path: Destination .in path (parent dirs created).
+            pvc, moisture: If BOTH provided, pinned exactly; else sampled.
+            param_sources: Provenance map embedded as SOURCE_* headers.
+            sample_id: ID used by the writer / seed maths.
+            scenario_type: Scenario label passed to the writer.
+
+        Returns:
+            The written .in file path.
+        """
+        from .file_writer import GPRMaxFileWriter
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Exact override only when BOTH pvc and moisture are pinned; else sample.
+        if pvc is not None and moisture is not None:
+            params = {
+                'pvc': pvc, 'moisture': moisture,
+                'pvc_bottom': pvc, 'pvc_top': pvc,
+                'FI_bottom': pvc, 'FI_top': pvc,
+            }
+        else:
+            params = self.sampler.sample()
+
+        work_order = WorkOrder.from_sampled_params(sample_id, params)
+        wos = WorkOrderSystem(work_order)
+
+        checkpoint = self.pipeline.run(wos)
+
+        validation_errors = checkpoint.validate_all()
+        if validation_errors:
+            self.logger.warning(f"Validation: {len(validation_errors)} issue(s)")
+            for err in validation_errors[:3]:
+                self.logger.warning(f"  - {err}")
+
+        return GPRMaxFileWriter.save_scene_checkpoint(
+            checkpoint,
+            output_path=str(output_path),
+            scenario_type=scenario_type,
+            config=self.config,
+            param_sources=param_sources,
+        )

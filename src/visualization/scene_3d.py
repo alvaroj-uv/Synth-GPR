@@ -13,6 +13,7 @@ All views share Y-axis range for proper scaling relationship.
 
 from __future__ import annotations
 
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import Circle, Rectangle
@@ -206,4 +207,116 @@ def render_3d_views(scene, title="3D Domain", dpi=150):
     fig.legend(handles=legend_elements, loc='lower center', ncol=5, fontsize=9,
               bbox_to_anchor=(0.5, 0.005))
 
+    return fig
+
+
+def render_rocks_3d(
+    rocks,
+    *,
+    boxes=None,
+    domain=None,
+    bounds=None,
+    title="3-D packing",
+    color="#8b7355",
+    edgecolor="k",
+    marker_scale=320.0,
+    alpha=0.85,
+    box_alpha=0.22,
+    dpi=150,
+    ax=None,
+):
+    """Render a 3-D scene — ``Rock`` spheres plus layer slabs — in perspective.
+
+    Complements :func:`render_3d_views`, which draws three orthogonal 2-D
+    projections from a parsed ``.in`` scene. This takes packer output directly
+    — a list of :class:`~src.rock_model.Rock` with ``z`` set — so a packing can
+    be eyeballed before any deck is written. Marker area scales with each
+    rock's radius relative to the largest axis span, so the same call looks
+    right at any domain size.
+
+    Because a parsed scene's ``#sphere`` objects already expose ``.x/.y/.z/
+    .radius``, you can render a whole ``.in`` file in perspective with layer
+    boxes via ``render_rocks_3d(scene.spheres, boxes=scene.boxes, domain=...)``.
+
+    Args:
+        rocks: iterable of Rock (or scene spheres) with .x/.y/.z/.radius
+            (z must be set → sphere). Rocks carry their final scene coordinates.
+        boxes: optional iterable of layer slabs to draw as translucent cuboids.
+            Each item is either a scene ``Box`` object (``.x1.. .z2`` plus an
+            optional ``.material`` for colour) or a tuple
+            ``(x1, y1, z1, x2, y2, z2[, color])``.
+        domain: optional ``(Dx, Dy, Dz)`` — sets axis limits to the full gprMax
+            domain (origin at 0). Takes precedence over ``bounds``.
+        bounds: optional PackingBounds for axis limits (uses ``.mins`` /
+            ``.lengths``) when ``domain`` is None.
+        title: plot title; the sphere count is appended.
+        color / edgecolor / alpha: sphere appearance.
+        box_alpha: opacity of the layer slabs (kept low so rocks show through).
+        marker_scale: visual size constant (scatter point size per unit of
+            radius / span). Default reproduces the packing-test look.
+        dpi: figure resolution (ignored when ``ax`` is supplied).
+        ax: existing 3-D Axes to draw into; a new figure is created if None.
+
+    Returns:
+        The matplotlib Figure containing the scene.
+
+    Raises:
+        ValueError: if no rock carries a z coordinate (nothing 3-D to draw).
+    """
+    spheres = [r for r in rocks if getattr(r, "z", None) is not None]
+    if not spheres:
+        raise ValueError("render_rocks_3d needs 3-D rocks (Rock.z set); got none.")
+
+    xs = np.array([r.x for r in spheres], float)
+    ys = np.array([r.y for r in spheres], float)
+    zs = np.array([r.z for r in spheres], float)
+    rs = np.array([r.radius for r in spheres], float)
+
+    if ax is None:
+        fig = plt.figure(figsize=(8, 7), dpi=dpi)
+        ax = fig.add_subplot(111, projection="3d")
+    else:
+        fig = ax.figure
+
+    # Axis limits: full domain > packing bounds > rock extents (radius-padded).
+    if domain is not None:
+        x_hi, y_hi, z_hi = domain
+        x_lo = y_lo = z_lo = 0.0
+    elif bounds is not None:
+        x_lo, y_lo, z_lo = bounds.mins
+        Lx, Ly, Lz = bounds.lengths
+        x_hi, y_hi, z_hi = x_lo + Lx, y_lo + Ly, z_lo + Lz
+    else:
+        x_lo, x_hi = float((xs - rs).min()), float((xs + rs).max())
+        y_lo, y_hi = float((ys - rs).min()), float((ys + rs).max())
+        z_lo, z_hi = float((zs - rs).min()), float((zs + rs).max())
+
+    # Layer slabs (e.g. subgrade) as translucent cuboids, drawn first so the
+    # rocks render on top. Accepts scene Box objects or 6/7-tuples.
+    for box in (boxes or []):
+        if hasattr(box, "x1"):
+            bx = (box.x1, box.y1, box.z1, box.x2, box.y2, box.z2)
+            bcol = get_style(box.material).color if getattr(box, "material", None) else "#888888"
+        else:
+            bx = tuple(box[:6])
+            bcol = box[6] if len(box) > 6 else "#888888"
+        bx1, by1, bz1, bx2, by2, bz2 = bx
+        ax.bar3d(bx1, by1, bz1, bx2 - bx1, by2 - by1, bz2 - bz1,
+                 color=bcol, alpha=box_alpha, shade=True,
+                 edgecolor=(0, 0, 0, 0.25), linewidth=0.3)
+
+    # Marker area ∝ (radius / largest span)² so screen size tracks physical size
+    # and auto-shrinks when the domain is larger.
+    L = max(x_hi - x_lo, y_hi - y_lo, z_hi - z_lo) or 1.0
+    s = (rs / L * marker_scale) ** 2
+
+    ax.scatter(xs, ys, zs, s=s, c=color, edgecolors=edgecolor,
+               linewidths=0.3, alpha=alpha)
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
+    ax.set_zlim(z_lo, z_hi)
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_zlabel("z (m)")
+    ax.set_title(f"{title} ({len(spheres)} spheres)")
     return fig

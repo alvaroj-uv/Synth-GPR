@@ -1,0 +1,3 @@
+the FWI process) and a sparse representation of the subsurface reflectivity series. The ray-based analysis is then performed on the estimated reflectivity model (instead of collected GPR data) to define the initial geometry model. The initial model is then updated in an iterative FWI procedure. Results from this method on a synthetic data set and two real data cases show the FWI process significantly improves diameter and electrical property estimates over conventional ray-based methods. The improvement is found for two distinctive real data sets collected with different instruments.
+
+5

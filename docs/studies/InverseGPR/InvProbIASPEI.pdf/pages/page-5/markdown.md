@@ -1,0 +1,27 @@
+physical laws ('forward relations') is given special attention in this text, and it is shown how this problem is profoundly linked to the resolution of the Borel paradox.
+
+Section 7 treats the special case of the mildly nonlinear inverse problems, where deterministic (non Monte Carlo) methods can be employed. In this section, invariant forms of classical inversion formulae are given.
+
+## 1.2 Brief Historical Review
+
+For a long time scientists have estimated parameters using optimization techniques. Laplace explicitly stated the least absolute values criterion. This, and the least squares criterion were later popularized by Gauss (1809). While Laplace and Gauss were mainly interested in overdetermined problems, Hadamard (1902, 1932) introduced the notion of an 'ill-posed problem', that can be viewed in many cases as an underdetermined problem.
+
+The late sixties and early seventies was a golden age for the theory of inverse problems. In this period the first uses of Monte Carlo theory to obtain Earth models were made by Keilis-Borok and Yanovskaya (1967) and by Press (1968). At about the same time, Backus and Gilbert, and Backus alone, in the years 1967–1970, made original contributions to the theory of inverse problems, focusing on the problem of obtaining an unknown *function* from discrete data. Although the resulting mathematical theory is elegant, its initial predominance over the more 'brute force' (but more powerful) Monte Carlo theory was only possibly due to the quite limited capacities of the computers at that time. It is our feeling that Monte Carlo methods will play a more important role in the future (and this is the reason why we put emphasis on these methods in this article). An investigation of the connection between analogue models, discrete models and Monte Carlo models can be found in a paper by Kennett and Nolet (1978).
+
+Important developments of inverse theory in the fertile period around 1970 were also made by Wiggins (1969), with his method of suppressing 'small eigenvalues', and by Franklin (1970), by introducing the right mathematical setting for the Gaussian, functional (i.e., infinite dimensional) inverse problem (see also Lehtinen et al., 1989). Other important papers from the period are Gilbert (1971) and Wiggins (1972).
+
+A reference that may interest some readers is Parzen et al. (1998), where the probabilistic approach of Akaike is described.
+
+To the 'regularizing techniques' of Tikhonov (1963), Levenberg (1944) and Marquardt (1970), we prefer, in this paper, the approach where the a priori information is used explicitly.
+
+For seismologists, the first bona fide solution of an inverse problem was the estimation of the hypocenter coordinates of an earthquake using the 'Geiger method' (Geiger, 1910), that present-day computers have made practical. In fact, seismologists have been the originators of the theory of inverse problems (for data interpretation), and this is because the problem of understanding the structure of the Earth's interior using only surface data is a difficult problem.
+
+3-D tomography of the Earth, using travel times of seismic waves, was developed by Keiiti Aki and his coworkers in a couple of well known papers (Aki and Lee, 1976; Aki, Christofferson and Husebye 1977). Minster and Jordan (1978) applied the theory of inverse problems to the reconstruction of the tectonic plate motions, introducing the concept of 'data importance'. Later, tomographic studies have provided spectacular images of the Earth's interior. Interesting papers on these inversions are van der Hilst et al. (1997) and Su et al. (1992).
+
+One of the major current challenges in seismic inversion is the nonlinearity of wave field inversions. This is accentuated by the fact that major experiments in the future most likely will allow us to sample the whole seismic wave field. For the low frequencies wave field inversion is linear. Dahlen (1976) investigated the influence of lateral heterogeneity on the free oscillations. He showed that the inverse problem of estimating lateral heterogeneity of even degree from multiplet variance and skewness is linear. At the time this was published, data accuracy and unknown ellipticity splitting parameters hindered its application to real data, but later developments, including the works of Woodhouse and Dahlen (1978) on discontinuous Earth models, led to present-days successful inversions of low frequency seismograms. In this connection the works of Woodhouse, Dziewonski and others spring to mind$^{2}$. Later, the first attempts to go to higher frequencies and nonlinear inversion were made by Nolet et al. (1986), and Nolet (1990).
+
+Purely probabilistic formulations of inverse theory saw the light around 1970 (see, for instance, Kimeldorf and Wahba, 1970). In an interesting paper, Rietsch (1977) made nontrivial use of the notion of a 'noninformative' prior distribution for positive parameters. Jackson (1979) explicitly introduced prior information in the context of linear inverse problems, an approach that was generalized by Tarantola and Valette (1982a, 1982b) to nonlinear problems.
+
+$^{2}$Preliminary Earth Reference Model (PREM), Dziewonski and Anderson, PEPI, 1981. Inversion for Centroid Moment Tensor (CMT), Dziewonski, Chou and Woodhouse, JGR, 1982. First global tomographic model, Dziewonski, JGR, 1984.
+
+5

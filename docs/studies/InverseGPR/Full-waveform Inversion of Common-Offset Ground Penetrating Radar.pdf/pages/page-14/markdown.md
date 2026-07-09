@@ -1,0 +1,11 @@
+with antennas in broadside mode (parallel to the pipe). The technique described here can improve a good initial guess of pipe diameter (within 30-50% of the true value) to a better estimate (less than $\sim 8\%$ misfit). This method is developed by combining two freely available software packages with a deconvolution method for GPR effective source wavelet (SW) estimation. The FWI process is run with the PEST algorithm (Model-Independent Parameter Estimation and Uncertainty Analysis). PEST iteratively calls the gprMax software package for forward modeling of the GPR signal as the model for pipe and surrounding soil is refined.
+
+## 1.2 Sparse Blind Deconvolution of Ground Penetrating Radar Data
+
+In Chapter 3, we propose an effective method for sparse blind deconvolution (SBD) of ground penetrating radar (GPR) data. The SBD algorithm has no constraints on the phase of the wavelet, but the initial wavelet must be carefully captured from the data. The data are considered a convolution product of an unknown source wavelet and unknown sparse reflectivity series. The algorithm developed here is an alternating minimization technique that updates the reflectivity series and the wavelet iteratively. The reflectivity update is solved as an $\ell_2 - \ell_1$ problem with the alternating split Bregman iteration technique. The wavelet update is solved as an $\ell_2 - \ell_2$ problem with Wiener deconvolution. The algorithm converges to a local minimum. To increase the likelihood that convergence coincides with the desired local minimum, special steps are taken to provide a proper initial wavelet. Synthetic and real data examples show that both subsurface reflectivity series and wavelet (amplitude and phase) can be estimated efficiently. The SBD method presented appears robust and compares favourably to previous studies in its resistance to noise.
+
+## 1.3 Reinforced structure mapping using FWI
+
+In Chapter 4, we propose an effective full-waveform inversion (FWI) method for obtaining improved estimates of the properties of rebar embedded in concrete structures from surface-coupled common offset ground penetrating radar (GPR) data. We use a sparse blind deconvolution (SBD) technique to obtain the optimized source wavelet (necessary for
+
+4

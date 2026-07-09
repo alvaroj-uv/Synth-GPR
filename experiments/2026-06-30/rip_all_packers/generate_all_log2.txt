@@ -1,0 +1,36 @@
+
+=== front_chain ===
+  [TIMEOUT] 90.0s (>90s, likely a slow/degenerate packer for this geometry)
+
+=== physics ===
+  [TIMEOUT] 90.0s (>90s, likely a slow/degenerate packer for this geometry)
+
+=== triangle ===
+  [OK] 3.9s
+
+=== growth ===
+  [OK] 3.8s
+
+=== poisson ===
+  [OK] 2.7s
+
+=== random ===
+  [OK] 2.7s
+
+=== wang ===
+  [OK] 2.5s
+
+=== grid ===
+  [OK] 2.7s
+
+==================================================
+SUMMARY
+==================================================
+  front_chain     FAIL  90.0s
+  physics         FAIL  90.0s
+  triangle        OK    3.9s
+  growth          OK    3.8s
+  poisson         OK    2.7s
+  random          OK    2.7s
+  wang            OK    2.5s
+  grid            OK    2.7s

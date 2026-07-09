@@ -2,11 +2,14 @@
 # ================================
 # This is the recommended standard configuration for all synthetic GPR generation.
 #
-# VALIDATED CALIBRATION RESULTS (2026-06-16):
-# - Waveform: Gaussian (145.6% better than Ricker)
-# - Frequency: 420 MHz (2.6% better than 400 MHz nominal)
-# - Antenna: Bistatic 30mm spacing (10% better than monostatic)
-# - Final correlation: 88.76% with real field GPR data
+# CALIBRATION SETTINGS (2026-06-16; corregido 2026-07-07):
+# - Waveform: Gaussian — PROVISIONAL; el "+145.6% vs Ricker" está INVALIDATED
+#   (comparación de correlaciones en el suelo de ruido sobre coda-speckle)
+# - Frequency: 420 MHz — provisional; el "+2.6%" está INVALIDATED (mismo motivo)
+# - Antenna: Bistatic 30mm — plausible físicamente; el "+10%" está INVALIDATED
+# - 88.76% = full-trace correlation (direct-wave dominated): valida
+#   timing/remuestreo/polaridad, NO el matching de coda.
+#   Ver docs/FINAL_CALIBRATION_SUMMARY.md y docs/specs/ALGORITHM_SPECS.md SPEC-1.
 #
 # USE THIS CONFIG FOR:
 # - New synthetic dataset generation
